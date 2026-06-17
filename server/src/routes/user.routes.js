@@ -1,7 +1,11 @@
 import express from "express";
 import prisma from "../config/prisma.js";
 import bcrypt from "bcrypt";
+import jwt from "jsonwebtoken"
+import authMiddleware from "../middleware/auth.middleware.js";
 
+
+// Create a express app that only handles Routes
 const router = express.Router();
 
 router.get("/users", async (req, res) => {
@@ -108,9 +112,19 @@ router.post("/users/login", async (req, res) => {
         message: "Invalid credentials",
       });
     }
+     const token = jwt.sign({
+      id: user.id,
+      email: user.email
+    },
+    process.env.JWT_SECRET,
+    {
+      expiresIn: "1d"
+    }
+  )
 
     res.status(200).json({
       message: "Login successful",
+      token,
       user: {
         id: user.id,
         name: user.name,
@@ -120,6 +134,7 @@ router.post("/users/login", async (req, res) => {
         updatedAt: user.updatedAt,
       },
     });
+
   } catch (error) {
     res.status(500).json({
       message: "Failed to login user",
@@ -128,4 +143,10 @@ router.post("/users/login", async (req, res) => {
   }
 });
 
+router.get("/users/profile", async (req, res) =>{
+  return res.status(200).json({
+    message: "Profile Fetched Sucessfully",
+    user: req.user
+  })
+})
 export default router;
