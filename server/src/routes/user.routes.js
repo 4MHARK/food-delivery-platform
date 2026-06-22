@@ -143,10 +143,37 @@ router.post("/users/login", async (req, res) => {
   }
 });
 
-router.get("/users/profile", async (req, res) =>{
-  return res.status(200).json({
-    message: "Profile Fetched Sucessfully",
-    user: req.user
-  })
-})
+router.get("/users/profile", authMiddleware, async (req, res) => {
+  try {
+    const user = await prisma.user.findUnique({
+      where: {
+        id: req.user.id,
+      },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        role: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+    });
+
+    if (!user) {
+      return res.status(404).json({
+        message: "User not found",
+      });
+    }
+
+    return res.status(200).json({
+      message: "Profile fetched successfully",
+      user,
+    });
+  } catch (error) {
+    return res.status(500).json({
+      message: "Failed to fetch profile",
+      error: error.message,
+    });
+  }
+});
 export default router;
