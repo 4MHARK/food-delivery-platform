@@ -106,81 +106,154 @@ const Signup = () => {
       {/* RIGHT_SIDE */}
       <div className="flex w-full md:w-1/2 items-center justify-center px-4 sm:px-6 animate-slide-in">
         <div className="w-full max-w-md p-8 rounded-2xl border border-slate-300">
-          <h1>Get Started!</h1>
-          <p>Sign up to order from your favorite restaurants.</p>
+
+          {/* Mobile Branding */}
+          <div className="md:hidden mb-6 text-center">
+            <h1 className="text-2xl font-bold">
+              <span className="text-amber-500">Chow</span>Zilla
+            </h1>
+          </div>
+
+          {/* Heading */}
+          <div className="mb-8">
+            <h1 className="text-3xl font-bold text-slate-900 mb-2">Get Started!</h1>
+            <p className="text-slate-500 text-base">Sign up to order from your favorite restaurants.</p>
+          </div>
+
           {error && (
             <p className="mb-4 rounded-lg bg-red-100 px-4 py-3 text-sm text-red-600">
               {error}
             </p>
           )}
 
-          <form onSubmit={handleSubmit} className="flex flex-col mb-4">
-            <label htmlFor="name" className="mb-2">
-              Full name
-            </label>
-            <input
-              type="text"
-              id="name"
-              name="name"
-              required
-              value={formData.name}
-              onChange={handleChange}
-              className="border-2 w-full rounded-lg border-slate-300 px-4 py-2 mb-4"
-            />
+          <form onSubmit={handleSubmit} className="space-y-5">
+            {/* Full Name */}
+            <div>
+              <label
+                htmlFor="name"
+                className="block text-sm font-semibold text-slate-700 mb-1.5"
+              >
+                Full name
+              </label>
+              <input
+                type="text"
+                id="name"
+                name="name"
+                required
+                placeholder="Enter your full name"
+                value={formData.name}
+                onChange={handleChange}
+                className="w-full h-12 px-4 rounded-xl border-2 border-slate-200 focus:border-amber-500 focus:ring-1 focus:ring-amber-500 outline-none transition-shadow placeholder:text-slate-400 text-base"
+              />
+            </div>
 
-            <label htmlFor="email" className="mb-2">
-              Email
-            </label>
-            <input
-              type="email"
-              id="email"
-              name="email"
-              required
-              value={formData.email}
-              onChange={handleChange}
-              className=" border-2 w-full rounded-lg border-slate-300 px-4 py-2 mb-4"
-            />
+            {/* Email */}
+            <div>
+              <label
+                htmlFor="email"
+                className="block text-sm font-semibold text-slate-700 mb-1.5"
+              >
+                Email
+              </label>
+              <input
+                type="email"
+                id="email"
+                name="email"
+                required
+                placeholder="Enter your email"
+                value={formData.email}
+                onChange={handleChange}
+                className="w-full h-12 px-4 rounded-xl border-2 border-slate-200 focus:border-amber-500 focus:ring-1 focus:ring-amber-500 outline-none transition-shadow placeholder:text-slate-400 text-base"
+              />
+            </div>
 
-            <label htmlFor="password" className="mb-2">
-              Password
-            </label>
-            <input
-              type="password"
-              id="password"
-              name="password"
-              required
-              value={formData.password}
-              onChange={handleChange}
-              className=" w-full border-2 rounded-lg border-slate-300 px-4 py-2 mb-4"
-            />
+            {/* Password */}
+            <div>
+              <label
+                htmlFor="password"
+                className="block text-sm font-semibold text-slate-700 mb-1.5"
+              >
+                Password
+              </label>
+              <input
+                type="password"
+                id="password"
+                name="password"
+                required
+                placeholder="••••••••"
+                value={formData.password}
+                onChange={handleChange}
+                className="w-full h-12 px-4 rounded-xl border-2 border-slate-200 focus:border-amber-500 focus:ring-1 focus:ring-amber-500 outline-none transition-shadow placeholder:text-slate-400 text-base"
+              />
+            </div>
 
-            <label htmlFor="confirmPassword" className="mb-2">
-              Confirm Password
-            </label>
-            <input
-              type="password"
-              id="confirmPassword"
-              name="confirmPassword"
-              value={formData.confirmPassword}
-              onChange={handleChange}
-              required
-              className=" w-full border-2 rounded-lg border-slate-300 px-4 py-2 mb-4"
-            />
+            {/* Confirm Password */}
+            <div>
+              <label
+                htmlFor="confirmPassword"
+                className="block text-sm font-semibold text-slate-700 mb-1.5"
+              >
+                Confirm Password
+              </label>
+              <input
+                type="password"
+                id="confirmPassword"
+                name="confirmPassword"
+                required
+                placeholder="••••••••"
+                value={formData.confirmPassword}
+                onChange={handleChange}
+                className="w-full h-12 px-4 rounded-xl border-2 border-slate-200 focus:border-amber-500 focus:ring-1 focus:ring-amber-500 outline-none transition-shadow placeholder:text-slate-400 text-base"
+              />
+            </div>
+
+            {/* Submit Button */}
             <button
               type="submit"
               disabled={loading}
-              className="self-start rounded-lg bg-amber-500 px-6 py-3 font-semibold text-white mb-5"
+              className="w-full h-12 rounded-xl bg-amber-500 hover:bg-amber-600 transition-colors font-semibold text-white shadow-sm active:scale-[0.98]"
             >
-              {loading ? "Creating..." : "Create account"}
+              {loading ? "Creating account..." : "Create account"}
             </button>
-            <p>
-              Already have an account{" "}
-              <Link to="/login" className="text-amber-500">
-                Log in
-              </Link>
-            </p>
           </form>
-          {/* <button type="submit" className="flex bg-blue-500 px-6 py-2 rounded-lg text-white">SUBMIT</button> */}
+
+          {/* Divider */}
+          <div className="relative my-6">
+            <div className="absolute inset-0 flex items-center">
+              <div className="w-full border-t border-slate-200"></div>
+            </div>
+            <div className="relative flex justify-center text-sm">
+              <span className="px-3 bg-white text-slate-400 text-xs font-semibold uppercase tracking-wider">
+                Or continue with
+              </span>
+            </div>
+          </div>
+
+          {/* Social Buttons */}
+          <div className="grid grid-cols-2 gap-3">
+            <button
+              type="button"
+              className="w-full h-12 flex items-center justify-center gap-2 rounded-xl border-2 border-slate-200 bg-white hover:bg-slate-50 transition-colors font-semibold text-sm text-slate-700 active:scale-[0.98]"
+            >
+              <span className="material-symbols-outlined text-xl">login</span>
+              Google
+            </button>
+            <button
+              type="button"
+              className="w-full h-12 flex items-center justify-center gap-2 rounded-xl border-2 border-slate-200 bg-white hover:bg-slate-50 transition-colors font-semibold text-sm text-slate-700 active:scale-[0.98]"
+            >
+              <span className="material-symbols-outlined text-xl">apps</span>
+              Apple
+            </button>
+          </div>
+
+          {/* Login Link */}
+          <p className="mt-6 text-center text-base text-slate-500">
+            Already have an account?{" "}
+            <Link to="/login" className="font-semibold text-amber-500 hover:text-amber-600 transition-colors">
+              Log in
+            </Link>
+          </p>
         </div>
       </div>
     </div>
