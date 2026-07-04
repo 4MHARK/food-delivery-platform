@@ -8,7 +8,7 @@ A food delivery platform where customers order from restaurants. Built with Reac
 
 ## Current State (as of 2026-07-04)
 
-**Phase:** Auth system — login and profile pages in progress.
+**Phase:** Auth system — login complete, profile page next.
 
 ---
 
@@ -23,10 +23,15 @@ A food delivery platform where customers order from restaurants. Built with Reac
 | Profile API | GET /api/users/profile — JWT-protected, returns user data |
 | JWT middleware | Verifies Bearer token, attaches user to request |
 | Health check | GET /api/health |
-| Signup page | Full form with validation, API integration, error/loading states, animations, responsive two-column layout |
+| Signup page | Full form with validation, API integration, error/loading states, animations, card layout matching login |
+| Login page | Form with email/password, validation, JWT token storage in localStorage, redirect to /profile, styled card with social buttons, "Forgot password" link |
+| Material Symbols | Icon font loaded in index.html, used for social login buttons |
+| Page title | Changed from "client" to "ChowZilla" |
 | Routing | React Router: / → /signup, /signup, /login, /profile |
 | Branding | "ChowZilla" name, amber-500 color scheme, Plus Jakarta Sans font |
 | Custom animations | fadeIn, fadeUp, slideIn keyframes in Tailwind |
+| Project docs | CLAUDE.md (AI instructions), PROJECT.md (status tracker) |
+| End-to-end test | Signup → Login → Profile APIs all confirmed working via curl |
 
 ---
 
@@ -34,8 +39,7 @@ A food delivery platform where customers order from restaurants. Built with Reac
 
 | Feature | Status |
 |---------|--------|
-| Login page | Started — has layout, form, but missing state declarations, broken event handler, no API call, no token storage |
-| CLAUDE.md | Created (this file's companion) |
+| Profile page | Next task — currently an empty stub |
 
 ---
 
@@ -43,8 +47,8 @@ A food delivery platform where customers order from restaurants. Built with Reac
 
 | Feature | Priority |
 |---------|----------|
-| Auth state management (token storage, user context) | 🔴 Next after login |
-| Profile page implementation | 🔴 After auth state |
+| Profile page implementation | 🔴 Next |
+| Auth state management (user context, not just localStorage) | 🔴 After profile |
 | Protected routes (client-side auth guard) | 🔴 After auth state |
 | Logout functionality | 🟡 |
 | Navigation/navbar component | 🟡 |
@@ -63,15 +67,9 @@ A food delivery platform where customers order from restaurants. Built with Reac
 
 | Bug | Severity | Status |
 |-----|----------|--------|
-| JWT_SECRET has leading space in server/.env | 🔴 High | Not fixed |
-| Login.jsx: `e.prevent.default()` instead of `e.preventDefault()` | 🔴 High | In progress |
-| Login.jsx: `SetError` instead of `setError` (case sensitivity) | 🔴 High | In progress |
-| Login.jsx: Missing `useState` declarations for formData, error, loading | 🔴 High | In progress |
-| Login.jsx: `"All feilds are required!"` typo | 🟡 Low | In progress |
-| Login.jsx: Missing `navigate` for redirect after login | 🟡 Medium | In progress |
 | GET /api/users is unprotected (returns all user data) | 🟡 Medium | Not fixed |
 | App.css contains unused Vite boilerplate | 🟢 Low | Not fixed |
-| HTML <title> still says "client" | 🟢 Low | Not fixed |
+| `console.log(error)` in Login.jsx and Signup.jsx catch blocks | 🟢 Low | Not fixed |
 
 ---
 
@@ -79,7 +77,7 @@ A food delivery platform where customers order from restaurants. Built with Reac
 
 | Date | What was done |
 |------|--------------|
-| 2026-07-04 | Full codebase review completed. Created CLAUDE.md and PROJECT.md. About to begin Login page build. |
+| 2026-07-04 | Full codebase review. Built Login page (form, API, token storage, styling). Restyled Signup to match. Added Material Symbols. Fixed all Login bugs. End-to-end API tests passed. Both commits pushed. |
 | 2026-06-28 | Signup page connected to backend (commit `a84b914`) |
 | 2026-06-28 | CORS enabled for frontend auth requests (commit `38184dc`) |
 | 2026-06-22 | Auth page left side with animations added (commit `9934ea0`) |
