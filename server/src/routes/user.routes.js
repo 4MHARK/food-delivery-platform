@@ -176,4 +176,50 @@ router.get("/users/profile", authMiddleware, async (req, res) => {
     });
   }
 });
+
+router.put("/users/profile", authMiddleware, async (req, res) => {
+  try {
+    const { name, email } = req.body;
+
+    if (!name || !email) {
+      return res.status(400).json({
+        message: "Name and email are required",
+      });
+    }
+
+    // Check if email is already taken by another user
+    const existingUser = await prisma.user.findUnique({
+      where: { email },
+    });
+
+    if (existingUser && existingUser.id !== req.user.id) {
+      return res.status(409).json({
+        message: "Email is already in use by another account",
+      });
+    }
+
+    const updatedUser = await prisma.user.update({
+      where: { id: req.user.id },
+      data: { name, email },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        role: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+    });
+
+    res.status(200).json({
+      message: "Profile updated successfully",
+      user: updatedUser,
+    });
+  } catch (error) {
+    res.status(500).json({
+      message: "Failed to update profile",
+      error: error.message,
+    });
+  }
+});
 export default router;
