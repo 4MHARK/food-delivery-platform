@@ -1,5 +1,6 @@
 import express from "express"
 import userRoutes from "./user.routes.js"
+import restaurantRoutes from "./restaurant.routes.js"
 const router = express.Router();
 router.get("/health", (req, res) =>{
     res.status(200).json({
@@ -7,4 +8,5 @@ router.get("/health", (req, res) =>{
     })
 })
 router.use(userRoutes);
+router.use(restaurantRoutes);
 export default router; 
