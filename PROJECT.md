@@ -8,7 +8,7 @@ A food delivery platform where customers order from restaurants. Built with Reac
 
 ## Current State (as of 2026-07-04)
 
-**Phase:** Auth system — login complete, profile page next.
+**Phase:** Auth system complete. Restaurant features next.
 
 ---
 
@@ -24,22 +24,25 @@ A food delivery platform where customers order from restaurants. Built with Reac
 | JWT middleware | Verifies Bearer token, attaches user to request |
 | Health check | GET /api/health |
 | Signup page | Full form with validation, API integration, error/loading states, animations, card layout matching login |
-| Login page | Form with email/password, validation, JWT token storage in localStorage, redirect to /profile, styled card with social buttons, "Forgot password" link |
-| Material Symbols | Icon font loaded in index.html, used for social login buttons |
+| Login page | Form with email/password, validation, styled card, social buttons, "Forgot password" link |
+| Profile page | Sidebar nav, tab switching, user summary, Personal Information form with edit/save, calls GET + PUT /api/users/profile |
+| Profile update API | PUT /api/users/profile — validated, checks duplicate email, updates user |
+| Auth context | AuthContext + useAuth hook — central auth state (user, token, login, logout, updateUser) |
+| Protected routes | ProtectedRoute component — redirects to /login if no token |
+| Logout | Clears context + localStorage, redirects to /login |
+| Material Symbols | Icon font loaded in index.html, used across all pages |
 | Page title | Changed from "client" to "ChowZilla" |
-| Routing | React Router: / → /signup, /signup, /login, /profile |
+| Routing | / → /signup, /signup, /login, /profile (protected) |
 | Branding | "ChowZilla" name, amber-500 color scheme, Plus Jakarta Sans font |
 | Custom animations | fadeIn, fadeUp, slideIn keyframes in Tailwind |
 | Project docs | CLAUDE.md (AI instructions), PROJECT.md (status tracker) |
-| End-to-end test | Signup → Login → Profile APIs all confirmed working via curl |
+| End-to-end tests | All auth endpoints tested via curl |
 
 ---
 
 ## 🟡 In Progress
 
-| Feature | Status |
-|---------|--------|
-| Profile page | Next task — currently an empty stub |
+*None — auth system is complete.*
 
 ---
 
@@ -47,17 +50,12 @@ A food delivery platform where customers order from restaurants. Built with Reac
 
 | Feature | Priority |
 |---------|----------|
-| Profile page implementation | 🔴 Next |
-| Auth state management (user context, not just localStorage) | 🔴 After profile |
-| Protected routes (client-side auth guard) | 🔴 After auth state |
-| Logout functionality | 🟡 |
+| Restaurant model & listing page | 🔴 Next |
+| Menu item model & menu browsing | 🔴 After restaurants |
+| Order model & order flow | 🔴 Core feature |
 | Navigation/navbar component | 🟡 |
-| Restaurant model & CRUD | 🟡 |
-| Menu item model | 🟡 |
-| Order model & flow | 🟡 |
 | Password visibility toggle | 🟢 |
 | 404 page | 🟢 |
-| Form field-level validation messages | 🟢 |
 | Seed data for development | 🟢 |
 | Tests | 🟢 (post-MVP) |
 
@@ -77,7 +75,7 @@ A food delivery platform where customers order from restaurants. Built with Reac
 
 | Date | What was done |
 |------|--------------|
-| 2026-07-04 | Full codebase review. Built Login page (form, API, token storage, styling). Restyled Signup to match. Added Material Symbols. Fixed all Login bugs. End-to-end API tests passed. Both commits pushed. |
+| 2026-07-04 | Auth system complete: Login, Signup, Profile with edit/save, AuthContext, ProtectedRoute, PUT endpoint. E2E tested. 4 commits pushed. |
 | 2026-06-28 | Signup page connected to backend (commit `a84b914`) |
 | 2026-06-28 | CORS enabled for frontend auth requests (commit `38184dc`) |
 | 2026-06-22 | Auth page left side with animations added (commit `9934ea0`) |
