@@ -18,6 +18,7 @@ A full-stack food delivery web application where customers can browse restaurant
 
 - User registration and login with JWT authentication
 - Protected profile page with edit/save capabilities
+- Restaurant CRUD API with owner-based access control
 - Responsive design with sidebar navigation
 - Auth context for global state management
 - Client-side protected routes
@@ -42,7 +43,7 @@ food-delivery-platform/
     │   ├── app.js         # Express app setup (CORS, JSON, routes)
     │   ├── config/        # Prisma client singleton
     │   ├── middleware/     # Auth middleware (JWT verification)
-    │   └── routes/        # API routes (users, health)
+    │   └── routes/        # API routes (users, restaurants, health)
     ├── prisma/
     │   ├── schema.prisma  # Database schema
     │   └── migrations/    # Migration history
@@ -117,6 +118,10 @@ npm run dev
 | POST | `/api/users/login` | No | Login, returns JWT |
 | GET | `/api/users/profile` | Yes | Get user profile |
 | PUT | `/api/users/profile` | Yes | Update user profile |
+| GET | `/api/restaurants` | No | List all restaurants |
+| GET | `/api/restaurants/:id` | No | Get restaurant by ID |
+| POST | `/api/restaurants` | Yes | Create a restaurant |
+| PUT | `/api/restaurants/:id` | Yes | Update restaurant (owner only) |
 
 ## Scripts
 

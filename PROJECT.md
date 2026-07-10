@@ -6,9 +6,9 @@ A food delivery platform where customers order from restaurants. Built with Reac
 
 ---
 
-## Current State (as of 2026-07-04)
+## Current State (as of 2026-07-10)
 
-**Phase:** Auth system complete. Restaurant features next.
+**Phase:** Restaurant API complete. MenuItem model next.
 
 ---
 
@@ -35,8 +35,10 @@ A food delivery platform where customers order from restaurants. Built with Reac
 | Routing | / → /signup, /signup, /login, /profile (protected) |
 | Branding | "ChowZilla" name, amber-500 color scheme, Plus Jakarta Sans font |
 | Custom animations | fadeIn, fadeUp, slideIn keyframes in Tailwind |
-| Project docs | CLAUDE.md (AI instructions), PROJECT.md (status tracker) |
-| End-to-end tests | All auth endpoints tested via curl |
+| Restaurant model | Restaurant table with owner relation, migration applied |
+| Restaurant API | GET all, GET by id, POST (auth), PUT with ownership check (auth) |
+| Project docs | CLAUDE.md (AI instructions), PROJECT.md (status tracker), README.md (setup guide) |
+| End-to-end tests | All auth + restaurant endpoints tested via curl (9 tests passed) |
 
 ---
 
@@ -50,9 +52,10 @@ A food delivery platform where customers order from restaurants. Built with Reac
 
 | Feature | Priority |
 |---------|----------|
-| Restaurant model & listing page | 🔴 Next |
-| Menu item model & menu browsing | 🔴 After restaurants |
-| Order model & order flow | 🔴 Core feature |
+| MenuItem model & CRUD routes | 🔴 Next |
+| Order model & order flow | 🔴 After menu items |
+| Restaurant listing page (frontend) | 🟡 |
+| Owner dashboard (frontend) | 🟡 |
 | Navigation/navbar component | 🟡 |
 | Password visibility toggle | 🟢 |
 | 404 page | 🟢 |
@@ -75,6 +78,7 @@ A food delivery platform where customers order from restaurants. Built with Reac
 
 | Date | What was done |
 |------|--------------|
+| 2026-07-10 | Restaurant model + CRUD API built and tested. 4 endpoints (GET all, GET/:id, POST, PUT) with auth and ownership checks. 9/9 curl tests passed. |
 | 2026-07-04 | Auth system complete: Login, Signup, Profile with edit/save, AuthContext, ProtectedRoute, PUT endpoint. E2E tested. 4 commits pushed. |
 | 2026-06-28 | Signup page connected to backend (commit `a84b914`) |
 | 2026-06-28 | CORS enabled for frontend auth requests (commit `38184dc`) |
