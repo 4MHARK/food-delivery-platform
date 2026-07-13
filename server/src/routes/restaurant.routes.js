@@ -1,6 +1,7 @@
 import express from "express";
 import prisma from "../config/prisma.js";
 import authMiddleware from "../middleware/auth.middleware.js";
+import ownerMiddleware from "../middleware/owner.middleware.js";
 
 const router = express.Router();
 //Fetch all restaurants
@@ -56,7 +57,7 @@ router.get("/restaurants/:id", async (req, res) => {
 });
 
 // creates a new restaurant
-router.post("/restaurants", authMiddleware, async (req, res) => {
+router.post("/restaurants", authMiddleware,ownerMiddleware ,async (req, res) => {
   try {
     const { name, description, address, phone, imageUrl } = req.body;
     const newRestaurant = await prisma.restaurant.create({
@@ -92,7 +93,7 @@ router.post("/restaurants", authMiddleware, async (req, res) => {
 });
 
 //Updates restaurants per ID
-router.put("/restaurants/:id", authMiddleware, async (req, res) => {
+router.put("/restaurants/:id", authMiddleware, ownerMiddleware, async (req, res) => {
   try {
      const { name, description, address, phone, imageUrl } = req.body;
     const restaurant = await prisma.restaurant.findUnique({
