@@ -35,8 +35,24 @@ model Restaurant {
   phone     String
   imageUrl  String
   address   String
+  menuItems MenuItem[]
   ownerId   Int
   owner     User     @relation(fields: [ownerId], references: [id]) 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+model MenuItem {
+  id Int @id @default(autoincrement())
+  name String
+  description String
+  price Float
+  restaurantId Int 
+  restaurant Restaurant @relation(fields: [restaurantId], references: [id])
+  category String
+  isAvailable Boolean @default (true)
+  imageUrl  String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
 }

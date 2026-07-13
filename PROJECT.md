@@ -6,9 +6,9 @@ A food delivery platform where customers order from restaurants. Built with Reac
 
 ---
 
-## Current State (as of 2026-07-10)
+## Current State (as of 2026-07-13)
 
-**Phase:** Restaurant API complete. MenuItem model next.
+**Phase:** MenuItem API complete. Order model next.
 
 ---
 
@@ -37,14 +37,16 @@ A food delivery platform where customers order from restaurants. Built with Reac
 | Custom animations | fadeIn, fadeUp, slideIn keyframes in Tailwind |
 | Restaurant model | Restaurant table with owner relation, migration applied |
 | Restaurant API | GET all, GET by id, POST (auth), PUT with ownership check (auth) |
+| MenuItem model | MenuItem table with Restaurant relation, isAvailable default, migration applied |
+| MenuItem API | 4 endpoints: POST (auth+ownership), GET all (public), PUT (auth+ownership), DELETE (auth+ownership) |
 | Project docs | CLAUDE.md (AI instructions), PROJECT.md (status tracker), README.md (setup guide) |
-| End-to-end tests | All auth + restaurant endpoints tested via curl (9 tests passed) |
+| End-to-end tests | All auth + restaurant + menu-item endpoints tested via curl (13 tests passed) |
 
 ---
 
 ## 🟡 In Progress
 
-*None — auth system is complete.*
+*None — ready for Order model.*
 
 ---
 
@@ -52,8 +54,7 @@ A food delivery platform where customers order from restaurants. Built with Reac
 
 | Feature | Priority |
 |---------|----------|
-| MenuItem model & CRUD routes | 🔴 Next |
-| Order model & order flow | 🔴 After menu items |
+| Order model & order flow | 🔴 Next |
 | Restaurant listing page (frontend) | 🟡 |
 | Owner dashboard (frontend) | 🟡 |
 | Navigation/navbar component | 🟡 |
@@ -78,6 +79,7 @@ A food delivery platform where customers order from restaurants. Built with Reac
 
 | Date | What was done |
 |------|--------------|
+| 2026-07-13 | MenuItem model + CRUD API built and tested. 4 endpoints (POST, GET, PUT, DELETE) with auth and ownership checks. 4/4 curl tests passed. |
 | 2026-07-10 | Restaurant model + CRUD API built and tested. 4 endpoints (GET all, GET/:id, POST, PUT) with auth and ownership checks. 9/9 curl tests passed. |
 | 2026-07-04 | Auth system complete: Login, Signup, Profile with edit/save, AuthContext, ProtectedRoute, PUT endpoint. E2E tested. 4 commits pushed. |
 | 2026-06-28 | Signup page connected to backend (commit `a84b914`) |
