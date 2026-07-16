@@ -17,6 +17,15 @@ enum UserRole {
   OWNER
 }
 
+enum OrderStatus {
+PENDING
+CONFIRMED
+PREPARING
+READY
+DELIVERING
+CANCELLED
+}
+
 model User {
   id        Int      @id @default(autoincrement())
   name      String
@@ -24,7 +33,8 @@ model User {
   password  String
   role      UserRole @default(CUSTOMER)
   restaurants Restaurant[]
-  createdAt DateTime @default(now())
+  orders      Order[]
+  createdAt   DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
 
@@ -36,6 +46,7 @@ model Restaurant {
   imageUrl  String
   address   String
   menuItems MenuItem[]
+  orders    Order[]
   ownerId   Int
   owner     User     @relation(fields: [ownerId], references: [id]) 
   createdAt DateTime @default(now())
@@ -51,8 +62,35 @@ model MenuItem {
   restaurant Restaurant @relation(fields: [restaurantId], references: [id])
   category String
   isAvailable Boolean @default (true)
+  orderItems OrderItem[]
   imageUrl  String
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+}
+
+model Order {
+  id              Int         @id @default(autoincrement())
+  status          OrderStatus @default(PENDING)
+  total           Float
+  deliveryAddress String
+  customerId      Int
+  restaurantId    Int
+  customer        User        @relation(fields: [customerId], references: [id])
+  restaurant      Restaurant  @relation(fields: [restaurantId], references: [id])
+  orderItems      OrderItem[]
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+}
+
+model OrderItem {
+  id         Int      @id @default(autoincrement())
+  quantity   Int
+  price      Float
+  orderId    Int
+  menuItemId Int
+  order      Order    @relation(fields: [orderId], references: [id])
+  menuItem   MenuItem @relation(fields: [menuItemId], references: [id])
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
 }
