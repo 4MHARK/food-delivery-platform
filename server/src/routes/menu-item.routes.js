@@ -69,7 +69,7 @@ router.get("/restaurants/:id/menu-items", async (req, res) => {
     });
     if (menuItems.length === 0) {
       return res.status(404).json({
-        message: "Menu-item not found",
+        message: "No menu-item created",
       });
     }
     res.status(200).json({

@@ -35,12 +35,18 @@ router.get("/users", async (req, res) => {
 
 router.post("/users", async (req, res) => {
   try {
-    const { name, email, password } = req.body;
+    const { name, email, password, role } = req.body;
 
     if (!name || !email || !password) {
       return res.status(400).json({
         message: "Name, email, and password are required",
       });
+    }
+
+    if(role!== "owner" && role !== "customer"){
+      return res.status(400).json({
+        message: "invalid role"
+      })
     }
 
     const existingUser = await prisma.user.findUnique({
@@ -62,6 +68,7 @@ router.post("/users", async (req, res) => {
         name,
         email,
         password: hashedPassword,
+        role
       },
     });
 
