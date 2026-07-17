@@ -1,7 +1,7 @@
 import express from "express";
 import prisma from "../config/prisma.js";
 import authMiddleware from "../middleware/auth.middleware.js";
-// import ownerMiddleware from "../middleware/owner.middleware.js";
+import ownerMiddleware from "../middleware/owner.middleware.js";
 
 const router = express.Router();
 
@@ -111,8 +111,8 @@ router.get("/orders/:id", authMiddleware, async (req, res) => {
         restaurant: {
           include: {
             owner: {
-              select:{ id: true, name: true, email: true}
-            }
+              select: { id: true, name: true, email: true },
+            },
           },
         },
       },
@@ -123,7 +123,7 @@ router.get("/orders/:id", authMiddleware, async (req, res) => {
       });
     }
 
-const isCustomer = order.customerId === req.user.id;
+    const isCustomer = order.customerId === req.user.id;
     const isOwner = order.restaurant.ownerId === req.user.id;
 
     if (!isCustomer && !isOwner) {
@@ -136,7 +136,53 @@ const isCustomer = order.customerId === req.user.id;
       message: "Order fetched successfully",
       order,
     });
+  } catch (error) {
+    res.status(500).json({
+      message: "Server error",
+      error: error.message,
+    });
+  }
+});
 
+router.put("/orders/:id/status", authMiddleware, ownerMiddleware, async (req, res) => {
+  try {
+    const { status } = req.body;
+
+    if (!status) {
+      return res.status(400).json({ message: "Status is required" });
+    }
+
+    const validStatuses = ["CONFIRMED", "PREPARING", "READY", "DELIVERING", "DELIVERED", "CANCELLED"];
+    if (!validStatuses.includes(status)) {
+      return res.status(400).json({ message: "Invalid status" });
+    }
+
+    const order = await prisma.order.findUnique({
+      where: { id: Number(req.params.id) },
+      include: { restaurant: true },
+    });
+
+    if (!order) {
+      return res.status(404).json({ message: "Order not found" });
+    }
+
+    if (order.restaurant.ownerId !== req.user.id) {
+      return res.status(403).json({ message: "You can only update orders for your restaurant" });
+    }
+
+    const updated = await prisma.order.update({
+      where: { id: Number(req.params.id) },
+      data: { status },
+      include: {
+        orderItems: { include: { menuItem: true } },
+        restaurant: true,
+      },
+    });
+
+    res.status(200).json({
+      message: "Order status updated successfully",
+      order: updated,
+    });
   } catch (error) {
     res.status(500).json({
       message: "Server error",
