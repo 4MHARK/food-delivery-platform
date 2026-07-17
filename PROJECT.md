@@ -6,9 +6,9 @@ A food delivery platform where customers order from restaurants. Built with Reac
 
 ---
 
-## Current State (as of 2026-07-13)
+## Current State (as of 2026-07-17)
 
-**Phase:** MenuItem API complete. Order model next.
+**Phase:** Order API complete. Frontend features next.
 
 ---
 
@@ -39,14 +39,18 @@ A food delivery platform where customers order from restaurants. Built with Reac
 | Restaurant API | GET all, GET by id, POST (auth), PUT with ownership check (auth) |
 | MenuItem model | MenuItem table with Restaurant relation, isAvailable default, migration applied |
 | MenuItem API | 4 endpoints: POST (auth+ownership), GET all (public), PUT (auth+ownership), DELETE (auth+ownership) |
+| Order model | Order + OrderItem tables with OrderStatus enum, price snapshotting |
+| Order API | 4 endpoints: POST (auth), GET all (auth), GET/:id (auth), PUT/:id/status (auth+ownership) |
+| Owner middleware | Reusable role enforcement — blocks CUSTOMER from owner actions |
+| JWT role fix | Added role to JWT payload (was missing, broke ownerMiddleware) |
 | Project docs | CLAUDE.md (AI instructions), PROJECT.md (status tracker), README.md (setup guide) |
-| End-to-end tests | All auth + restaurant + menu-item endpoints tested via curl (13 tests passed) |
+| End-to-end tests | All endpoints tested via curl (17 tests passed) |
 
 ---
 
 ## 🟡 In Progress
 
-*None — ready for Order model.*
+*None — ready for frontend features.*
 
 ---
 
@@ -54,8 +58,7 @@ A food delivery platform where customers order from restaurants. Built with Reac
 
 | Feature | Priority |
 |---------|----------|
-| Order model & order flow | 🔴 Next |
-| Restaurant listing page (frontend) | 🟡 |
+| Restaurant listing page (frontend) | 🔴 Next |
 | Owner dashboard (frontend) | 🟡 |
 | Navigation/navbar component | 🟡 |
 | Password visibility toggle | 🟢 |
@@ -79,6 +82,7 @@ A food delivery platform where customers order from restaurants. Built with Reac
 
 | Date | What was done |
 |------|--------------|
+| 2026-07-17 | Order model + CRUD API built and tested. 4 endpoints (POST, GET all, GET/:id, PUT status) with auth and ownership checks. 4/4 tests passed. |
 | 2026-07-13 | MenuItem model + CRUD API built and tested. 4 endpoints (POST, GET, PUT, DELETE) with auth and ownership checks. 4/4 curl tests passed. |
 | 2026-07-10 | Restaurant model + CRUD API built and tested. 4 endpoints (GET all, GET/:id, POST, PUT) with auth and ownership checks. 9/9 curl tests passed. |
 | 2026-07-04 | Auth system complete: Login, Signup, Profile with edit/save, AuthContext, ProtectedRoute, PUT endpoint. E2E tested. 4 commits pushed. |
