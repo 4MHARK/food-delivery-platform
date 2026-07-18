@@ -35,7 +35,7 @@ const Profile = () => {
     const fetchProfile = async () => {
       try {
         const response = await fetch(
-          `${import.meta.env.VITE_API_URL}/api/users/profile`,
+          `${import.meta.env.VITE_API_URL}/users/profile`,
           {
             // This is a GET request — no body needed
             // The token proves who we are
@@ -85,7 +85,7 @@ const Profile = () => {
 
     try {
       const response = await fetch(
-        `${import.meta.env.VITE_API_URL}/api/users/profile`,
+        `${import.meta.env.VITE_API_URL}/users/profile`,
         {
           method: "PUT",
           headers: {

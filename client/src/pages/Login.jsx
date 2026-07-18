@@ -32,7 +32,7 @@ const Login = () => {
       setLoading(true);
 
       const response = await fetch(
-        `${import.meta.env.VITE_API_URL}/api/users/login`,
+        `${import.meta.env.VITE_API_URL}/users/login`,
         {
           method: "POST",
           headers: {
@@ -54,7 +54,7 @@ const Login = () => {
 
       login(data.token, data.user);
 
-      navigate("/profile");
+      navigate("/restaurants");
     } catch (error) {
       console.log(error);
       setError("Something went wrong. Please try again.");

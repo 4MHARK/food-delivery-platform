@@ -1,14 +1,17 @@
 import React, { useState } from "react";
 import { Link } from "react-router-dom";
 import { useNavigate } from "react-router-dom";
+import { useAuth } from "../context/AuthContext";
 import auth from "../assets/auth-bg.jpg";
 
 const Signup = () => {
-  const navigate = useNavigate();
+    const navigate = useNavigate();
+    const { login } = useAuth();
   const [formData, setFormData] = useState({
     name: "",
     email: "",
     password: "",
+    role: "CUSTOMER",
     confirmPassword: "",
   });
 
@@ -45,20 +48,18 @@ const Signup = () => {
     try {
       setLoading(true);
 
-      const response = await fetch(
-        `${import.meta.env.VITE_API_URL}/api/users`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            name: formData.name,
-            email: formData.email,
-            password: formData.password,
-          }),
+      const response = await fetch(`${import.meta.env.VITE_API_URL}/users`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
         },
-      );
+        body: JSON.stringify({
+          name: formData.name,
+          email: formData.email,
+          password: formData.password,
+          role: formData.role,
+        }),
+      });
 
       const data = await response.json();
 
@@ -67,9 +68,10 @@ const Signup = () => {
         return;
       }
 
-      navigate("/login");
+      login(data.token, data.user);
+      navigate("/restaurants");
     } catch (error) {
-      console.log(error)
+      console.log(error);
       setError("Something went wrong. Please try again.");
     } finally {
       setLoading(false);
@@ -106,7 +108,6 @@ const Signup = () => {
       {/* RIGHT_SIDE */}
       <div className="flex w-full md:w-1/2 items-center justify-center px-4 sm:px-6 animate-slide-in">
         <div className="w-full max-w-md p-8 rounded-2xl border border-slate-300">
-
           {/* Mobile Branding */}
           <div className="md:hidden mb-6 text-center">
             <h1 className="text-2xl font-bold">
@@ -116,8 +117,12 @@ const Signup = () => {
 
           {/* Heading */}
           <div className="mb-8">
-            <h1 className="text-3xl font-bold text-slate-900 mb-2">Get Started!</h1>
-            <p className="text-slate-500 text-base">Sign up to order from your favorite restaurants.</p>
+            <h1 className="text-3xl font-bold text-slate-900 mb-2">
+              Get Started!
+            </h1>
+            <p className="text-slate-500 text-base">
+              Sign up to order from your favorite restaurants.
+            </p>
           </div>
 
           {error && (
@@ -207,6 +212,56 @@ const Signup = () => {
               />
             </div>
 
+            {/* Role Selector */}
+            <div>
+              <label className="block text-sm font-semibold text-slate-700 mb-3">
+                I want to...
+              </label>
+              <div className="flex gap-4">
+                <label
+                  className={`flex-1 flex items-center gap-3 rounded-xl border-2 px-4 py-3 cursor-pointer transition ${
+                    formData.role === "CUSTOMER"
+                      ? "border-amber-500 bg-amber-50"
+                      : "border-slate-200 hover:border-slate-300"
+                  }`}
+                >
+                  <input
+                    type="radio"
+                    name="role"
+                    value="CUSTOMER"
+                    checked={formData.role === "CUSTOMER"}
+                    onChange={handleChange}
+                    className="accent-amber-500"
+                  />
+                  <div>
+                    <p className="text-sm font-semibold text-slate-900">Customer</p>
+                    <p className="text-xs text-slate-400">Order food</p>
+                  </div>
+                </label>
+
+                <label
+                  className={`flex-1 flex items-center gap-3 rounded-xl border-2 px-4 py-3 cursor-pointer transition ${
+                    formData.role === "OWNER"
+                      ? "border-amber-500 bg-amber-50"
+                      : "border-slate-200 hover:border-slate-300"
+                  }`}
+                >
+                  <input
+                    type="radio"
+                    name="role"
+                    value="OWNER"
+                    checked={formData.role === "OWNER"}
+                    onChange={handleChange}
+                    className="accent-amber-500"
+                  />
+                  <div>
+                    <p className="text-sm font-semibold text-slate-900">Owner</p>
+                    <p className="text-xs text-slate-400">Run a restaurant</p>
+                  </div>
+                </label>
+              </div>
+            </div>
+
             {/* Submit Button */}
             <button
               type="submit"
@@ -215,6 +270,7 @@ const Signup = () => {
             >
               {loading ? "Creating account..." : "Create account"}
             </button>
+
           </form>
 
           {/* Divider */}
@@ -250,7 +306,10 @@ const Signup = () => {
           {/* Login Link */}
           <p className="mt-6 text-center text-base text-slate-500">
             Already have an account?{" "}
-            <Link to="/login" className="font-semibold text-amber-500 hover:text-amber-600 transition-colors">
+            <Link
+              to="/login"
+              className="font-semibold text-amber-500 hover:text-amber-600 transition-colors"
+            >
               Log in
             </Link>
           </p>

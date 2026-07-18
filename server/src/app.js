@@ -13,6 +13,6 @@ app.get("/", (req, res) =>{
         message: "Welcome to the Food Delivery API"
     })
 })
-app.use ("/api", indexRoutes)
+app.use(indexRoutes)
 
 export default app;

@@ -43,7 +43,7 @@ router.post("/users", async (req, res) => {
       });
     }
 
-    if(role!== "owner" && role !== "customer"){
+    if(role!== "OWNER" && role !== "CUSTOMER"){
       return res.status(400).json({
         message: "invalid role"
       })
@@ -72,8 +72,15 @@ router.post("/users", async (req, res) => {
       },
     });
 
+    const token = jwt.sign(
+      { id: newUser.id, email: newUser.email, role: newUser.role },
+      process.env.JWT_SECRET,
+      { expiresIn: "1d" }
+    );
+
     res.status(201).json({
       message: "User created successfully",
+      token,
       user: {
         id: newUser.id,
         name: newUser.name,
