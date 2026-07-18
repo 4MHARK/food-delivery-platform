@@ -61,7 +61,7 @@ router.post("/orders", authMiddleware, async (req, res) => {
     });
 
     res.status(201).json({
-      message: "Order Placed scuccessfully",
+      message: "Order Placed successfully",
       order,
     });
   } catch (error) {

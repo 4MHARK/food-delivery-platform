@@ -40,7 +40,7 @@ router.post("/restaurants/:id/menu-items", authMiddleware, ownerMiddleware, asyn
       },
     });
     res.status(201).json({
-      message: " Menu created sucesfully",
+      message: " Menu created successfully",
       menu: newMenu,
     });
   } catch (error) {
@@ -110,7 +110,7 @@ router.put("/menu-items/:id", authMiddleware, ownerMiddleware, async (req, res) 
       },
     });
     res.status(200).json({
-      message: "Menu items updated succesfully",
+      message: "Menu items updated successfully",
       update,
     });
   } catch (error) {

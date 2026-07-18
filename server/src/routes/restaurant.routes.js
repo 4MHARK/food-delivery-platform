@@ -15,7 +15,7 @@ router.get("/restaurants", async (req, res) => {
       },
     });
     res.status(200).json({
-      message: "Restaurants fetched succesfully",
+      message: "Restaurants fetched successfully",
       restaurants,
     });
   } catch (error) {
@@ -45,7 +45,7 @@ router.get("/restaurants/:id", async (req, res) => {
     }
 
     res.status(200).json({
-      message: "Restaurants fetched succesfully",
+      message: "Restaurants fetched successfully",
       restaurant,
     });
   } catch (error) {
@@ -81,7 +81,7 @@ router.post("/restaurants", authMiddleware,ownerMiddleware ,async (req, res) => 
     });
 
     res.status(201).json({
-      message: "restaurant created succesfully",
+      message: "restaurant created successfully",
       restaurant: newRestaurant,
     });
   } catch (error) {
@@ -123,7 +123,7 @@ router.put("/restaurants/:id", authMiddleware, ownerMiddleware, async (req, res)
     });
 
     res.status(200).json({
-      message: "restaurant updated succesfully",
+      message: "restaurant updated successfully",
       update
     });
 
