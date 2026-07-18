@@ -28,7 +28,7 @@ export function CartProvider({ children }) {
         {
           menuItemId: menuItem.id,
           name: menuItem.name,
-          price: menuItem.price,
+          price: Number(menuItem.price),
           imageUrl: menuItem.imageUrl,
           restaurantId,
           restaurantName,

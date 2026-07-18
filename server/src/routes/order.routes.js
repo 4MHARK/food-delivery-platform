@@ -1,5 +1,6 @@
 import express from "express";
 import prisma from "../config/prisma.js";
+import { Prisma } from "@prisma/client";
 import authMiddleware from "../middleware/auth.middleware.js";
 import ownerMiddleware from "../middleware/owner.middleware.js";
 
@@ -25,7 +26,7 @@ router.post("/orders", authMiddleware, async (req, res) => {
       });
     }
 
-    let total = 0;
+    let total = new Prisma.Decimal(0);
     for (const item of items) {
       const menuItem = await prisma.menuItem.findUnique({
         where: { id: item.menuItemId },
@@ -36,7 +37,7 @@ router.post("/orders", authMiddleware, async (req, res) => {
           message: `Menu Item ${item.menuItemId} not found`,
         });
       }
-      total += menuItem.price * item.quantity;
+      total = total.plus(menuItem.price.times(item.quantity));
       item.price = menuItem.price;
     }
 

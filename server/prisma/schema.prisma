@@ -58,7 +58,7 @@ model MenuItem {
   id Int @id @default(autoincrement())
   name String
   description String
-  price Float
+  price Decimal @db.Decimal(10,2)
   restaurantId Int 
   restaurant Restaurant @relation(fields: [restaurantId], references: [id])
   category String
@@ -73,7 +73,7 @@ model MenuItem {
 model Order {
   id              Int         @id @default(autoincrement())
   status          OrderStatus @default(PENDING)
-  total           Float
+  total           Decimal @db.Decimal(10,2)
   deliveryAddress String
   customerId      Int
   restaurantId    Int
@@ -87,7 +87,7 @@ model Order {
 model OrderItem {
   id         Int      @id @default(autoincrement())
   quantity   Int
-  price      Float
+  price      Decimal @db.Decimal(10,2)
   orderId    Int
   menuItemId Int
   order      Order    @relation(fields: [orderId], references: [id])
