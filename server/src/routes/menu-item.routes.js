@@ -67,11 +67,6 @@ router.get("/restaurants/:id/menu-items", async (req, res) => {
         restaurantId,
       },
     });
-    if (menuItems.length === 0) {
-      return res.status(404).json({
-        message: "No menu-item created",
-      });
-    }
     res.status(200).json({
       message: "Menu-item fetched successfully",
       menuItems,

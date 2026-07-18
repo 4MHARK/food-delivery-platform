@@ -126,7 +126,7 @@ const RestaurantList = () => {
         <div className="flex items-center gap-2">
           {/* Cart button */}
           <button
-            onClick={() => navigate("/orders")}
+            onClick={() => navigate("/cart")}
             className="relative p-2 text-slate-600 hover:text-amber-500 hover:bg-slate-100 rounded-full transition"
           >
             <span className="material-symbols-outlined">shopping_bag</span>

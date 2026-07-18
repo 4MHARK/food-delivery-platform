@@ -1,0 +1,343 @@
+import { useState } from "react";
+import { useNavigate, useLocation } from "react-router-dom";
+import { useAuth } from "../context/AuthContext";
+import { useCart } from "../context/CartContext";
+
+const NAV_ITEMS = [
+  { icon: "home", label: "Home", path: "/restaurants" },
+  { icon: "receipt_long", label: "Orders", path: "/orders" },
+  { icon: "favorite", label: "Favorites", path: "/favorites" },
+  { icon: "person", label: "Profile", path: "/profile" },
+];
+
+const Cart = () => {
+  const navigate = useNavigate();
+  const location = useLocation();
+  const { user } = useAuth();
+  const { items, addItem, removeItem, clearItem, clearCart, itemCount, total } = useCart();
+  const [deliveryAddress, setDeliveryAddress] = useState("");
+  const [placing, setPlacing] = useState(false);
+  const [error, setError] = useState("");
+
+  const userInitial = user?.name?.charAt(0)?.toUpperCase() || "?";
+
+  // Group items by restaurant
+  const grouped = items.reduce((acc, item) => {
+    if (!acc[item.restaurantId]) {
+      acc[item.restaurantId] = {
+        restaurantName: item.restaurantName,
+        restaurantId: item.restaurantId,
+        items: [],
+      };
+    }
+    acc[item.restaurantId].items.push(item);
+    return acc;
+  }, {});
+
+  const handlePlaceOrder = async (restaurantId, restaurantItems) => {
+    if (!deliveryAddress.trim()) {
+      setError("Please enter a delivery address");
+      return;
+    }
+
+    try {
+      setPlacing(true);
+      setError("");
+
+      const token = localStorage.getItem("token");
+      const res = await fetch(`${import.meta.env.VITE_API_URL}/orders`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          restaurantId,
+          deliveryAddress: deliveryAddress.trim(),
+          items: restaurantItems.map((item) => ({
+            menuItemId: item.menuItemId,
+            quantity: item.quantity,
+          })),
+        }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        setError(data.message || "Failed to place order");
+        return;
+      }
+
+      // Remove ordered items from cart
+      restaurantItems.forEach((item) => clearItem(item.menuItemId));
+      navigate("/orders");
+    } catch {
+      setError("Something went wrong. Please try again.");
+    } finally {
+      setPlacing(false);
+    }
+  };
+
+  return (
+    <div className="min-h-screen bg-slate-50">
+      {/* Header */}
+      <header className="sticky top-0 z-50 bg-white shadow-sm">
+        <div className="flex items-center justify-between px-4 lg:px-8 h-16 max-w-7xl mx-auto">
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => navigate(-1)}
+              className="p-2 -ml-2 text-slate-600 hover:text-amber-500 rounded-full hover:bg-slate-100 transition"
+            >
+              <span className="material-symbols-outlined">arrow_back</span>
+            </button>
+            <h1 className="text-xl font-extrabold text-amber-500 tracking-tight hidden sm:block">
+              Chow<span className="text-slate-900">Zilla</span>
+            </h1>
+          </div>
+
+          <nav className="hidden md:flex items-center gap-1">
+            {NAV_ITEMS.map((item) => (
+              <button
+                key={item.path}
+                onClick={() => navigate(item.path)}
+                className={`px-4 py-2 rounded-xl text-sm font-semibold transition ${
+                  location.pathname === item.path
+                    ? "bg-amber-50 text-amber-700"
+                    : "text-slate-600 hover:text-slate-900 hover:bg-slate-100"
+                }`}
+              >
+                {item.label}
+              </button>
+            ))}
+          </nav>
+
+          <div className="w-8 h-8 rounded-full bg-amber-500 flex items-center justify-center text-white text-sm font-bold">
+            {userInitial}
+          </div>
+        </div>
+      </header>
+
+      <main className="px-4 lg:px-8 max-w-2xl mx-auto pt-8 pb-24 md:pb-8">
+        <h2 className="text-2xl font-bold text-slate-900 mb-1">Your Cart</h2>
+        <p className="text-slate-500 text-sm mb-8">
+          {itemCount} {itemCount === 1 ? "item" : "items"}
+        </p>
+
+        {/* Empty cart */}
+        {items.length === 0 && (
+          <div className="text-center py-16">
+            <div className="w-24 h-24 rounded-full bg-slate-100 flex items-center justify-center mx-auto mb-6">
+              <span className="material-symbols-outlined text-5xl text-slate-300">
+                shopping_bag
+              </span>
+            </div>
+            <h3 className="text-xl font-bold text-slate-900 mb-2">
+              Your cart is empty
+            </h3>
+            <p className="text-slate-500 mb-8">
+              Add items from a restaurant to get started.
+            </p>
+            <button
+              onClick={() => navigate("/restaurants")}
+              className="rounded-full bg-amber-500 text-white font-semibold py-3 px-8 shadow-md hover:bg-amber-600 transition active:scale-95"
+            >
+              Browse Restaurants
+            </button>
+          </div>
+        )}
+
+        {/* Cart items grouped by restaurant */}
+        {items.length > 0 && (
+          <div className="space-y-8">
+            {error && (
+              <p className="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-600 font-medium">
+                {error}
+              </p>
+            )}
+
+            {/* Delivery address */}
+            <div>
+              <label
+                htmlFor="address"
+                className="block text-sm font-semibold text-slate-700 mb-2"
+              >
+                Delivery Address
+              </label>
+              <input
+                type="text"
+                id="address"
+                placeholder="Enter your delivery address"
+                value={deliveryAddress}
+                onChange={(e) => setDeliveryAddress(e.target.value)}
+                className="w-full h-12 px-4 rounded-xl border-2 border-slate-200 focus:border-amber-500 focus:ring-1 focus:ring-amber-500 outline-none transition text-sm"
+              />
+            </div>
+
+            {Object.values(grouped).map((group) => {
+              const groupTotal = group.items.reduce(
+                (sum, i) => sum + i.price * i.quantity,
+                0
+              );
+              return (
+                <div
+                  key={group.restaurantId}
+                  className="bg-white rounded-2xl shadow-sm overflow-hidden"
+                >
+                  {/* Restaurant header */}
+                  <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <span className="material-symbols-outlined text-amber-500">
+                        storefront
+                      </span>
+                      <h3 className="font-bold text-slate-900">
+                        {group.restaurantName}
+                      </h3>
+                    </div>
+                    <button
+                      onClick={() =>
+                        navigate(`/restaurants/${group.restaurantId}`)
+                      }
+                      className="text-xs text-amber-500 font-semibold hover:text-amber-600 transition"
+                    >
+                      Add more
+                    </button>
+                  </div>
+
+                  {/* Items */}
+                  <div className="divide-y divide-slate-50">
+                    {group.items.map((item) => (
+                      <div
+                        key={item.menuItemId}
+                        className="px-5 py-4 flex items-center justify-between"
+                      >
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-semibold text-slate-900 truncate">
+                            {item.name}
+                          </p>
+                          <p className="text-sm text-slate-500">
+                            ₦{Number(item.price).toLocaleString()} each
+                          </p>
+                        </div>
+
+                        <div className="flex items-center gap-3">
+                          <button
+                            onClick={() => removeItem(item.menuItemId)}
+                            className="w-8 h-8 rounded-full bg-slate-100 text-slate-600 hover:bg-slate-200 flex items-center justify-center transition active:scale-90"
+                          >
+                            <span className="material-symbols-outlined text-lg">
+                              remove
+                            </span>
+                          </button>
+                          <span className="text-sm font-bold text-slate-900 w-4 text-center">
+                            {item.quantity}
+                          </span>
+                          <button
+                            onClick={() =>
+                              addItem(
+                                {
+                                  id: item.menuItemId,
+                                  name: item.name,
+                                  price: item.price,
+                                  imageUrl: item.imageUrl,
+                                },
+                                item.restaurantId,
+                                item.restaurantName
+                              )
+                            }
+                            className="w-8 h-8 rounded-full bg-amber-500 text-white hover:bg-amber-600 flex items-center justify-center transition active:scale-90"
+                          >
+                            <span className="material-symbols-outlined text-lg">
+                              add
+                            </span>
+                          </button>
+
+                          <button
+                            onClick={() => clearItem(item.menuItemId)}
+                            className="ml-2 p-1 text-slate-300 hover:text-red-400 transition"
+                          >
+                            <span className="material-symbols-outlined text-xl">
+                              delete
+                            </span>
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Footer */}
+                  <div className="px-5 py-4 bg-slate-50/50 border-t border-slate-100 flex items-center justify-between">
+                    <span className="text-sm text-slate-500">
+                      {group.items.reduce((s, i) => s + i.quantity, 0)}{" "}
+                      {group.items.reduce((s, i) => s + i.quantity, 0) === 1
+                        ? "item"
+                        : "items"}
+                    </span>
+                    <div className="flex items-center gap-4">
+                      <span className="font-bold text-slate-900">
+                        ₦{groupTotal.toLocaleString()}
+                      </span>
+                      <button
+                        onClick={() =>
+                          handlePlaceOrder(
+                            group.restaurantId,
+                            group.items
+                          )
+                        }
+                        disabled={placing}
+                        className="bg-amber-500 hover:bg-amber-600 disabled:bg-amber-300 text-white text-sm font-bold px-6 py-3 rounded-full transition active:scale-95"
+                      >
+                        {placing ? "Placing..." : "Place Order"}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+
+            {/* Grand total */}
+            {Object.keys(grouped).length > 1 && (
+              <div className="flex items-center justify-between bg-white rounded-2xl shadow-sm px-5 py-4">
+                <span className="font-bold text-slate-900">Total</span>
+                <span className="font-bold text-lg text-slate-900">
+                  ₦{total.toLocaleString()}
+                </span>
+              </div>
+            )}
+
+            {/* Clear all */}
+            <div className="text-center">
+              <button
+                onClick={clearCart}
+                className="text-sm text-slate-400 hover:text-red-500 transition font-medium"
+              >
+                Clear cart
+              </button>
+            </div>
+          </div>
+        )}
+      </main>
+
+      {/* Mobile bottom nav */}
+      <nav className="md:hidden fixed bottom-0 w-full z-50 flex justify-around items-center px-4 py-2 bg-white rounded-t-xl shadow-[0_-4px_20px_rgba(15,23,42,0.05)]">
+        {NAV_ITEMS.map((tab) => (
+          <button
+            key={tab.label}
+            onClick={() => navigate(tab.path)}
+            className={`flex flex-col items-center px-4 py-1 rounded-2xl transition ${
+              location.pathname === tab.path
+                ? "bg-amber-100 text-amber-700"
+                : "text-slate-400 hover:bg-slate-100"
+            }`}
+          >
+            <span className="material-symbols-outlined text-2xl">
+              {tab.icon}
+            </span>
+            <span className="text-xs font-semibold mt-1">{tab.label}</span>
+          </button>
+        ))}
+      </nav>
+    </div>
+  );
+};
+
+export default Cart;
