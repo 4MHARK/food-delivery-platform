@@ -1,23 +1,12 @@
 import { useState, useEffect } from "react";
-import { useParams, useNavigate, useLocation } from "react-router-dom";
+import { useParams, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
-
-const NAV_ITEMS = [
-  { icon: "home", label: "Home", path: "/restaurants" },
-  { icon: "receipt_long", label: "Orders", path: "/orders" },
-  { icon: "favorite", label: "Favorites", path: "/favorites" },
-  { icon: "person", label: "Profile", path: "/profile" },
-];
-
-const PLACEHOLDER_IMAGE = "";
+import AppLayout, { OWNER_NAV } from "../components/AppLayout";
 
 const ManageRestaurant = () => {
   const { id } = useParams();
   const navigate = useNavigate();
-  const location = useLocation();
   const { user } = useAuth();
-
-  const userInitial = user?.name?.charAt(0)?.toUpperCase() || "?";
 
   // Restaurant state
   const [restaurant, setRestaurant] = useState(null);
@@ -105,7 +94,6 @@ const ManageRestaurant = () => {
     }
   };
 
-  // Fetch orders when tab switches
   useEffect(() => {
     if (activeTab === "orders" && orders.length === 0 && !ordersLoading) {
       fetchOrders();
@@ -152,9 +140,7 @@ const ManageRestaurant = () => {
     try {
       setSavingRest(true);
       const res = await fetch(`${import.meta.env.VITE_API_URL}/restaurants/${id}`, {
-        method: "PUT",
-        headers: authHeaders,
-        body: JSON.stringify(restForm),
+        method: "PUT", headers: authHeaders, body: JSON.stringify(restForm),
       });
       const data = await res.json();
       if (!res.ok) { setError(data.message); return; }
@@ -178,9 +164,7 @@ const ManageRestaurant = () => {
     try {
       setSavingMenu(true);
       const res = await fetch(`${import.meta.env.VITE_API_URL}/restaurants/${id}/menu-items`, {
-        method: "POST",
-        headers: authHeaders,
-        body: JSON.stringify({ ...menuForm, price: Number(menuForm.price) }),
+        method: "POST", headers: authHeaders, body: JSON.stringify({ ...menuForm, price: Number(menuForm.price) }),
       });
       const data = await res.json();
       if (!res.ok) { setError(data.message); return; }
@@ -201,13 +185,10 @@ const ManageRestaurant = () => {
     try {
       setSavingMenu(true);
       const res = await fetch(`${import.meta.env.VITE_API_URL}/menu-items/${editingItem.id}`, {
-        method: "PUT",
-        headers: authHeaders,
+        method: "PUT", headers: authHeaders,
         body: JSON.stringify({
-          name: editingItem.name,
-          description: editingItem.description,
-          price: Number(editingItem.price),
-          category: editingItem.category,
+          name: editingItem.name, description: editingItem.description,
+          price: Number(editingItem.price), category: editingItem.category,
           imageUrl: editingItem.imageUrl || "",
         }),
       });
@@ -229,8 +210,7 @@ const ManageRestaurant = () => {
     try {
       setDeletingId(itemId);
       const res = await fetch(`${import.meta.env.VITE_API_URL}/menu-items/${itemId}`, {
-        method: "DELETE",
-        headers: authHeaders,
+        method: "DELETE", headers: authHeaders,
       });
       if (!res.ok) { const d = await res.json(); setError(d.message); return; }
       await refetchMenu();
@@ -245,14 +225,8 @@ const ManageRestaurant = () => {
   // ── LOADING ──
   if (loading) {
     return (
-      <div className="min-h-screen bg-slate-50">
-        <header className="sticky top-0 z-50 bg-white shadow-sm">
-          <div className="flex items-center justify-between px-4 lg:px-8 h-16 max-w-7xl mx-auto">
-            <div className="w-32 h-6 bg-slate-200 animate-pulse rounded" />
-            <div className="w-8 h-8 rounded-full bg-slate-200 animate-pulse" />
-          </div>
-        </header>
-        <main className="px-4 lg:px-8 max-w-3xl mx-auto pt-8 pb-24">
+      <AppLayout backTo="/dashboard" desktopNavItems={OWNER_NAV} bottomNavItems={OWNER_NAV} showCart={false} showUserDropdown={false}>
+        <div className="px-4 lg:px-8 max-w-3xl mx-auto pt-8 pb-24">
           {[1, 2, 3].map((i) => (
             <div key={i} className="bg-white rounded-2xl shadow-sm p-6 mb-4 space-y-3">
               <div className="w-1/2 h-5 bg-slate-200 animate-pulse rounded" />
@@ -260,60 +234,34 @@ const ManageRestaurant = () => {
               <div className="w-3/4 h-10 bg-slate-200 animate-pulse rounded-xl" />
             </div>
           ))}
-        </main>
-      </div>
+        </div>
+      </AppLayout>
     );
   }
 
   // ── ERROR ──
   if (error) {
     return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center px-4">
-        <div className="text-center max-w-md">
-          <div className="w-20 h-20 rounded-full bg-red-100 flex items-center justify-center mx-auto mb-6">
-            <span className="material-symbols-outlined text-4xl text-red-400">error_outline</span>
+      <AppLayout backTo="/dashboard" desktopNavItems={OWNER_NAV} bottomNavItems={OWNER_NAV} showCart={false} showUserDropdown={false}>
+        <div className="flex items-center justify-center px-4 pt-20">
+          <div className="text-center max-w-md">
+            <div className="w-20 h-20 rounded-full bg-red-100 flex items-center justify-center mx-auto mb-6">
+              <span className="material-symbols-outlined text-4xl text-red-400">error_outline</span>
+            </div>
+            <h2 className="text-xl font-bold text-slate-900 mb-2">{error}</h2>
+            <button onClick={() => navigate("/dashboard")} className="rounded-full bg-amber-500 px-8 py-3 font-semibold text-white hover:bg-amber-600 transition active:scale-95 mt-4">
+              Back to Dashboard
+            </button>
           </div>
-          <h2 className="text-xl font-bold text-slate-900 mb-2">{error}</h2>
-          <button onClick={() => navigate("/dashboard")} className="rounded-full bg-amber-500 px-8 py-3 font-semibold text-white hover:bg-amber-600 transition active:scale-95 mt-4">
-            Back to Dashboard
-          </button>
         </div>
-      </div>
+      </AppLayout>
     );
   }
 
+  // ── SUCCESS ──
   return (
-    <div className="min-h-screen bg-slate-50">
-      {/* Header */}
-      <header className="sticky top-0 z-50 bg-white shadow-sm">
-        <div className="flex items-center justify-between px-4 lg:px-8 h-16 max-w-7xl mx-auto">
-          <div className="flex items-center gap-3">
-            <button onClick={() => navigate("/dashboard")} className="p-2 -ml-2 text-slate-600 hover:text-amber-500 rounded-full hover:bg-slate-100 transition">
-              <span className="material-symbols-outlined">arrow_back</span>
-            </button>
-            <button onClick={() => navigate("/restaurants")} className="text-xl font-extrabold text-amber-500 tracking-tight hidden sm:block">
-              Chow<span className="text-slate-900">Zilla</span>
-            </button>
-          </div>
-
-          <nav className="hidden md:flex items-center gap-1">
-            <button onClick={() => navigate("/dashboard")} className="px-4 py-2 rounded-xl text-sm font-semibold bg-amber-50 text-amber-700 transition">
-              Dashboard
-            </button>
-            {NAV_ITEMS.map((item) => (
-              <button key={item.path} onClick={() => navigate(item.path)} className="px-4 py-2 rounded-xl text-sm font-semibold text-slate-600 hover:text-slate-900 hover:bg-slate-100 transition">
-                {item.label}
-              </button>
-            ))}
-          </nav>
-
-          <button onClick={() => navigate("/profile")} className="w-8 h-8 rounded-full bg-slate-900 flex items-center justify-center text-white text-sm font-bold">
-            {userInitial}
-          </button>
-        </div>
-      </header>
-
-      <main className="px-4 lg:px-8 max-w-3xl mx-auto pt-6 pb-24 md:pb-8">
+    <AppLayout backTo="/dashboard" desktopNavItems={OWNER_NAV} bottomNavItems={OWNER_NAV} showCart={false} showUserDropdown={false}>
+      <div className="px-4 lg:px-8 max-w-3xl mx-auto pt-6 pb-24 md:pb-8">
         {/* Toast message */}
         {message && (
           <div className="fixed top-20 left-1/2 -translate-x-1/2 z-50 bg-slate-900 text-white text-sm font-medium px-6 py-3 rounded-full shadow-lg animate-fade-up">
@@ -378,9 +326,7 @@ const ManageRestaurant = () => {
           <button
             onClick={() => setActiveTab("menu")}
             className={`flex-1 py-2.5 px-4 rounded-lg text-sm font-bold transition ${
-              activeTab === "menu"
-                ? "bg-white text-slate-900 shadow-sm"
-                : "text-slate-500 hover:text-slate-700"
+              activeTab === "menu" ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-700"
             }`}
           >
             <span className="material-symbols-outlined text-sm mr-1.5 align-middle">menu_book</span>
@@ -390,9 +336,7 @@ const ManageRestaurant = () => {
           <button
             onClick={() => setActiveTab("orders")}
             className={`flex-1 py-2.5 px-4 rounded-lg text-sm font-bold transition ${
-              activeTab === "orders"
-                ? "bg-white text-slate-900 shadow-sm"
-                : "text-slate-500 hover:text-slate-700"
+              activeTab === "orders" ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-700"
             }`}
           >
             <span className="material-symbols-outlined text-sm mr-1.5 align-middle">receipt_long</span>
@@ -526,17 +470,10 @@ const ManageRestaurant = () => {
                     </div>
                   </div>
                   <div className="flex items-center gap-1 shrink-0">
-                    <button
-                      onClick={() => setEditingItem({ ...item, price: String(item.price) })}
-                      className="p-1.5 text-slate-400 hover:text-amber-500 hover:bg-amber-50 rounded-lg transition"
-                    >
+                    <button onClick={() => setEditingItem({ ...item, price: String(item.price) })} className="p-1.5 text-slate-400 hover:text-amber-500 hover:bg-amber-50 rounded-lg transition">
                       <span className="material-symbols-outlined text-sm">edit</span>
                     </button>
-                    <button
-                      onClick={() => handleDeleteMenuItem(item.id)}
-                      disabled={deletingId === item.id}
-                      className="p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition disabled:opacity-50"
-                    >
+                    <button onClick={() => handleDeleteMenuItem(item.id)} disabled={deletingId === item.id} className="p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition disabled:opacity-50">
                       {deletingId === item.id ? (
                         <span className="material-symbols-outlined text-sm animate-spin">progress_activity</span>
                       ) : (
@@ -580,10 +517,7 @@ const ManageRestaurant = () => {
                 <span className="material-symbols-outlined text-2xl text-red-400">error_outline</span>
               </div>
               <p className="text-sm text-red-600 font-medium mb-3">{ordersError}</p>
-              <button
-                onClick={fetchOrders}
-                className="text-sm font-semibold text-red-600 hover:text-red-700 underline transition"
-              >
+              <button onClick={fetchOrders} className="text-sm font-semibold text-red-600 hover:text-red-700 underline transition">
                 Try again
               </button>
             </div>
@@ -628,30 +562,20 @@ const ManageRestaurant = () => {
                 const isTerminal = order.status === "DELIVERED" || order.status === "CANCELLED";
                 return (
                   <div key={order.id} className="bg-white rounded-2xl shadow-sm overflow-hidden">
-                    {/* Order header */}
                     <div className="px-5 py-4 flex items-center justify-between gap-4">
                       <div className="min-w-0">
                         <div className="flex items-center gap-2 flex-wrap">
-                          <span className="text-xs text-slate-400 font-semibold uppercase tracking-wider">
-                            Order #{order.id}
-                          </span>
-                          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${status.color}`}>
-                            {status.label}
-                          </span>
+                          <span className="text-xs text-slate-400 font-semibold uppercase tracking-wider">Order #{order.id}</span>
+                          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${status.color}`}>{status.label}</span>
                         </div>
                         <p className="text-xs text-slate-500 mt-1 truncate">
                           {order.customer?.name || "Unknown customer"} ·{" "}
-                          {new Date(order.createdAt).toLocaleDateString("en-US", {
-                            month: "short", day: "numeric", year: "numeric",
-                          })}{" "}
+                          {new Date(order.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}{" "}
                           at{" "}
-                          {new Date(order.createdAt).toLocaleTimeString("en-US", {
-                            hour: "numeric", minute: "2-digit",
-                          })}
+                          {new Date(order.createdAt).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}
                         </p>
                       </div>
 
-                      {/* Status update control */}
                       {!isTerminal ? (
                         <div className="flex items-center gap-2 shrink-0">
                           <select
@@ -667,9 +591,7 @@ const ManageRestaurant = () => {
                             ))}
                           </select>
                           {updatingOrderId === order.id && (
-                            <span className="material-symbols-outlined text-sm text-amber-500 animate-spin">
-                              progress_activity
-                            </span>
+                            <span className="material-symbols-outlined text-sm text-amber-500 animate-spin">progress_activity</span>
                           )}
                         </div>
                       ) : (
@@ -679,29 +601,23 @@ const ManageRestaurant = () => {
                       )}
                     </div>
 
-                    {/* Order items */}
                     <div className="border-t border-slate-50 px-5 py-3 space-y-1.5">
                       {order.orderItems?.map((item, idx) => (
                         <div key={idx} className="flex items-center justify-between text-sm">
                           <span className="text-slate-600">
                             {item.quantity}× {item.menuItem?.name || `Item #${item.menuItemId}`}
                           </span>
-                          <span className="text-slate-400 text-xs">
-                            ₦{(item.price * item.quantity).toLocaleString()}
-                          </span>
+                          <span className="text-slate-400 text-xs">₦{(item.price * item.quantity).toLocaleString()}</span>
                         </div>
                       ))}
                     </div>
 
-                    {/* Order footer */}
                     <div className="border-t border-slate-50 px-5 py-3 flex items-center justify-between bg-slate-50/30">
                       <div className="flex items-center gap-1.5 text-xs text-slate-400 min-w-0">
                         <span className="material-symbols-outlined text-sm shrink-0">location_on</span>
                         <span className="truncate">{order.deliveryAddress}</span>
                       </div>
-                      <span className="text-sm font-bold text-slate-900 shrink-0 ml-2">
-                        ₦{Number(order.total).toLocaleString()}
-                      </span>
+                      <span className="text-sm font-bold text-slate-900 shrink-0 ml-2">₦{Number(order.total).toLocaleString()}</span>
                     </div>
                   </div>
                 );
@@ -710,18 +626,8 @@ const ManageRestaurant = () => {
           )}
         </section>
         )}
-      </main>
-
-      {/* Mobile bottom nav */}
-      <nav className="md:hidden fixed bottom-0 w-full z-50 flex justify-around items-center px-4 py-2 bg-white rounded-t-xl shadow-[0_-4px_20px_rgba(15,23,42,0.05)]">
-        {[{ icon: "dashboard", label: "Dashboard", path: "/dashboard" }, ...NAV_ITEMS.slice(0, 3)].map((tab) => (
-          <button key={tab.label} onClick={() => navigate(tab.path)} className={`flex flex-col items-center px-4 py-1 rounded-2xl transition ${location.pathname === tab.path ? "bg-amber-100 text-amber-700" : "text-slate-400 hover:bg-slate-100"}`}>
-            <span className="material-symbols-outlined text-2xl">{tab.icon}</span>
-            <span className="text-xs font-semibold mt-1">{tab.label}</span>
-          </button>
-        ))}
-      </nav>
-    </div>
+      </div>
+    </AppLayout>
   );
 };
 

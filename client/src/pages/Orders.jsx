@@ -1,13 +1,7 @@
 import { useState, useEffect } from "react";
-import { useNavigate, useLocation } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
-
-const NAV_ITEMS = [
-  { icon: "home", label: "Home", path: "/restaurants" },
-  { icon: "receipt_long", label: "Orders", path: "/orders" },
-  { icon: "favorite", label: "Favorites", path: "/favorites" },
-  { icon: "person", label: "Profile", path: "/profile" },
-];
+import AppLayout from "../components/AppLayout";
 
 const STATUS = {
   PENDING: { label: "Pending", color: "bg-amber-100 text-amber-700", icon: "hourglass_empty" },
@@ -21,14 +15,11 @@ const STATUS = {
 
 const Orders = () => {
   const navigate = useNavigate();
-  const location = useLocation();
   const { user } = useAuth();
 
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-
-  const userInitial = user?.name?.charAt(0)?.toUpperCase() || "?";
 
   useEffect(() => {
     const fetchOrders = async () => {
@@ -38,11 +29,7 @@ const Orders = () => {
           headers: { Authorization: `Bearer ${token}` },
         });
         const data = await res.json();
-
-        if (!res.ok) {
-          setError(data.message || "Failed to load orders");
-          return;
-        }
+        if (!res.ok) { setError(data.message || "Failed to load orders"); return; }
         setOrders(data.orders);
       } catch {
         setError("Something went wrong. Please try again.");
@@ -55,233 +42,136 @@ const Orders = () => {
 
   const formatDate = (dateString) => {
     const date = new Date(dateString);
-    return date.toLocaleDateString("en-US", {
-      month: "short",
-      day: "numeric",
-      year: "numeric",
-    });
+    return date.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
   };
 
   const formatTime = (dateString) => {
     const date = new Date(dateString);
-    return date.toLocaleTimeString("en-US", {
-      hour: "numeric",
-      minute: "2-digit",
-    });
+    return date.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
+  };
+
+  const renderContent = () => {
+    // LOADING
+    if (loading) {
+      return (
+        <div className="space-y-4">
+          {[1, 2, 3].map((i) => (
+            <div key={i} className="bg-white rounded-2xl shadow-sm p-5 space-y-3">
+              <div className="flex justify-between">
+                <div className="w-32 h-5 bg-slate-200 animate-pulse rounded" />
+                <div className="w-20 h-5 bg-slate-200 animate-pulse rounded-full" />
+              </div>
+              <div className="w-full h-4 bg-slate-200 animate-pulse rounded" />
+              <div className="w-1/2 h-4 bg-slate-200 animate-pulse rounded" />
+              <div className="flex justify-between pt-2">
+                <div className="w-24 h-5 bg-slate-200 animate-pulse rounded" />
+                <div className="w-16 h-5 bg-slate-200 animate-pulse rounded" />
+              </div>
+            </div>
+          ))}
+        </div>
+      );
+    }
+
+    // ERROR
+    if (error) {
+      return (
+        <div className="text-center py-16">
+          <div className="w-20 h-20 rounded-full bg-red-100 flex items-center justify-center mx-auto mb-4">
+            <span className="material-symbols-outlined text-4xl text-red-400">error_outline</span>
+          </div>
+          <p className="text-slate-900 font-semibold mb-2">Failed to load orders</p>
+          <p className="text-slate-500 text-sm mb-6">{error}</p>
+          <button onClick={() => window.location.reload()} className="text-amber-500 font-semibold text-sm hover:text-amber-600 transition">
+            Try again
+          </button>
+        </div>
+      );
+    }
+
+    // EMPTY
+    if (orders.length === 0) {
+      return (
+        <div className="text-center py-16">
+          <div className="w-28 h-28 rounded-full bg-slate-100 flex items-center justify-center mx-auto mb-6">
+            <span className="material-symbols-outlined text-5xl text-slate-300">receipt_long</span>
+          </div>
+          <h3 className="text-xl font-bold text-slate-900 mb-2">No orders yet</h3>
+          <p className="text-slate-500 mb-8 max-w-sm mx-auto leading-relaxed">
+            You haven&apos;t placed any orders. Start exploring restaurants to find something delicious!
+          </p>
+          <button
+            onClick={() => navigate("/restaurants")}
+            className="rounded-full bg-amber-500 text-white font-semibold py-3 px-8 shadow-md hover:bg-amber-600 transition active:scale-95"
+          >
+            Browse Restaurants
+          </button>
+        </div>
+      );
+    }
+
+    // SUCCESS
+    return (
+      <div className="space-y-4">
+        {orders.map((order) => {
+          const status = STATUS[order.status] || STATUS.PENDING;
+          return (
+            <article
+              key={order.id}
+              onClick={() => navigate(`/orders/${order.id}`)}
+              className="bg-white rounded-2xl shadow-sm overflow-hidden hover:shadow-md transition cursor-pointer"
+            >
+              <div className="px-5 py-4 flex items-center justify-between">
+                <div className="flex items-center gap-2.5">
+                  <span className="material-symbols-outlined text-amber-500">storefront</span>
+                  <div>
+                    <h3 className="text-sm font-bold text-slate-900">{order.restaurant?.name || "Restaurant"}</h3>
+                    <p className="text-xs text-slate-400">{formatDate(order.createdAt)} · {formatTime(order.createdAt)}</p>
+                  </div>
+                </div>
+                <span className={`flex items-center gap-1 text-[11px] font-bold px-2.5 py-1.5 rounded-full ${status.color}`}>
+                  <span className="material-symbols-outlined text-sm">{status.icon}</span>
+                  {status.label}
+                </span>
+              </div>
+
+              <div className="border-t border-slate-50 px-5 py-3 space-y-1.5">
+                {order.orderItems?.map((item, idx) => (
+                  <div key={idx} className="flex items-center justify-between text-sm">
+                    <span className="text-slate-600">
+                      {item.quantity}× {item.menuItem?.name || `Item #${item.menuItemId}`}
+                    </span>
+                    <span className="text-slate-400 text-xs">₦{(item.price * item.quantity).toLocaleString()}</span>
+                  </div>
+                ))}
+              </div>
+
+              <div className="border-t border-slate-50 px-5 py-3 flex items-center justify-between bg-slate-50/30">
+                <div className="flex items-center gap-1.5 text-xs text-slate-400">
+                  <span className="material-symbols-outlined text-sm">location_on</span>
+                  <span className="truncate max-w-[180px]">{order.deliveryAddress}</span>
+                </div>
+                <span className="text-sm font-bold text-slate-900">₦{Number(order.total).toLocaleString()}</span>
+              </div>
+            </article>
+          );
+        })}
+      </div>
+    );
   };
 
   return (
-    <div className="min-h-screen bg-slate-50">
-      {/* Header */}
-      <header className="sticky top-0 z-50 bg-white shadow-sm">
-        <div className="flex items-center justify-between px-4 lg:px-8 h-16 max-w-7xl mx-auto">
-          <button
-            onClick={() => navigate("/restaurants")}
-            className="text-2xl font-extrabold text-amber-500 tracking-tight"
-          >
-            Chow<span className="text-slate-900">Zilla</span>
-          </button>
-
-          <nav className="hidden md:flex items-center gap-1">
-            {NAV_ITEMS.map((item) => (
-              <button
-                key={item.path}
-                onClick={() => navigate(item.path)}
-                className={`px-4 py-2 rounded-xl text-sm font-semibold transition ${
-                  location.pathname === item.path
-                    ? "bg-amber-50 text-amber-700"
-                    : "text-slate-600 hover:text-slate-900 hover:bg-slate-100"
-                }`}
-              >
-                {item.label}
-              </button>
-            ))}
-          </nav>
-
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => navigate("/cart")}
-              className="relative p-2 text-slate-600 hover:text-amber-500 hover:bg-slate-100 rounded-full transition"
-            >
-              <span className="material-symbols-outlined">shopping_bag</span>
-            </button>
-            <button
-              onClick={() => navigate("/profile")}
-              className="w-8 h-8 rounded-full bg-amber-500 flex items-center justify-center text-white text-sm font-bold"
-            >
-              {userInitial}
-            </button>
-          </div>
-        </div>
-      </header>
-
-      <main className="px-4 lg:px-8 max-w-2xl mx-auto pt-8 pb-24 md:pb-8">
+    <AppLayout showUserDropdown={false}>
+      <div className="px-4 lg:px-8 max-w-2xl mx-auto pt-8 pb-24 md:pb-8">
         <h2 className="text-2xl font-bold text-slate-900 mb-1">Order History</h2>
         <p className="text-slate-500 text-sm mb-8">
           {!loading && orders.length > 0
             ? `${orders.length} ${orders.length === 1 ? "order" : "orders"}`
             : ""}
         </p>
-
-        {/* ── LOADING ── */}
-        {loading && (
-          <div className="space-y-4">
-            {[1, 2, 3].map((i) => (
-              <div
-                key={i}
-                className="bg-white rounded-2xl shadow-sm p-5 space-y-3"
-              >
-                <div className="flex justify-between">
-                  <div className="w-32 h-5 bg-slate-200 animate-pulse rounded" />
-                  <div className="w-20 h-5 bg-slate-200 animate-pulse rounded-full" />
-                </div>
-                <div className="w-full h-4 bg-slate-200 animate-pulse rounded" />
-                <div className="w-1/2 h-4 bg-slate-200 animate-pulse rounded" />
-                <div className="flex justify-between pt-2">
-                  <div className="w-24 h-5 bg-slate-200 animate-pulse rounded" />
-                  <div className="w-16 h-5 bg-slate-200 animate-pulse rounded" />
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-
-        {/* ── ERROR ── */}
-        {!loading && error && (
-          <div className="text-center py-16">
-            <div className="w-20 h-20 rounded-full bg-red-100 flex items-center justify-center mx-auto mb-4">
-              <span className="material-symbols-outlined text-4xl text-red-400">
-                error_outline
-              </span>
-            </div>
-            <p className="text-slate-900 font-semibold mb-2">Failed to load orders</p>
-            <p className="text-slate-500 text-sm mb-6">{error}</p>
-            <button
-              onClick={() => window.location.reload()}
-              className="text-amber-500 font-semibold text-sm hover:text-amber-600 transition"
-            >
-              Try again
-            </button>
-          </div>
-        )}
-
-        {/* ── EMPTY ── */}
-        {!loading && !error && orders.length === 0 && (
-          <div className="text-center py-16">
-            <div className="w-28 h-28 rounded-full bg-slate-100 flex items-center justify-center mx-auto mb-6">
-              <span className="material-symbols-outlined text-5xl text-slate-300">
-                receipt_long
-              </span>
-            </div>
-            <h3 className="text-xl font-bold text-slate-900 mb-2">
-              No orders yet
-            </h3>
-            <p className="text-slate-500 mb-8 max-w-sm mx-auto leading-relaxed">
-              You haven&apos;t placed any orders. Start exploring restaurants to
-              find something delicious!
-            </p>
-            <button
-              onClick={() => navigate("/restaurants")}
-              className="rounded-full bg-amber-500 text-white font-semibold py-3 px-8 shadow-md hover:bg-amber-600 transition active:scale-95"
-            >
-              Browse Restaurants
-            </button>
-          </div>
-        )}
-
-        {/* ── SUCCESS ── */}
-        {!loading && !error && orders.length > 0 && (
-          <div className="space-y-4">
-            {orders.map((order) => {
-              const status = STATUS[order.status] || STATUS.PENDING;
-              return (
-                <article
-                  key={order.id}
-                  onClick={() => navigate(`/orders/${order.id}`)}
-                  className="bg-white rounded-2xl shadow-sm overflow-hidden hover:shadow-md transition cursor-pointer"
-                >
-                  {/* Top row: restaurant + status */}
-                  <div className="px-5 py-4 flex items-center justify-between">
-                    <div className="flex items-center gap-2.5">
-                      <span className="material-symbols-outlined text-amber-500">
-                        storefront
-                      </span>
-                      <div>
-                        <h3 className="text-sm font-bold text-slate-900">
-                          {order.restaurant?.name || "Restaurant"}
-                        </h3>
-                        <p className="text-xs text-slate-400">
-                          {formatDate(order.createdAt)} · {formatTime(order.createdAt)}
-                        </p>
-                      </div>
-                    </div>
-                    <span
-                      className={`flex items-center gap-1 text-[11px] font-bold px-2.5 py-1.5 rounded-full ${status.color}`}
-                    >
-                      <span className="material-symbols-outlined text-sm">
-                        {status.icon}
-                      </span>
-                      {status.label}
-                    </span>
-                  </div>
-
-                  {/* Items */}
-                  <div className="border-t border-slate-50 px-5 py-3 space-y-1.5">
-                    {order.orderItems?.map((item, idx) => (
-                      <div
-                        key={idx}
-                        className="flex items-center justify-between text-sm"
-                      >
-                        <span className="text-slate-600">
-                          {item.quantity}×{" "}
-                          {item.menuItem?.name || `Item #${item.menuItemId}`}
-                        </span>
-                        <span className="text-slate-400 text-xs">
-                          ₦{(item.price * item.quantity).toLocaleString()}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-
-                  {/* Bottom row */}
-                  <div className="border-t border-slate-50 px-5 py-3 flex items-center justify-between bg-slate-50/30">
-                    <div className="flex items-center gap-1.5 text-xs text-slate-400">
-                      <span className="material-symbols-outlined text-sm">
-                        location_on
-                      </span>
-                      <span className="truncate max-w-[180px]">
-                        {order.deliveryAddress}
-                      </span>
-                    </div>
-                    <span className="text-sm font-bold text-slate-900">
-                      ₦{Number(order.total).toLocaleString()}
-                    </span>
-                  </div>
-                </article>
-              );
-            })}
-          </div>
-        )}
-      </main>
-
-      {/* Mobile bottom nav */}
-      <nav className="md:hidden fixed bottom-0 w-full z-50 flex justify-around items-center px-4 py-2 bg-white rounded-t-xl shadow-[0_-4px_20px_rgba(15,23,42,0.05)]">
-        {NAV_ITEMS.map((tab) => (
-          <button
-            key={tab.label}
-            onClick={() => navigate(tab.path)}
-            className={`flex flex-col items-center px-4 py-1 rounded-2xl transition ${
-              location.pathname === tab.path
-                ? "bg-amber-100 text-amber-700"
-                : "text-slate-400 hover:bg-slate-100"
-            }`}
-          >
-            <span className="material-symbols-outlined text-2xl">{tab.icon}</span>
-            <span className="text-xs font-semibold mt-1">{tab.label}</span>
-          </button>
-        ))}
-      </nav>
-    </div>
+        {renderContent()}
+      </div>
+    </AppLayout>
   );
 };
 

@@ -1,13 +1,7 @@
 import { useState, useEffect } from "react";
-import { useParams, useNavigate, useLocation } from "react-router-dom";
+import { useParams, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
-
-const NAV_ITEMS = [
-  { icon: "home", label: "Home", path: "/restaurants" },
-  { icon: "receipt_long", label: "Orders", path: "/orders" },
-  { icon: "favorite", label: "Favorites", path: "/favorites" },
-  { icon: "person", label: "Profile", path: "/profile" },
-];
+import AppLayout from "../components/AppLayout";
 
 const STATUS_FLOW = [
   { key: "PENDING", label: "Placed", icon: "receipt" },
@@ -31,29 +25,20 @@ const STATUS_COLORS = {
 const OrderDetail = () => {
   const { id } = useParams();
   const navigate = useNavigate();
-  const location = useLocation();
-  const { user } = useAuth();
 
   const [order, setOrder] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
-  const userInitial = user?.name?.charAt(0)?.toUpperCase() || "?";
-
   useEffect(() => {
     const fetchOrder = async () => {
       try {
         const token = localStorage.getItem("token");
-        const res = await fetch(
-          `${import.meta.env.VITE_API_URL}/orders/${id}`,
-          { headers: { Authorization: `Bearer ${token}` } }
-        );
+        const res = await fetch(`${import.meta.env.VITE_API_URL}/orders/${id}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
         const data = await res.json();
-
-        if (!res.ok) {
-          setError(data.message || "Order not found");
-          return;
-        }
+        if (!res.ok) { setError(data.message || "Order not found"); return; }
         setOrder(data.order);
       } catch {
         setError("Something went wrong. Please try again.");
@@ -67,10 +52,8 @@ const OrderDetail = () => {
   const getStepState = (stepKey) => {
     if (!order) return "upcoming";
     if (order.status === "CANCELLED") return "cancelled";
-
     const currentIdx = STATUS_FLOW.findIndex((s) => s.key === order.status);
     const stepIdx = STATUS_FLOW.findIndex((s) => s.key === stepKey);
-
     if (stepIdx < currentIdx) return "completed";
     if (stepIdx === currentIdx) return "current";
     return "upcoming";
@@ -78,42 +61,19 @@ const OrderDetail = () => {
 
   const formatDate = (dateString) => {
     const date = new Date(dateString);
-    return date.toLocaleDateString("en-US", {
-      weekday: "long",
-      month: "long",
-      day: "numeric",
-      year: "numeric",
-    });
+    return date.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric", year: "numeric" });
   };
 
   const formatTime = (dateString) => {
     const date = new Date(dateString);
-    return date.toLocaleTimeString("en-US", {
-      hour: "numeric",
-      minute: "2-digit",
-    });
+    return date.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
   };
 
   // ── LOADING ──
   if (loading) {
     return (
-      <div className="min-h-screen bg-slate-50">
-        <header className="sticky top-0 z-50 bg-white shadow-sm">
-          <div className="flex items-center justify-between px-4 lg:px-8 h-16 max-w-7xl mx-auto">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-full bg-slate-200 animate-pulse" />
-              <div className="w-32 h-6 bg-slate-200 animate-pulse rounded" />
-            </div>
-            <div className="hidden md:flex gap-2">
-              {[80, 80, 80, 80].map((w, i) => (
-                <div key={i} className="h-8 rounded-xl bg-slate-200 animate-pulse" style={{ width: w }} />
-              ))}
-            </div>
-            <div className="w-8 h-8 rounded-full bg-slate-200 animate-pulse" />
-          </div>
-        </header>
-
-        <main className="px-4 lg:px-8 max-w-2xl mx-auto pt-8 pb-24">
+      <AppLayout backTo="/orders" showUserDropdown={false}>
+        <div className="px-4 lg:px-8 max-w-2xl mx-auto pt-8 pb-24">
           <div className="bg-white rounded-2xl shadow-sm p-6 space-y-4">
             <div className="w-40 h-6 bg-slate-200 animate-pulse rounded" />
             <div className="flex gap-4 overflow-hidden">
@@ -128,37 +88,33 @@ const OrderDetail = () => {
               ))}
             </div>
           </div>
-        </main>
-
-        <nav className="md:hidden fixed bottom-0 w-full z-50 flex justify-around items-center px-4 py-2 bg-white rounded-t-xl shadow-[0_-4px_20px_rgba(15,23,42,0.05)]">
-          {[1, 2, 3, 4].map((i) => (
-            <div key={i} className="w-12 h-12 bg-slate-200 animate-pulse rounded-2xl" />
-          ))}
-        </nav>
-      </div>
+        </div>
+      </AppLayout>
     );
   }
 
   // ── ERROR ──
   if (error) {
     return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center px-4">
-        <div className="text-center max-w-md">
-          <div className="w-20 h-20 rounded-full bg-red-100 flex items-center justify-center mx-auto mb-6">
-            <span className="material-symbols-outlined text-4xl text-red-400">error_outline</span>
+      <AppLayout backTo="/orders" showUserDropdown={false}>
+        <div className="flex items-center justify-center px-4 pt-20">
+          <div className="text-center max-w-md">
+            <div className="w-20 h-20 rounded-full bg-red-100 flex items-center justify-center mx-auto mb-6">
+              <span className="material-symbols-outlined text-4xl text-red-400">error_outline</span>
+            </div>
+            <h2 className="text-xl font-bold text-slate-900 mb-2">
+              {error === "Order not found" ? "Order not found" : "Something went wrong"}
+            </h2>
+            <p className="text-slate-500 mb-6">{error}</p>
+            <button
+              onClick={() => navigate("/orders")}
+              className="rounded-full bg-amber-500 px-8 py-3 font-semibold text-white hover:bg-amber-600 transition active:scale-95"
+            >
+              Back to Order History
+            </button>
           </div>
-          <h2 className="text-xl font-bold text-slate-900 mb-2">
-            {error === "Order not found" ? "Order not found" : "Something went wrong"}
-          </h2>
-          <p className="text-slate-500 mb-6">{error}</p>
-          <button
-            onClick={() => navigate("/orders")}
-            className="rounded-full bg-amber-500 px-8 py-3 font-semibold text-white hover:bg-amber-600 transition active:scale-95"
-          >
-            Back to Order History
-          </button>
         </div>
-      </div>
+      </AppLayout>
     );
   }
 
@@ -168,64 +124,17 @@ const OrderDetail = () => {
   const statusColor = STATUS_COLORS[order.status] || STATUS_COLORS.PENDING;
 
   return (
-    <div className="min-h-screen bg-slate-50">
-      {/* Header */}
-      <header className="sticky top-0 z-50 bg-white shadow-sm">
-        <div className="flex items-center justify-between px-4 lg:px-8 h-16 max-w-7xl mx-auto">
-          <div className="flex items-center gap-3">
-            <button
-              onClick={() => navigate("/orders")}
-              className="p-2 -ml-2 text-slate-600 hover:text-amber-500 rounded-full hover:bg-slate-100 transition"
-            >
-              <span className="material-symbols-outlined">arrow_back</span>
-            </button>
-            <button
-              onClick={() => navigate("/restaurants")}
-              className="text-xl font-extrabold text-amber-500 tracking-tight hidden sm:block"
-            >
-              Chow<span className="text-slate-900">Zilla</span>
-            </button>
-          </div>
-
-          <nav className="hidden md:flex items-center gap-1">
-            {NAV_ITEMS.map((item) => (
-              <button
-                key={item.path}
-                onClick={() => navigate(item.path)}
-                className={`px-4 py-2 rounded-xl text-sm font-semibold transition ${
-                  location.pathname === item.path
-                    ? "bg-amber-50 text-amber-700"
-                    : "text-slate-600 hover:text-slate-900 hover:bg-slate-100"
-                }`}
-              >
-                {item.label}
-              </button>
-            ))}
-          </nav>
-
-          <button
-            onClick={() => navigate("/profile")}
-            className="w-8 h-8 rounded-full bg-amber-500 flex items-center justify-center text-white text-sm font-bold"
-          >
-            {userInitial}
-          </button>
-        </div>
-      </header>
-
-      <main className="px-4 lg:px-8 max-w-2xl mx-auto pt-8 pb-24 md:pb-8">
+    <AppLayout backTo="/orders" showUserDropdown={false}>
+      <div className="px-4 lg:px-8 max-w-2xl mx-auto pt-8 pb-24 md:pb-8">
         {/* Order ID + Status */}
         <div className="flex items-center justify-between mb-6">
           <div>
-            <p className="text-xs text-slate-400 uppercase tracking-wider font-semibold">
-              Order #{order.id}
-            </p>
+            <p className="text-xs text-slate-400 uppercase tracking-wider font-semibold">Order #{order.id}</p>
             <p className="text-sm text-slate-500 mt-0.5">
               {formatDate(order.createdAt)} at {formatTime(order.createdAt)}
             </p>
           </div>
-          <span
-            className={`inline-flex items-center gap-1.5 text-xs font-bold px-3 py-2 rounded-full border ${statusColor}`}
-          >
+          <span className={`inline-flex items-center gap-1.5 text-xs font-bold px-3 py-2 rounded-full border ${statusColor}`}>
             <span className="material-symbols-outlined text-sm">
               {isCancelled ? "cancel" : isDelivered ? "done_all" : "receipt"}
             </span>
@@ -233,12 +142,10 @@ const OrderDetail = () => {
           </span>
         </div>
 
-        {/* ── Status Timeline ── */}
+        {/* Status Timeline */}
         {!isCancelled && (
           <div className="bg-white rounded-2xl shadow-sm p-6 mb-6">
-            <h3 className="text-sm font-bold text-slate-900 mb-6">
-              Order Progress
-            </h3>
+            <h3 className="text-sm font-bold text-slate-900 mb-6">Order Progress</h3>
 
             {/* Desktop timeline */}
             <div className="hidden sm:flex items-start justify-between">
@@ -246,46 +153,27 @@ const OrderDetail = () => {
                 const state = getStepState(step.key);
                 return (
                   <div key={step.key} className="flex flex-col items-center flex-1 relative">
-                    {/* Connector line */}
                     {idx > 0 && (
                       <div className="absolute right-1/2 top-4 w-full h-0.5 -translate-y-1/2">
-                        <div
-                          className={`h-full transition-colors ${
-                            state === "completed" ? "bg-amber-500" : "bg-slate-200"
-                          }`}
-                        />
+                        <div className={`h-full transition-colors ${state === "completed" ? "bg-amber-500" : "bg-slate-200"}`} />
                       </div>
                     )}
-
-                    {/* Circle */}
                     <div
                       className={`relative z-10 w-8 h-8 rounded-full flex items-center justify-center transition ${
-                        state === "completed"
-                          ? "bg-amber-500 text-white"
-                          : state === "current"
-                          ? "bg-white border-2 border-amber-500 text-amber-500"
-                          : "bg-slate-100 text-slate-300"
+                        state === "completed" ? "bg-amber-500 text-white"
+                        : state === "current" ? "bg-white border-2 border-amber-500 text-amber-500"
+                        : "bg-slate-100 text-slate-300"
                       }`}
                     >
                       {state === "completed" ? (
                         <span className="material-symbols-outlined text-sm font-bold">check</span>
-                      ) : state === "current" ? (
-                        <span className="material-symbols-outlined text-sm">{step.icon}</span>
                       ) : (
                         <span className="material-symbols-outlined text-sm">{step.icon}</span>
                       )}
                     </div>
-
-                    {/* Label */}
-                    <span
-                      className={`text-[10px] font-semibold mt-2 text-center leading-tight transition ${
-                        state === "completed"
-                          ? "text-amber-600"
-                          : state === "current"
-                          ? "text-slate-900"
-                          : "text-slate-400"
-                      }`}
-                    >
+                    <span className={`text-[10px] font-semibold mt-2 text-center leading-tight transition ${
+                      state === "completed" ? "text-amber-600" : state === "current" ? "text-slate-900" : "text-slate-400"
+                    }`}>
                       {step.label}
                     </span>
                   </div>
@@ -300,41 +188,23 @@ const OrderDetail = () => {
                 const isLast = idx === STATUS_FLOW.length - 1;
                 return (
                   <div key={step.key} className="flex gap-4">
-                    {/* Left column: circle + line */}
                     <div className="flex flex-col items-center">
-                      <div
-                        className={`w-7 h-7 rounded-full flex items-center justify-center shrink-0 transition ${
-                          state === "completed"
-                            ? "bg-amber-500 text-white"
-                            : state === "current"
-                            ? "bg-white border-2 border-amber-500 text-amber-500"
-                            : "bg-slate-100 text-slate-300"
-                        }`}
-                      >
+                      <div className={`w-7 h-7 rounded-full flex items-center justify-center shrink-0 transition ${
+                        state === "completed" ? "bg-amber-500 text-white"
+                        : state === "current" ? "bg-white border-2 border-amber-500 text-amber-500"
+                        : "bg-slate-100 text-slate-300"
+                      }`}>
                         {state === "completed" ? (
                           <span className="material-symbols-outlined text-sm font-bold">check</span>
                         ) : (
                           <span className="material-symbols-outlined text-sm">{step.icon}</span>
                         )}
                       </div>
-                      {!isLast && (
-                        <div
-                          className={`w-0.5 h-6 transition ${
-                            state === "completed" ? "bg-amber-500" : "bg-slate-200"
-                          }`}
-                        />
-                      )}
+                      {!isLast && <div className={`w-0.5 h-6 transition ${state === "completed" ? "bg-amber-500" : "bg-slate-200"}`} />}
                     </div>
-                    {/* Label */}
-                    <span
-                      className={`text-xs font-semibold pt-1.5 transition ${
-                        state === "completed"
-                          ? "text-amber-600"
-                          : state === "current"
-                          ? "text-slate-900"
-                          : "text-slate-400"
-                      }`}
-                    >
+                    <span className={`text-xs font-semibold pt-1.5 transition ${
+                      state === "completed" ? "text-amber-600" : state === "current" ? "text-slate-900" : "text-slate-400"
+                    }`}>
                       {step.label}
                     </span>
                   </div>
@@ -351,87 +221,59 @@ const OrderDetail = () => {
               <span className="material-symbols-outlined text-3xl text-red-400">cancel</span>
             </div>
             <h3 className="text-lg font-bold text-red-700 mb-1">Order Cancelled</h3>
-            <p className="text-sm text-red-500">
-              This order has been cancelled and is no longer active.
-            </p>
+            <p className="text-sm text-red-500">This order has been cancelled and is no longer active.</p>
           </div>
         )}
 
-        {/* ── Restaurant Card ── */}
+        {/* Restaurant Card */}
         <div className="bg-white rounded-2xl shadow-sm p-5 mb-4">
           <button
             onClick={() => navigate(`/restaurants/${order.restaurant.id}`)}
             className="flex items-center gap-3 hover:opacity-80 transition w-full text-left"
           >
             <div className="w-11 h-11 rounded-xl bg-amber-100 flex items-center justify-center shrink-0">
-              <span className="material-symbols-outlined text-amber-600 text-xl">
-                storefront
-              </span>
+              <span className="material-symbols-outlined text-amber-600 text-xl">storefront</span>
             </div>
             <div>
-              <h3 className="text-sm font-bold text-slate-900">
-                {order.restaurant.name}
-              </h3>
+              <h3 className="text-sm font-bold text-slate-900">{order.restaurant.name}</h3>
               <p className="text-xs text-slate-400">Tap to view restaurant</p>
             </div>
-            <span className="material-symbols-outlined text-slate-300 text-sm ml-auto">
-              chevron_right
-            </span>
+            <span className="material-symbols-outlined text-slate-300 text-sm ml-auto">chevron_right</span>
           </button>
         </div>
 
-        {/* ── Items ── */}
+        {/* Items */}
         <div className="bg-white rounded-2xl shadow-sm overflow-hidden mb-4">
           <div className="px-5 py-4 border-b border-slate-100">
             <h3 className="text-sm font-bold text-slate-900">
-              {order.orderItems.length}{" "}
-              {order.orderItems.length === 1 ? "Item" : "Items"}
+              {order.orderItems.length} {order.orderItems.length === 1 ? "Item" : "Items"}
             </h3>
           </div>
-
           <div className="divide-y divide-slate-50">
             {order.orderItems.map((item, idx) => (
-              <div
-                key={idx}
-                className="px-5 py-4 flex items-center justify-between"
-              >
+              <div key={idx} className="px-5 py-4 flex items-center justify-between">
                 <div className="flex items-center gap-3">
                   <div className="w-10 h-10 rounded-lg bg-slate-100 flex items-center justify-center shrink-0">
                     {item.menuItem?.imageUrl ? (
-                      <img
-                        src={item.menuItem.imageUrl}
-                        alt=""
-                        className="w-full h-full object-cover rounded-lg"
-                      />
+                      <img src={item.menuItem.imageUrl} alt="" className="w-full h-full object-cover rounded-lg" />
                     ) : (
-                      <span className="material-symbols-outlined text-slate-400 text-sm">
-                        restaurant
-                      </span>
+                      <span className="material-symbols-outlined text-slate-400 text-sm">restaurant</span>
                     )}
                   </div>
                   <div>
-                    <p className="text-sm font-semibold text-slate-900">
-                      {item.menuItem?.name || `Item #${item.menuItemId}`}
-                    </p>
-                    <p className="text-xs text-slate-400">
-                      ₦{Number(item.price).toLocaleString()} × {item.quantity}
-                    </p>
+                    <p className="text-sm font-semibold text-slate-900">{item.menuItem?.name || `Item #${item.menuItemId}`}</p>
+                    <p className="text-xs text-slate-400">₦{Number(item.price).toLocaleString()} × {item.quantity}</p>
                   </div>
                 </div>
-                <span className="text-sm font-bold text-slate-900">
-                  ₦{(item.price * item.quantity).toLocaleString()}
-                </span>
+                <span className="text-sm font-bold text-slate-900">₦{(item.price * item.quantity).toLocaleString()}</span>
               </div>
             ))}
           </div>
 
-          {/* Totals */}
           <div className="border-t border-slate-100 px-5 py-4 space-y-2 bg-slate-50/30">
             <div className="flex items-center justify-between text-sm">
               <span className="text-slate-500">Subtotal</span>
-              <span className="text-slate-700 font-medium">
-                ₦{Number(order.total).toLocaleString()}
-              </span>
+              <span className="text-slate-700 font-medium">₦{Number(order.total).toLocaleString()}</span>
             </div>
             <div className="flex items-center justify-between text-sm">
               <span className="text-slate-500">Delivery Fee</span>
@@ -439,31 +281,25 @@ const OrderDetail = () => {
             </div>
             <div className="flex items-center justify-between pt-2 border-t border-slate-200">
               <span className="text-sm font-bold text-slate-900">Total</span>
-              <span className="text-lg font-extrabold text-slate-900">
-                ₦{Number(order.total).toLocaleString()}
-              </span>
+              <span className="text-lg font-extrabold text-slate-900">₦{Number(order.total).toLocaleString()}</span>
             </div>
           </div>
         </div>
 
-        {/* ── Delivery Address ── */}
+        {/* Delivery Address */}
         <div className="bg-white rounded-2xl shadow-sm p-5 mb-4">
           <div className="flex items-start gap-3">
             <div className="w-10 h-10 rounded-full bg-amber-50 flex items-center justify-center shrink-0">
               <span className="material-symbols-outlined text-amber-500">location_on</span>
             </div>
             <div>
-              <p className="text-xs text-slate-400 uppercase tracking-wider font-semibold mb-1">
-                Delivery Address
-              </p>
-              <p className="text-sm font-medium text-slate-900 leading-relaxed">
-                {order.deliveryAddress}
-              </p>
+              <p className="text-xs text-slate-400 uppercase tracking-wider font-semibold mb-1">Delivery Address</p>
+              <p className="text-sm font-medium text-slate-900 leading-relaxed">{order.deliveryAddress}</p>
             </div>
           </div>
         </div>
 
-        {/* ── Order Info ── */}
+        {/* Order Info */}
         <div className="bg-white rounded-2xl shadow-sm p-5">
           <div className="flex items-start gap-3">
             <div className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center shrink-0">
@@ -471,52 +307,24 @@ const OrderDetail = () => {
             </div>
             <div className="space-y-1 text-sm">
               <p className="text-slate-500">
-                <span className="text-slate-400 text-xs uppercase tracking-wider font-semibold">
-                  Order ID
-                </span>{" "}
+                <span className="text-slate-400 text-xs uppercase tracking-wider font-semibold">Order ID </span>
                 <span className="text-slate-700 font-medium">#{order.id}</span>
               </p>
               <p className="text-slate-500">
-                <span className="text-slate-400 text-xs uppercase tracking-wider font-semibold">
-                  Placed
-                </span>{" "}
-                <span className="text-slate-700 font-medium">
-                  {formatDate(order.createdAt)} at {formatTime(order.createdAt)}
-                </span>
+                <span className="text-slate-400 text-xs uppercase tracking-wider font-semibold">Placed </span>
+                <span className="text-slate-700 font-medium">{formatDate(order.createdAt)} at {formatTime(order.createdAt)}</span>
               </p>
               {order.updatedAt !== order.createdAt && (
                 <p className="text-slate-500">
-                  <span className="text-slate-400 text-xs uppercase tracking-wider font-semibold">
-                    Last updated
-                  </span>{" "}
-                  <span className="text-slate-700 font-medium">
-                    {formatDate(order.updatedAt)} at {formatTime(order.updatedAt)}
-                  </span>
+                  <span className="text-slate-400 text-xs uppercase tracking-wider font-semibold">Last updated </span>
+                  <span className="text-slate-700 font-medium">{formatDate(order.updatedAt)} at {formatTime(order.updatedAt)}</span>
                 </p>
               )}
             </div>
           </div>
         </div>
-      </main>
-
-      {/* Mobile bottom nav */}
-      <nav className="md:hidden fixed bottom-0 w-full z-50 flex justify-around items-center px-4 py-2 bg-white rounded-t-xl shadow-[0_-4px_20px_rgba(15,23,42,0.05)]">
-        {NAV_ITEMS.map((tab) => (
-          <button
-            key={tab.label}
-            onClick={() => navigate(tab.path)}
-            className={`flex flex-col items-center px-4 py-1 rounded-2xl transition ${
-              location.pathname === tab.path
-                ? "bg-amber-100 text-amber-700"
-                : "text-slate-400 hover:bg-slate-100"
-            }`}
-          >
-            <span className="material-symbols-outlined text-2xl">{tab.icon}</span>
-            <span className="text-xs font-semibold mt-1">{tab.label}</span>
-          </button>
-        ))}
-      </nav>
-    </div>
+      </div>
+    </AppLayout>
   );
 };
 
