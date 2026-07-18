@@ -10,8 +10,7 @@ import Favorites from "./pages/Favorites";
 import RestaurantDetail from "./pages/RestaurantDetail";
 import Cart from "./pages/Cart";
 import OrderDetail from "./pages/OrderDetail";
-import OwnerDashboard from "./pages/OwnerDashboard";
-import ManageRestaurant from "./pages/ManageRestaurant";
+import Dashboard from "./pages/ManageRestaurant";
 import ProtectedRoute from "./components/ProtectedRoute";
 import OwnerRoute from "./components/OwnerRoute";
 
@@ -43,15 +42,7 @@ function App() {
               path="/dashboard"
               element={
                 <OwnerRoute>
-                  <OwnerDashboard />
-                </OwnerRoute>
-              }
-            />
-            <Route
-              path="/dashboard/restaurant/:id"
-              element={
-                <OwnerRoute>
-                  <ManageRestaurant />
+                  <Dashboard />
                 </OwnerRoute>
               }
             />

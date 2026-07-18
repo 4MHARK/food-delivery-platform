@@ -56,10 +56,30 @@ router.get("/restaurants/:id", async (req, res) => {
   }
 });
 
+// Get the current owner's restaurant (or null)
+router.get("/my-restaurant", authMiddleware, async (req, res) => {
+  try {
+    const restaurant = await prisma.restaurant.findFirst({
+      where: { ownerId: req.user.id },
+      include: { owner: { select: { id: true, name: true, email: true } } },
+    });
+    res.status(200).json({ restaurant: restaurant || null });
+  } catch (error) {
+    res.status(500).json({ message: "Server error", error: error.message });
+  }
+});
+
 // creates a new restaurant
-router.post("/restaurants", authMiddleware,ownerMiddleware ,async (req, res) => {
+router.post("/restaurants", authMiddleware, ownerMiddleware, async (req, res) => {
   try {
     const { name, description, address, phone, imageUrl } = req.body;
+
+    // Enforce 1 restaurant per owner
+    const existing = await prisma.restaurant.findFirst({ where: { ownerId: req.user.id } });
+    if (existing) {
+      return res.status(400).json({ message: "You already have a restaurant. Each owner can only have one restaurant." });
+    }
+
     const newRestaurant = await prisma.restaurant.create({
       data: {
         name,
