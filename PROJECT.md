@@ -8,7 +8,7 @@ A food delivery platform where customers order from restaurants. Built with Reac
 
 ## Current State (as of 2026-07-18)
 
-**Phase:** Customer flow complete. Owner dashboard built. Owner order management next.
+**Phase:** Customer flow complete. Owner dashboard + order management complete. Shared layout refactor next.
 
 ---
 
@@ -53,7 +53,7 @@ A food delivery platform where customers order from restaurants. Built with Reac
 |---------|---------|
 | OwnerRoute | Restricts access to OWNER role only |
 | Dashboard | Restaurant list, create restaurant form (name, description, address, phone, image), stats cards |
-| Manage Restaurant | Edit restaurant info, full menu CRUD (add, edit, delete items), toast notifications |
+| Manage Restaurant | Edit restaurant info, full menu CRUD (add, edit, delete items), toast notifications, Orders tab (view + status update dropdown), tab navigation |
 
 ---
 
@@ -67,7 +67,6 @@ A food delivery platform where customers order from restaurants. Built with Reac
 
 | Feature | Priority |
 |---------|----------|
-| Orders tab on ManageRestaurant (view + update status) | 🔴 Next |
 | Favorites page (real functionality) | 🟡 |
 | Extract shared Layout component (header/nav duplicated 7×) | 🟡 |
 | 404 page | 🟢 |
@@ -82,7 +81,7 @@ A food delivery platform where customers order from restaurants. Built with Reac
 
 | Bug | Severity | Status |
 |-----|----------|--------|
-| GET /api/users is unprotected (returns all user data) | 🟡 Medium | Not fixed |
+| GET /api/users now requires auth (was unprotected) | 🟢 Low | Fixed |
 | App.css contains unused Vite boilerplate | 🟢 Low | Not fixed |
 | Header + bottom nav duplicated across 7 page components | 🟡 Medium | Not fixed |
 
@@ -92,6 +91,7 @@ A food delivery platform where customers order from restaurants. Built with Reac
 
 | Date | What was done |
 |------|--------------|
+| 2026-07-18 | Orders tab added to ManageRestaurant: view all orders, update status via dropdown, loading/error/empty states. GET /users secured with auth middleware. |
 | 2026-07-18 | Owner dashboard + restaurant management built. OwnerRoute, create restaurant form, menu CRUD. Role-based redirect after login/signup. |
 | 2026-07-18 | Order detail page built with status timeline (desktop horizontal, mobile vertical), items breakdown, price summary. Orders heading renamed to "Order History". |
 | 2026-07-18 | CartContext + Cart page built. Shared cart state persisted to localStorage. Checkout flow: add items → cart → delivery address → place order → order history. |

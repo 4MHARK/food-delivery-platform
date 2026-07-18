@@ -8,7 +8,7 @@ import authMiddleware from "../middleware/auth.middleware.js";
 // Create a express app that only handles Routes
 const router = express.Router();
 
-router.get("/users", async (req, res) => {
+router.get("/users", authMiddleware, async (req, res) => {
   try {
     const users = await prisma.user.findMany({
       select: {

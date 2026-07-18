@@ -33,6 +33,13 @@ const ManageRestaurant = () => {
   const [savingMenu, setSavingMenu] = useState(false);
   const [deletingId, setDeletingId] = useState(null);
 
+  // Tabs + Orders
+  const [activeTab, setActiveTab] = useState("menu");
+  const [orders, setOrders] = useState([]);
+  const [ordersLoading, setOrdersLoading] = useState(false);
+  const [ordersError, setOrdersError] = useState("");
+  const [updatingOrderId, setUpdatingOrderId] = useState(null);
+
   // Global
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -48,6 +55,62 @@ const ManageRestaurant = () => {
       if (res.ok) setMenuItems(data.menuItems || []);
     } catch { /* silent */ }
   };
+
+  // ── Orders ──
+  const ORDER_STATUS = {
+    PENDING:    { label: "Pending",    color: "bg-amber-100 text-amber-700 border-amber-200" },
+    CONFIRMED:  { label: "Confirmed",  color: "bg-blue-100 text-blue-700 border-blue-200" },
+    PREPARING:  { label: "Preparing",  color: "bg-orange-100 text-orange-700 border-orange-200" },
+    READY:      { label: "Ready",      color: "bg-emerald-100 text-emerald-700 border-emerald-200" },
+    DELIVERING: { label: "Delivering", color: "bg-purple-100 text-purple-700 border-purple-200" },
+    DELIVERED:  { label: "Delivered",  color: "bg-green-100 text-green-700 border-green-200" },
+    CANCELLED:  { label: "Cancelled",  color: "bg-slate-100 text-slate-500 border-slate-200" },
+  };
+  const ALL_STATUSES = ["PENDING", "CONFIRMED", "PREPARING", "READY", "DELIVERING", "DELIVERED", "CANCELLED"];
+
+  const fetchOrders = async () => {
+    try {
+      setOrdersLoading(true);
+      setOrdersError("");
+      const res = await fetch(`${import.meta.env.VITE_API_URL}/restaurants/${id}/orders`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json();
+      if (!res.ok) { setOrdersError(data.message || "Failed to load orders"); return; }
+      setOrders(data.orders || []);
+    } catch {
+      setOrdersError("Something went wrong. Please try again.");
+    } finally {
+      setOrdersLoading(false);
+    }
+  };
+
+  const handleUpdateStatus = async (orderId, newStatus) => {
+    if (newStatus === orders.find((o) => o.id === orderId)?.status) return;
+    try {
+      setUpdatingOrderId(orderId);
+      const res = await fetch(`${import.meta.env.VITE_API_URL}/orders/${orderId}/status`, {
+        method: "PUT",
+        headers: authHeaders,
+        body: JSON.stringify({ status: newStatus }),
+      });
+      const data = await res.json();
+      if (!res.ok) { showMsg(data.message || "Failed to update status"); return; }
+      setOrders((prev) => prev.map((o) => (o.id === orderId ? { ...o, status: newStatus } : o)));
+      showMsg(`Order #${orderId} → ${ORDER_STATUS[newStatus].label}`);
+    } catch {
+      showMsg("Failed to update order status");
+    } finally {
+      setUpdatingOrderId(null);
+    }
+  };
+
+  // Fetch orders when tab switches
+  useEffect(() => {
+    if (activeTab === "orders" && orders.length === 0 && !ordersLoading) {
+      fetchOrders();
+    }
+  }, [activeTab]);
 
   useEffect(() => {
     const load = async () => {
@@ -310,7 +373,39 @@ const ManageRestaurant = () => {
           )}
         </div>
 
-        {/* Menu Items */}
+        {/* ── Tabs ── */}
+        <div className="flex gap-1 bg-slate-100 rounded-xl p-1 mb-6">
+          <button
+            onClick={() => setActiveTab("menu")}
+            className={`flex-1 py-2.5 px-4 rounded-lg text-sm font-bold transition ${
+              activeTab === "menu"
+                ? "bg-white text-slate-900 shadow-sm"
+                : "text-slate-500 hover:text-slate-700"
+            }`}
+          >
+            <span className="material-symbols-outlined text-sm mr-1.5 align-middle">menu_book</span>
+            Menu
+            <span className="ml-1.5 text-slate-400 text-xs font-normal">({menuItems.length})</span>
+          </button>
+          <button
+            onClick={() => setActiveTab("orders")}
+            className={`flex-1 py-2.5 px-4 rounded-lg text-sm font-bold transition ${
+              activeTab === "orders"
+                ? "bg-white text-slate-900 shadow-sm"
+                : "text-slate-500 hover:text-slate-700"
+            }`}
+          >
+            <span className="material-symbols-outlined text-sm mr-1.5 align-middle">receipt_long</span>
+            Orders
+            {orders.length > 0 && (
+              <span className="ml-1.5 bg-slate-900 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full">
+                {orders.length}
+              </span>
+            )}
+          </button>
+        </div>
+
+        {activeTab === "menu" && (
         <section className="mb-6">
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-lg font-bold text-slate-900">
@@ -454,6 +549,167 @@ const ManageRestaurant = () => {
             </div>
           )}
         </section>
+        )}
+
+        {/* ── Orders Tab ── */}
+        {activeTab === "orders" && (
+        <section className="mb-6">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-lg font-bold text-slate-900">
+              Orders
+              {orders.length > 0 && (
+                <span className="text-slate-400 text-sm font-normal ml-2">({orders.length})</span>
+              )}
+            </h3>
+            <button
+              onClick={fetchOrders}
+              disabled={ordersLoading}
+              className="text-xs font-semibold text-amber-500 hover:text-amber-600 transition flex items-center gap-1 disabled:opacity-50"
+            >
+              <span className={`material-symbols-outlined text-sm ${ordersLoading ? "animate-spin" : ""}`}>
+                {ordersLoading ? "progress_activity" : "refresh"}
+              </span>
+              Refresh
+            </button>
+          </div>
+
+          {/* Orders Error */}
+          {ordersError && !ordersLoading && (
+            <div className="bg-red-50 rounded-2xl p-6 text-center mb-4">
+              <div className="w-12 h-12 rounded-full bg-red-100 flex items-center justify-center mx-auto mb-3">
+                <span className="material-symbols-outlined text-2xl text-red-400">error_outline</span>
+              </div>
+              <p className="text-sm text-red-600 font-medium mb-3">{ordersError}</p>
+              <button
+                onClick={fetchOrders}
+                className="text-sm font-semibold text-red-600 hover:text-red-700 underline transition"
+              >
+                Try again
+              </button>
+            </div>
+          )}
+
+          {/* Orders Loading */}
+          {ordersLoading && (
+            <div className="space-y-4">
+              {[1, 2, 3].map((i) => (
+                <div key={i} className="bg-white rounded-2xl shadow-sm p-5 space-y-3">
+                  <div className="flex justify-between">
+                    <div className="w-32 h-5 bg-slate-200 animate-pulse rounded" />
+                    <div className="w-20 h-5 bg-slate-200 animate-pulse rounded-full" />
+                  </div>
+                  <div className="w-full h-4 bg-slate-200 animate-pulse rounded" />
+                  <div className="w-1/2 h-4 bg-slate-200 animate-pulse rounded" />
+                  <div className="flex justify-between pt-2">
+                    <div className="w-24 h-5 bg-slate-200 animate-pulse rounded" />
+                    <div className="w-16 h-5 bg-slate-200 animate-pulse rounded" />
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Orders Empty */}
+          {!ordersLoading && !ordersError && orders.length === 0 && (
+            <div className="bg-white rounded-2xl shadow-sm p-8 text-center">
+              <div className="w-16 h-16 rounded-full bg-slate-100 flex items-center justify-center mx-auto mb-3">
+                <span className="material-symbols-outlined text-3xl text-slate-300">receipt_long</span>
+              </div>
+              <h4 className="text-sm font-bold text-slate-900 mb-1">No orders yet</h4>
+              <p className="text-xs text-slate-400">Orders from customers will appear here.</p>
+            </div>
+          )}
+
+          {/* Orders List */}
+          {!ordersLoading && !ordersError && orders.length > 0 && (
+            <div className="space-y-4">
+              {orders.map((order) => {
+                const status = ORDER_STATUS[order.status] || ORDER_STATUS.PENDING;
+                const isTerminal = order.status === "DELIVERED" || order.status === "CANCELLED";
+                return (
+                  <div key={order.id} className="bg-white rounded-2xl shadow-sm overflow-hidden">
+                    {/* Order header */}
+                    <div className="px-5 py-4 flex items-center justify-between gap-4">
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="text-xs text-slate-400 font-semibold uppercase tracking-wider">
+                            Order #{order.id}
+                          </span>
+                          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${status.color}`}>
+                            {status.label}
+                          </span>
+                        </div>
+                        <p className="text-xs text-slate-500 mt-1 truncate">
+                          {order.customer?.name || "Unknown customer"} ·{" "}
+                          {new Date(order.createdAt).toLocaleDateString("en-US", {
+                            month: "short", day: "numeric", year: "numeric",
+                          })}{" "}
+                          at{" "}
+                          {new Date(order.createdAt).toLocaleTimeString("en-US", {
+                            hour: "numeric", minute: "2-digit",
+                          })}
+                        </p>
+                      </div>
+
+                      {/* Status update control */}
+                      {!isTerminal ? (
+                        <div className="flex items-center gap-2 shrink-0">
+                          <select
+                            value={order.status}
+                            onChange={(e) => handleUpdateStatus(order.id, e.target.value)}
+                            disabled={updatingOrderId === order.id}
+                            className="text-xs font-semibold border border-slate-200 rounded-lg px-2 py-1.5 bg-slate-50 focus:ring-1 focus:ring-amber-500 outline-none disabled:opacity-50 cursor-pointer"
+                          >
+                            {ALL_STATUSES.map((s) => (
+                              <option key={s} value={s} disabled={s === order.status}>
+                                {ORDER_STATUS[s].label}
+                              </option>
+                            ))}
+                          </select>
+                          {updatingOrderId === order.id && (
+                            <span className="material-symbols-outlined text-sm text-amber-500 animate-spin">
+                              progress_activity
+                            </span>
+                          )}
+                        </div>
+                      ) : (
+                        <span className="text-[10px] text-slate-400 font-medium shrink-0">
+                          {order.status === "DELIVERED" ? "Completed" : "No actions"}
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Order items */}
+                    <div className="border-t border-slate-50 px-5 py-3 space-y-1.5">
+                      {order.orderItems?.map((item, idx) => (
+                        <div key={idx} className="flex items-center justify-between text-sm">
+                          <span className="text-slate-600">
+                            {item.quantity}× {item.menuItem?.name || `Item #${item.menuItemId}`}
+                          </span>
+                          <span className="text-slate-400 text-xs">
+                            ₦{(item.price * item.quantity).toLocaleString()}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* Order footer */}
+                    <div className="border-t border-slate-50 px-5 py-3 flex items-center justify-between bg-slate-50/30">
+                      <div className="flex items-center gap-1.5 text-xs text-slate-400 min-w-0">
+                        <span className="material-symbols-outlined text-sm shrink-0">location_on</span>
+                        <span className="truncate">{order.deliveryAddress}</span>
+                      </div>
+                      <span className="text-sm font-bold text-slate-900 shrink-0 ml-2">
+                        ₦{Number(order.total).toLocaleString()}
+                      </span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </section>
+        )}
       </main>
 
       {/* Mobile bottom nav */}
