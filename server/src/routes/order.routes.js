@@ -77,8 +77,12 @@ router.get("/orders", authMiddleware, async (req, res) => {
     const orders = await prisma.order.findMany({
       where: { customerId: req.user.id },
       include: {
-        orderItems: true,
-        restaurant: true,
+        orderItems: {
+          include:{
+            menuItem:{select: {name: true}}
+          }
+        },
+        restaurant: true
       },
       orderBy: {
         createdAt: "desc",

@@ -9,6 +9,7 @@ import Orders from "./pages/Orders";
 import Favorites from "./pages/Favorites";
 import RestaurantDetail from "./pages/RestaurantDetail";
 import Cart from "./pages/Cart";
+import OrderDetail from "./pages/OrderDetail";
 import ProtectedRoute from "./components/ProtectedRoute";
 
 function App() {
@@ -35,6 +36,14 @@ function App() {
               element={
                 <ProtectedRoute>
                   <Orders />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/orders/:id"
+              element={
+                <ProtectedRoute>
+                  <OrderDetail />
                 </ProtectedRoute>
               }
             />
