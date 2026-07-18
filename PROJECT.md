@@ -8,7 +8,7 @@ A food delivery platform where customers order from restaurants. Built with Reac
 
 ## Current State (as of 2026-07-18)
 
-**Phase:** Customer flow complete. Owner dashboard + order management complete. Shared layout refactor next.
+**Phase:** Customer flow complete. Owner dashboard + order management complete. Payment system next.
 
 ---
 
@@ -54,6 +54,7 @@ A food delivery platform where customers order from restaurants. Built with Reac
 | OwnerRoute | Restricts access to OWNER role only |
 | Dashboard | Restaurant list, create restaurant form (name, description, address, phone, image), stats cards |
 | Manage Restaurant | Edit restaurant info, full menu CRUD (add, edit, delete items), toast notifications, Orders tab (view + status update dropdown), tab navigation |
+| Shared Layout | AppLayout component extracted — header, mobile nav, user dropdown, cart. All 8 pages refactored. ~1,450 lines removed. |
 
 ---
 
@@ -67,8 +68,8 @@ A food delivery platform where customers order from restaurants. Built with Reac
 
 | Feature | Priority |
 |---------|----------|
+| Payment system (wallet/card) | 🔴 Next |
 | Favorites page (real functionality) | 🟡 |
-| Extract shared Layout component (header/nav duplicated 7×) | 🟡 |
 | 404 page | 🟢 |
 | Seed data for development | 🟢 |
 | Rider role + delivery tracking | 🟢 (post-MVP) |
@@ -91,6 +92,7 @@ A food delivery platform where customers order from restaurants. Built with Reac
 
 | Date | What was done |
 |------|--------------|
+| 2026-07-18 | Shared AppLayout component extracted — all 8 pages refactored, ~1,450 lines of duplicated header/nav removed. |
 | 2026-07-18 | Orders tab added to ManageRestaurant: view all orders, update status via dropdown, loading/error/empty states. GET /users secured with auth middleware. |
 | 2026-07-18 | Owner dashboard + restaurant management built. OwnerRoute, create restaurant form, menu CRUD. Role-based redirect after login/signup. |
 | 2026-07-18 | Order detail page built with status timeline (desktop horizontal, mobile vertical), items breakdown, price summary. Orders heading renamed to "Order History". |
