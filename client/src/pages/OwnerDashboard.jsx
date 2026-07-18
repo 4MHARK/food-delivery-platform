@@ -16,13 +16,44 @@ const OwnerDashboard = () => {
   const [form, setForm] = useState(initialForm);
   const [creating, setCreating] = useState(false);
   const [formError, setFormError] = useState("");
+  const [stats, setStats] = useState({ menuItems: null, orders: null });
+
+  const fetchStats = async (ownedRestaurants) => {
+    const token = localStorage.getItem("token");
+    try {
+      const results = await Promise.all(
+        ownedRestaurants.map(async (r) => {
+          const [menuRes, ordersRes] = await Promise.all([
+            fetch(`${import.meta.env.VITE_API_URL}/restaurants/${r.id}/menu-items`),
+            fetch(`${import.meta.env.VITE_API_URL}/restaurants/${r.id}/orders`, {
+              headers: { Authorization: `Bearer ${token}` },
+            }),
+          ]);
+          const menuData = menuRes.ok ? await menuRes.json() : { menuItems: [] };
+          const ordersData = ordersRes.ok ? await ordersRes.json() : { orders: [] };
+          return {
+            menuCount: (menuData.menuItems || []).length,
+            orderCount: (ordersData.orders || []).length,
+          };
+        })
+      );
+      setStats({
+        menuItems: results.reduce((sum, r) => sum + r.menuCount, 0),
+        orders: results.reduce((sum, r) => sum + r.orderCount, 0),
+      });
+    } catch {
+      // stats are non-critical — leave null on failure
+    }
+  };
 
   const fetchRestaurants = async () => {
     try {
       const res = await fetch(`${import.meta.env.VITE_API_URL}/restaurants`);
       const data = await res.json();
       if (!res.ok) { setError(data.message || "Failed to load"); return; }
-      setRestaurants(data.restaurants.filter((r) => r.ownerId === user?.id));
+      const owned = data.restaurants.filter((r) => r.ownerId === user?.id);
+      setRestaurants(owned);
+      if (owned.length > 0) fetchStats(owned);
     } catch {
       setError("Something went wrong. Please try again.");
     } finally {
@@ -135,12 +166,12 @@ const OwnerDashboard = () => {
             </div>
             <div className="bg-white rounded-2xl shadow-sm p-5">
               <span className="material-symbols-outlined text-3xl text-blue-500 mb-3">menu_book</span>
-              <p className="text-2xl font-bold text-slate-900">—</p>
+              <p className="text-2xl font-bold text-slate-900">{stats.menuItems !== null ? stats.menuItems : "—"}</p>
               <p className="text-xs text-slate-400 mt-1 uppercase tracking-wider font-semibold">Menu Items</p>
             </div>
             <div className="bg-white rounded-2xl shadow-sm p-5">
               <span className="material-symbols-outlined text-3xl text-emerald-500 mb-3">receipt_long</span>
-              <p className="text-2xl font-bold text-slate-900">—</p>
+              <p className="text-2xl font-bold text-slate-900">{stats.orders !== null ? stats.orders : "—"}</p>
               <p className="text-xs text-slate-400 mt-1 uppercase tracking-wider font-semibold">Orders</p>
             </div>
           </div>

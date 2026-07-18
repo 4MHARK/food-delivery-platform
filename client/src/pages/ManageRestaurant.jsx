@@ -95,7 +95,7 @@ const ManageRestaurant = () => {
   };
 
   useEffect(() => {
-    if (activeTab === "orders" && orders.length === 0 && !ordersLoading) {
+    if (activeTab === "orders") {
       fetchOrders();
     }
   }, [activeTab]);

@@ -1,5 +1,5 @@
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
-import { AuthProvider } from "./context/AuthContext";
+import { AuthProvider, useAuth } from "./context/AuthContext";
 import { CartProvider } from "./context/CartContext";
 import Signup from "./pages/Signup";
 import Login from "./pages/Login";
@@ -15,13 +15,18 @@ import ManageRestaurant from "./pages/ManageRestaurant";
 import ProtectedRoute from "./components/ProtectedRoute";
 import OwnerRoute from "./components/OwnerRoute";
 
+function HomeRedirect() {
+  const { user } = useAuth();
+  return <Navigate to={user?.role === "OWNER" ? "/dashboard" : "/restaurants"} replace />;
+}
+
 function App() {
   return (
     <BrowserRouter>
       <AuthProvider>
         <CartProvider>
           <Routes>
-            <Route path="/" element={<Navigate to="/restaurants" replace />} />
+            <Route path="/" element={<HomeRedirect />} />
             <Route path="/signup" element={<Signup />} />
             <Route path="/login" element={<Login />} />
             <Route path="/restaurants" element={<RestaurantList />} />

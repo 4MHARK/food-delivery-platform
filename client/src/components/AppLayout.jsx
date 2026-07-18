@@ -71,8 +71,9 @@ const AppLayout = ({
     navigate("/login");
   };
 
-  const desktopNav = desktopNavItems || DEFAULT_NAV;
-  const bottomNav = bottomNavItems || DEFAULT_NAV;
+  const isOwner = user?.role === "OWNER";
+  const desktopNav = desktopNavItems || (isOwner ? OWNER_NAV : DEFAULT_NAV);
+  const bottomNav = bottomNavItems || (isOwner ? OWNER_NAV : DEFAULT_NAV);
   const currentPath = location.pathname;
 
   // ── Header ──
@@ -104,7 +105,7 @@ const AppLayout = ({
 
           {/* Logo */}
           <button
-            onClick={() => navigate("/restaurants")}
+            onClick={() => navigate(isOwner ? "/dashboard" : "/restaurants")}
             className={`font-extrabold text-amber-500 tracking-tight ${
               (backTo || onBack) ? "text-xl hidden sm:block" : "text-2xl"
             }`}
@@ -192,6 +193,15 @@ const AppLayout = ({
                     <span className="material-symbols-outlined text-slate-400 text-xl">receipt_long</span>
                     My Orders
                   </button>
+                  {isOwner && (
+                    <button
+                      onClick={() => { navigate("/dashboard"); setUserDropdownOpen(false); }}
+                      className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-slate-700 hover:bg-slate-50 transition font-medium"
+                    >
+                      <span className="material-symbols-outlined text-slate-400 text-xl">dashboard</span>
+                      Dashboard
+                    </button>
+                  )}
                   <div className="border-t border-slate-100 mt-1 pt-1">
                     <button
                       onClick={handleLogout}
