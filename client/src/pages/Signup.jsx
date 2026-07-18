@@ -69,7 +69,12 @@ const Signup = () => {
       }
 
       login(data.token, data.user);
-      navigate("/restaurants");
+
+      if (data.user.role === "OWNER") {
+        navigate("/dashboard");
+      } else {
+        navigate("/restaurants");
+      }
     } catch (error) {
       console.log(error);
       setError("Something went wrong. Please try again.");
