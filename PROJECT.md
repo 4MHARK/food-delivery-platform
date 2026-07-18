@@ -6,51 +6,60 @@ A food delivery platform where customers order from restaurants. Built with Reac
 
 ---
 
-## Current State (as of 2026-07-17)
+## Current State (as of 2026-07-18)
 
-**Phase:** Order API complete. Frontend features next.
+**Phase:** Customer flow complete. Owner dashboard built. Owner order management next.
 
 ---
 
 ## ✅ Completed
 
+### Backend
+
 | Feature | Details |
 |---------|---------|
-| Backend server | Express 5 on port 5000, CORS enabled, JSON parsing |
-| Database setup | PostgreSQL via Prisma, User table with migration |
-| User registration | POST /api/users — validates, hashes password with bcrypt, saves user |
-| User login API | POST /api/users/login — validates credentials, returns JWT |
-| Profile API | GET /api/users/profile — JWT-protected, returns user data |
+| Server | Express 5 on port 5000, CORS, JSON parsing |
+| Database | PostgreSQL via Prisma, full schema with 5 models |
+| User auth | POST /users (signup, now returns JWT), POST /users/login, GET+PUT /users/profile |
 | JWT middleware | Verifies Bearer token, attaches user to request |
-| Health check | GET /api/health |
-| Signup page | Full form with validation, API integration, error/loading states, animations, card layout matching login |
-| Login page | Form with email/password, validation, styled card, social buttons, "Forgot password" link |
-| Profile page | Sidebar nav, tab switching, user summary, Personal Information form with edit/save, calls GET + PUT /api/users/profile |
-| Profile update API | PUT /api/users/profile — validated, checks duplicate email, updates user |
-| Auth context | AuthContext + useAuth hook — central auth state (user, token, login, logout, updateUser) |
-| Protected routes | ProtectedRoute component — redirects to /login if no token |
+| Owner middleware | Role enforcement — blocks CUSTOMER from owner actions |
+| Restaurant API | Full CRUD: GET all, GET/:id, POST (owner), PUT/:id (owner) |
+| MenuItem API | Full CRUD: GET by restaurant, POST (owner), PUT/:id (owner), DELETE/:id (owner) |
+| Order API | POST (customer), GET all (customer), GET/:id (customer+owner), PUT/:id/status (owner) |
+| Restaurant orders | GET /restaurants/:id/orders — owner views orders for their restaurant |
+
+### Frontend — Customer
+
+| Feature | Details |
+|---------|---------|
+| Signup | Role selector (Customer/Owner), auto-login after signup, role-based redirect |
+| Login | Email/password, JWT stored, role-based redirect (OWNER → /dashboard, CUSTOMER → /restaurants) |
+| Restaurant list | Real data, search bar, category filters, skeleton loading, error/empty states, responsive card grid |
+| Restaurant detail | Hero image, restaurant info, category-filtered menu, add-to-cart with +/- controls |
+| Cart (CartContext) | Shared state persisted to localStorage, survives navigation and refresh |
+| Cart page | Items grouped by restaurant, quantity controls, delivery address, place order via POST /orders |
+| Order history | Real data from GET /orders, status badges with color coding, skeleton/error/empty states |
+| Order detail | Status timeline (desktop horizontal, mobile vertical), items breakdown, price summary, delivery address |
+| Profile | View/edit personal info, tab switching |
+| Protected routes | ProtectedRoute + OwnerRoute components, role-based access |
+| Desktop navigation | Top navbar with nav links, cart icon with badge, user dropdown (profile, orders, logout) |
+| Mobile navigation | Bottom nav bar, hamburger menu with slide-down panel |
 | Logout | Clears context + localStorage, redirects to /login |
-| Material Symbols | Icon font loaded in index.html, used across all pages |
-| Page title | Changed from "client" to "ChowZilla" |
-| Routing | / → /signup, /signup, /login, /profile (protected) |
-| Branding | "ChowZilla" name, amber-500 color scheme, Plus Jakarta Sans font |
-| Custom animations | fadeIn, fadeUp, slideIn keyframes in Tailwind |
-| Restaurant model | Restaurant table with owner relation, migration applied |
-| Restaurant API | GET all, GET by id, POST (auth), PUT with ownership check (auth) |
-| MenuItem model | MenuItem table with Restaurant relation, isAvailable default, migration applied |
-| MenuItem API | 4 endpoints: POST (auth+ownership), GET all (public), PUT (auth+ownership), DELETE (auth+ownership) |
-| Order model | Order + OrderItem tables with OrderStatus enum, price snapshotting |
-| Order API | 4 endpoints: POST (auth), GET all (auth), GET/:id (auth), PUT/:id/status (auth+ownership) |
-| Owner middleware | Reusable role enforcement — blocks CUSTOMER from owner actions |
-| JWT role fix | Added role to JWT payload (was missing, broke ownerMiddleware) |
-| Project docs | CLAUDE.md (AI instructions), PROJECT.md (status tracker), README.md (setup guide) |
-| End-to-end tests | All endpoints tested via curl (17 tests passed) |
+| Branding | "ChowZilla" name, amber-500 color scheme, Material Symbols icons |
+
+### Frontend — Owner
+
+| Feature | Details |
+|---------|---------|
+| OwnerRoute | Restricts access to OWNER role only |
+| Dashboard | Restaurant list, create restaurant form (name, description, address, phone, image), stats cards |
+| Manage Restaurant | Edit restaurant info, full menu CRUD (add, edit, delete items), toast notifications |
 
 ---
 
 ## 🟡 In Progress
 
-*None — ready for frontend features.*
+*None.*
 
 ---
 
@@ -58,13 +67,14 @@ A food delivery platform where customers order from restaurants. Built with Reac
 
 | Feature | Priority |
 |---------|----------|
-| Restaurant listing page (frontend) | 🔴 Next |
-| Owner dashboard (frontend) | 🟡 |
-| Navigation/navbar component | 🟡 |
-| Password visibility toggle | 🟢 |
+| Orders tab on ManageRestaurant (view + update status) | 🔴 Next |
+| Favorites page (real functionality) | 🟡 |
+| Extract shared Layout component (header/nav duplicated 7×) | 🟡 |
 | 404 page | 🟢 |
 | Seed data for development | 🟢 |
-| Tests | 🟢 (post-MVP) |
+| Rider role + delivery tracking | 🟢 (post-MVP) |
+| Real-time order updates (WebSockets) | 🟢 (post-MVP) |
+| Image upload instead of URL pasting | 🟢 (post-MVP) |
 
 ---
 
@@ -74,7 +84,7 @@ A food delivery platform where customers order from restaurants. Built with Reac
 |-----|----------|--------|
 | GET /api/users is unprotected (returns all user data) | 🟡 Medium | Not fixed |
 | App.css contains unused Vite boilerplate | 🟢 Low | Not fixed |
-| `console.log(error)` in Login.jsx and Signup.jsx catch blocks | 🟢 Low | Not fixed |
+| Header + bottom nav duplicated across 7 page components | 🟡 Medium | Not fixed |
 
 ---
 
@@ -82,6 +92,12 @@ A food delivery platform where customers order from restaurants. Built with Reac
 
 | Date | What was done |
 |------|--------------|
+| 2026-07-18 | Owner dashboard + restaurant management built. OwnerRoute, create restaurant form, menu CRUD. Role-based redirect after login/signup. |
+| 2026-07-18 | Order detail page built with status timeline (desktop horizontal, mobile vertical), items breakdown, price summary. Orders heading renamed to "Order History". |
+| 2026-07-18 | CartContext + Cart page built. Shared cart state persisted to localStorage. Checkout flow: add items → cart → delivery address → place order → order history. |
+| 2026-07-18 | Restaurant detail page built with hero section, category-filtered menu, add-to-cart with +/- controls, mobile cart bar. |
+| 2026-07-18 | Restaurant list page redesigned: desktop top navbar with user dropdown and logout, mobile hamburger menu + bottom nav, skeleton loading, search, filters. |
+| 2026-07-18 | Orders and Favorites placeholder pages created. Bottom nav wired across all pages. Auto-login after signup. Signup role selector fixed (Customer/Owner radio buttons). |
 | 2026-07-17 | Order model + CRUD API built and tested. 4 endpoints (POST, GET all, GET/:id, PUT status) with auth and ownership checks. 4/4 tests passed. |
 | 2026-07-13 | MenuItem model + CRUD API built and tested. 4 endpoints (POST, GET, PUT, DELETE) with auth and ownership checks. 4/4 curl tests passed. |
 | 2026-07-10 | Restaurant model + CRUD API built and tested. 4 endpoints (GET all, GET/:id, POST, PUT) with auth and ownership checks. 9/9 curl tests passed. |

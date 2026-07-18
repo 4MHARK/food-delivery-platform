@@ -100,6 +100,50 @@ router.get("/orders", authMiddleware, async (req, res) => {
   }
 });
 
+// Fetch all orders for a restaurant (owner only)
+router.get("/restaurants/:id/orders", authMiddleware, async (req, res) => {
+  try {
+    const restaurantId = Number(req.params.id);
+
+    const restaurant = await prisma.restaurant.findUnique({
+      where: { id: restaurantId },
+    });
+
+    if (!restaurant) {
+      return res.status(404).json({ message: "Restaurant not found" });
+    }
+
+    if (restaurant.ownerId !== req.user.id) {
+      return res.status(403).json({ message: "You can only view orders for your restaurant" });
+    }
+
+    const orders = await prisma.order.findMany({
+      where: { restaurantId },
+      include: {
+        orderItems: {
+          include: {
+            menuItem: { select: { id: true, name: true } },
+          },
+        },
+        customer: {
+          select: { id: true, name: true, email: true },
+        },
+      },
+      orderBy: { createdAt: "desc" },
+    });
+
+    res.status(200).json({
+      message: "Orders fetched successfully",
+      orders,
+    });
+  } catch (error) {
+    res.status(500).json({
+      message: "Server error",
+      error: error.message,
+    });
+  }
+});
+
 router.get("/orders/:id", authMiddleware, async (req, res) => {
   try {
     const order = await prisma.order.findUnique({
