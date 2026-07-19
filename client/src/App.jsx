@@ -15,7 +15,14 @@ import ProtectedRoute from "./components/ProtectedRoute";
 import OwnerRoute from "./components/OwnerRoute";
 
 function HomeRedirect() {
-  const { user } = useAuth();
+  const { user, isAuthenticated } = useAuth();
+
+  // Not logged in — show login page
+  if (!isAuthenticated) {
+    return <Navigate to="/login" replace />;
+  }
+
+  // Logged in — route by role
   return <Navigate to={user?.role === "OWNER" ? "/dashboard" : "/restaurants"} replace />;
 }
 
