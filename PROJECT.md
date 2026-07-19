@@ -6,9 +6,17 @@ A food delivery platform where customers order from restaurants. Built with Reac
 
 ---
 
-## Current State (as of 2026-07-18)
+## Current State (as of 2026-07-19)
 
-**Phase:** Customer flow complete. Owner dashboard + order management complete. Payment system next.
+**Phase:** Payment system — schema ready, implementation next.
+
+## Deployment
+
+| Service | URL |
+|---------|-----|
+| Frontend (Vercel) | https://food-delivery-platform-gamma.vercel.app |
+| Backend (Render) | https://food-delivery-platform-jux3.onrender.com |
+| Database (Supabase) | PostgreSQL (session pooler) |
 
 ---
 
@@ -56,7 +64,24 @@ A food delivery platform where customers order from restaurants. Built with Reac
 | Manage Restaurant | Edit restaurant info, full menu CRUD (add, edit, delete items), toast notifications, Orders tab (view + status update dropdown), tab navigation |
 | Shared Layout | AppLayout component extracted — header, mobile nav, user dropdown, cart. All 8 pages refactored. ~1,450 lines removed. |
 
----
+### Infrastructure
+
+| Feature | Details |
+|---------|---------|
+| Deployment | Frontend on Vercel, backend on Render, PostgreSQL on Supabase |
+| CORS | Dynamic origin via CLIENT_URL env var, localhost fallback |
+| SPA routing | vercel.json with rewrite rule — all paths → index.html |
+| Auth routing fix | HomeRedirect checks isAuthenticated before role — guests see login, not restaurants |
+| JWT expiry | Token decoded on init, expired tokens cleared from localStorage |
+
+### Database Schema
+
+| Feature | Details |
+|---------|---------|
+| Wallet model | Added — balance, user relation, transactions |
+| Transaction model | Added — amount, type (DEPOSIT/PAYMENT/REFUND), wallet, optional order |
+| TransactionType enum | Added — DEPOSIT, PAYMENT, REFUND |
+| Supabase | directUrl added for transaction pooler support |
 
 ## 🟡 In Progress
 
@@ -80,11 +105,7 @@ A food delivery platform where customers order from restaurants. Built with Reac
 
 ## Known Bugs
 
-| Bug | Severity | Status |
-|-----|----------|--------|
-| GET /api/users now requires auth (was unprotected) | 🟢 Low | Fixed |
-| App.css contains unused Vite boilerplate | 🟢 Low | Not fixed |
-| Header + bottom nav duplicated across 7 page components | 🟡 Medium | Not fixed |
+*None currently.*
 
 ---
 
@@ -92,6 +113,7 @@ A food delivery platform where customers order from restaurants. Built with Reac
 
 | Date | What was done |
 |------|--------------|
+| 2026-07-19 | Wallet + Transaction models added to schema. Production CORS, SPA rewrites, Render/Neon→Supabase deployment. Auth routing fix: unauthenticated users redirected to /login instead of /restaurants. JWT expiry validation on init. |
 | 2026-07-18 | Shared AppLayout component extracted — all 8 pages refactored, ~1,450 lines of duplicated header/nav removed. |
 | 2026-07-18 | Orders tab added to ManageRestaurant: view all orders, update status via dropdown, loading/error/empty states. GET /users secured with auth middleware. |
 | 2026-07-18 | Owner dashboard + restaurant management built. OwnerRoute, create restaurant form, menu CRUD. Role-based redirect after login/signup. |
