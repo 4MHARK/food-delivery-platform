@@ -1,25 +1,18 @@
-import { createContext, useContext, useState, useEffect } from "react";
+import { createContext, useContext, useState } from "react";
 
 // Step 1: Create the context (the "radio channel")
 const AuthContext = createContext(null);
 
 // Step 2: The provider — wraps the entire app, broadcasts auth state
 export function AuthProvider({ children }) {
-  const [user, setUser] = useState(null);
   const [token, setToken] = useState(() => localStorage.getItem("token"));
-
-  // On first load, restore user from localStorage if it exists
-  useEffect(() => {
-    const storedUser = localStorage.getItem("user");
-    if (storedUser && token) {
-      try {
-        setUser(JSON.parse(storedUser));
-      } catch {
-        // Corrupted data — clear it
-        localStorage.removeItem("user");
-      }
+  const [user, setUser] = useState(() => {
+    const stored = localStorage.getItem("user");
+    if (stored) {
+      try { return JSON.parse(stored); } catch { return null; }
     }
-  }, []); // run once on mount
+    return null;
+  });
 
   // Called after successful login
   const login = (newToken, newUser) => {
@@ -47,7 +40,7 @@ export function AuthProvider({ children }) {
   const value = {
     user,
     token,
-    isAuthenticated: !!token, // converts token to boolean
+    isAuthenticated: !!(token && user),
     login,
     logout,
     updateUser,
