@@ -31,6 +31,7 @@ const Dashboard = () => {
   // Restaurant
   const [restaurant, setRestaurant] = useState(null);
   const [restForm, setRestForm] = useState(initialRestForm);
+  const [creating, setCreating] = useState(false);
   const [savingRest, setSavingRest] = useState(false);
   const [showCreate, setShowCreate] = useState(false);
 
