@@ -6,9 +6,9 @@ A food delivery platform where customers order from restaurants. Built with Reac
 
 ---
 
-## Current State (as of 2026-07-19)
+## Current State (as of 2026-07-20)
 
-**Phase:** Payment system — schema ready, implementation next.
+**Phase:** Payment system — checkout built, Paystack integration next.
 
 ## Deployment
 
@@ -27,14 +27,16 @@ A food delivery platform where customers order from restaurants. Built with Reac
 | Feature | Details |
 |---------|---------|
 | Server | Express 5 on port 5000, CORS, JSON parsing |
-| Database | PostgreSQL via Prisma, full schema with 5 models |
+| Database | PostgreSQL via Prisma, full schema with 6 models |
 | User auth | POST /users (signup, now returns JWT), POST /users/login, GET+PUT /users/profile |
 | JWT middleware | Verifies Bearer token, attaches user to request |
 | Owner middleware | Role enforcement — blocks CUSTOMER from owner actions |
 | Restaurant API | Full CRUD: GET all, GET/:id, POST (owner), PUT/:id (owner) |
 | MenuItem API | Full CRUD: GET by restaurant, POST (owner), PUT/:id (owner), DELETE/:id (owner) |
-| Order API | POST (customer), GET all (customer), GET/:id (customer+owner), PUT/:id/status (owner) |
+| Order API | POST /orders/checkout, GET all (customer), GET/:id (customer+owner), PUT/:id/status (owner) |
 | Restaurant orders | GET /restaurants/:id/orders — owner views orders for their restaurant |
+| Fee calculator | Backend-owned pricing: subtotal, deliveryFee, serviceFee, tax (7.5%), totalAmount |
+| Payment model | Created alongside order: PAYSTACK provider, unique reference, PENDING/SUCCESS/FAILED status |
 
 ### Frontend — Customer
 
@@ -45,7 +47,7 @@ A food delivery platform where customers order from restaurants. Built with Reac
 | Restaurant list | Real data, search bar, category filters, skeleton loading, error/empty states, responsive card grid |
 | Restaurant detail | Hero image, restaurant info, category-filtered menu, add-to-cart with +/- controls |
 | Cart (CartContext) | Shared state persisted to localStorage, survives navigation and refresh |
-| Cart page | Items grouped by restaurant, quantity controls, delivery address, place order via POST /orders |
+| Cart page | Items grouped by restaurant, fee breakdown (subtotal, delivery, service, tax, total), checkout via /orders/checkout |
 | Order history | Real data from GET /orders, status badges with color coding, skeleton/error/empty states |
 | Order detail | Status timeline (desktop horizontal, mobile vertical), items breakdown, price summary, delivery address |
 | Profile | View/edit personal info, tab switching |
@@ -74,32 +76,68 @@ A food delivery platform where customers order from restaurants. Built with Reac
 | Auth routing fix | HomeRedirect checks isAuthenticated before role — guests see login, not restaurants |
 | JWT expiry | Token decoded on init, expired tokens cleared from localStorage |
 
-### Database Schema
+### Database Schema (v1 — current)
 
-| Feature | Details |
-|---------|---------|
-| Wallet model | Added — balance, user relation, transactions |
-| Transaction model | Added — amount, type (DEPOSIT/PAYMENT/REFUND), wallet, optional order |
-| TransactionType enum | Added — DEPOSIT, PAYMENT, REFUND |
-| Supabase | directUrl added for transaction pooler support |
+| Model | Key fields |
+|-------|-----------|
+| User | id, name, email, password, role (CUSTOMER/OWNER) |
+| Restaurant | id, name, description, phone, imageUrl, address, ownerId |
+| MenuItem | id, name, description, price, category, isAvailable, restaurantId |
+| Order | id, status, subtotal, deliveryFee, serviceFee, tax, totalAmount, deliveryAddress, paidAt, paymentReference, customerId, restaurantId |
+| OrderItem | id, quantity, unitPrice, totalPrice, orderId, menuItemId (prices frozen at order time) |
+| Payment | id, orderId, provider, reference, amount, currency, status, paidAt, gatewayResponse |
+
+**Order statuses:** PENDING_PAYMENT → PENDING_RESTAURANT_CONFIRMATION → PREPARING → OUT_FOR_DELIVERY → DELIVERED / CANCELLED
+
+---
 
 ## 🟡 In Progress
 
-*None.*
+| Feature | Status |
+|---------|--------|
+| Paystack card payment integration | Next — gateway init + webhook + verify |
 
 ---
 
 ## ❌ Not Started
 
-| Feature | Priority |
-|---------|----------|
-| Payment system (wallet/card) | 🔴 Next |
-| Favorites page (real functionality) | 🟡 |
-| 404 page | 🟢 |
-| Seed data for development | 🟢 |
-| Rider role + delivery tracking | 🟢 (post-MVP) |
-| Real-time order updates (WebSockets) | 🟢 (post-MVP) |
-| Image upload instead of URL pasting | 🟢 (post-MVP) |
+| Feature | Priority | Target |
+|---------|----------|--------|
+| Paystack initialize endpoint (POST /orders/:id/pay) | 🔴 Now | v1 |
+| Paystack webhook + verify (POST /payments/webhook) | 🔴 Now | v1 |
+| Frontend payment redirect + verification screen | 🔴 Now | v1 |
+| Favorites page (real functionality) | 🟡 | v1 |
+| 404 page | 🟢 | v1 |
+| Seed data for development | 🟢 | v1 |
+
+---
+
+## 🗺️ Roadmap — v2 & v3 (Future)
+
+### v2 — Location & Delivery Pricing
+
+| Feature | Details |
+|---------|---------|
+| Restaurant coordinates | latitude, longitude, formattedAddress on Restaurant model |
+| UserLocation model | Multiple saved delivery addresses, default selection, map picker |
+| Haversine distance calculation | Backend-calculated straight-line distance |
+| Distance-based delivery tiers | 0-500m=₦300, 501m-1km=₦500, 1-2km=₦700, 2-3km=₦900, 3km+=₦1200 |
+| Delivery location snapshot on Order | deliveryLat, deliveryLng, distanceMeters frozen at order time |
+| Leaflet + OpenStreetMap | Free map for location picker UI |
+| Pricing services | Modular: distance.service, delivery-pricing.service, order-pricing.service |
+
+### v3 — Wallet, Riders & Real-Time
+
+| Feature | Details |
+|---------|---------|
+| Wallet model | User wallet balance, deposits, withdrawals |
+| Wallet payment | Pay from wallet balance as alternative to card |
+| Rider role | Rider signup, order assignment, delivery tracking |
+| Real-time tracking | Socket.IO for live rider location on customer map |
+| Push notifications | Order status changes, rider updates |
+| Restaurant commission | Commission rate per restaurant, automatic settlement calculation |
+| Money in kobo | Migrate all money fields from Decimal to Int (kobo) |
+| Pricing metadata | pricingVersion, pricingContext JSON on Order for auditability |
 
 ---
 
@@ -113,7 +151,8 @@ A food delivery platform where customers order from restaurants. Built with Reac
 
 | Date | What was done |
 |------|--------------|
-| 2026-07-19 | Wallet + Transaction models added to schema. Production CORS, SPA rewrites, Render/Neon→Supabase deployment. Auth routing fix: unauthenticated users redirected to /login instead of /restaurants. JWT expiry validation on init. |
+| 2026-07-20 | Payment schema: Wallet/Transaction removed, OrderStatus rewritten, Payment model added, Order fees (subtotal/deliveryFee/serviceFee/tax/totalAmount), OrderItem price freezing. Fee calculator service (7.5% tax, ₦500 delivery, ₦300 service). Checkout endpoint (POST /orders/checkout): validates items belong to same restaurant, backend-owned pricing, creates Order + Payment. Cart page updated with fee breakdown UI. v2/v3 roadmap documented. |
+| 2026-07-19 | Production CORS, SPA rewrites, Render/Supabase deployment. Auth routing fix: unauthenticated users redirected to /login instead of /restaurants. JWT expiry validation on init. |
 | 2026-07-18 | Shared AppLayout component extracted — all 8 pages refactored, ~1,450 lines of duplicated header/nav removed. |
 | 2026-07-18 | Orders tab added to ManageRestaurant: view all orders, update status via dropdown, loading/error/empty states. GET /users secured with auth middleware. |
 | 2026-07-18 | Owner dashboard + restaurant management built. OwnerRoute, create restaurant form, menu CRUD. Role-based redirect after login/signup. |

@@ -1,32 +1,38 @@
 import express from "express";
 import prisma from "../config/prisma.js";
-import { Prisma } from "@prisma/client";
 import authMiddleware from "../middleware/auth.middleware.js";
 import ownerMiddleware from "../middleware/owner.middleware.js";
+import { calculateFees } from "../services/feecalculator.js";
+import crypto from "crypto";
 
 const router = express.Router();
 
-router.post("/orders", authMiddleware, async (req, res) => {
+// ── Checkout: create order + payment ──
+router.post("/orders/checkout", authMiddleware, async (req, res) => {
   try {
     const { restaurantId, deliveryAddress, items } = req.body;
 
+    // 1. Validate input
     if (!items || items.length === 0) {
-      return res.status(400).json({
-        message: "Order must have at least one item",
-      });
+      return res.status(400).json({ message: "Order must have at least one item" });
     }
     if (!restaurantId) {
-      return res.status(400).json({
-        message: "Restaurant id is required",
-      });
+      return res.status(400).json({ message: "Restaurant id is required" });
     }
     if (!deliveryAddress) {
-      return res.status(400).json({
-        message: "Delivery address is required",
-      });
+      return res.status(400).json({ message: "Delivery address is required" });
     }
 
-    let total = new Prisma.Decimal(0);
+    // 2. Check restaurant exists
+    const restaurant = await prisma.restaurant.findUnique({
+      where: { id: Number(restaurantId) },
+    });
+    if (!restaurant) {
+      return res.status(404).json({ message: "Restaurant not found" });
+    }
+
+    // 3. Validate menu items: exist + all belong to this restaurant
+    const validatedItems = [];
     for (const item of items) {
       const menuItem = await prisma.menuItem.findUnique({
         where: { id: item.menuItemId },
@@ -34,40 +40,74 @@ router.post("/orders", authMiddleware, async (req, res) => {
 
       if (!menuItem) {
         return res.status(404).json({
-          message: `Menu Item ${item.menuItemId} not found`,
+          message: `Menu item "${item.menuItemId}" not found`,
         });
       }
-      total = total.plus(menuItem.price.times(item.quantity));
-      item.price = menuItem.price;
+
+      if (menuItem.restaurantId !== Number(restaurantId)) {
+        return res.status(400).json({
+          message: `"${menuItem.name}" belongs to a different restaurant. You can only order from one restaurant at a time.`,
+        });
+      }
+
+      validatedItems.push({
+        unitPrice: Number(menuItem.price),
+        quantity: item.quantity,
+        menuItemId: item.menuItemId,
+      });
     }
 
+    // 4. Calculate fees on the backend (never trust frontend totals)
+    const fees = calculateFees(validatedItems);
+
+    // 5. Create the order
     const order = await prisma.order.create({
       data: {
         customerId: req.user.id,
         restaurantId: Number(restaurantId),
         deliveryAddress,
-        total,
+        status: "PENDING_PAYMENT",
+        subtotal: fees.subtotal,
+        deliveryFee: fees.deliveryFee,
+        serviceFee: fees.serviceFee,
+        tax: fees.tax,
+        totalAmount: fees.totalAmount,
         orderItems: {
-          create: items.map((item) => ({
+          create: validatedItems.map((item) => ({
             quantity: item.quantity,
-            price: item.price,
+            unitPrice: item.unitPrice,
+            totalPrice: item.unitPrice * item.quantity,
             menuItemId: item.menuItemId,
           })),
         },
       },
       include: {
-        orderItems: true,
+        orderItems: { include: { menuItem: true } },
         restaurant: true,
       },
     });
 
+    // 6. Create payment record
+    const reference = `CHOW-${Date.now()}-${crypto.randomBytes(4).toString("hex")}`;
+    const payment = await prisma.payment.create({
+      data: {
+        orderId: order.id,
+        amount: fees.totalAmount,
+        reference,
+        status: "PENDING",
+      },
+    });
+
+    // 7. Return everything
     res.status(201).json({
-      message: "Order Placed successfully",
+      message: "Order created — payment pending",
       order,
+      payment,
+      fees,
     });
   } catch (error) {
     res.status(500).json({
-      message: " Server is down",
+      message: "Server error",
       error: error.message,
     });
   }
@@ -201,7 +241,7 @@ router.put("/orders/:id/status", authMiddleware, ownerMiddleware, async (req, re
       return res.status(400).json({ message: "Status is required" });
     }
 
-    const validStatuses = ["CONFIRMED", "PREPARING", "READY", "DELIVERING", "DELIVERED", "CANCELLED"];
+    const validStatuses = ["PENDING_RESTAURANT_CONFIRMATION", "PREPARING", "OUT_FOR_DELIVERY", "DELIVERED", "CANCELLED"];
     if (!validStatuses.includes(status)) {
       return res.status(400).json({ message: "Invalid status" });
     }
@@ -239,5 +279,8 @@ router.put("/orders/:id/status", authMiddleware, ownerMiddleware, async (req, re
     });
   }
 });
+
+
+
 
 export default router;

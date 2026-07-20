@@ -34,7 +34,7 @@ const Cart = () => {
       setPlacing(true);
       setError("");
       const token = localStorage.getItem("token");
-      const res = await fetch(`${import.meta.env.VITE_API_URL}/orders`, {
+      const res = await fetch(`${import.meta.env.VITE_API_URL}/orders/checkout`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -52,7 +52,7 @@ const Cart = () => {
       const data = await res.json();
       if (!res.ok) { setError(data.message || "Failed to place order"); return; }
       restaurantItems.forEach((item) => clearItem(item.menuItemId));
-      navigate("/orders");
+      navigate(`/orders/${data.order.id}`);
     } catch {
       setError("Something went wrong. Please try again.");
     } finally {
@@ -104,6 +104,10 @@ const Cart = () => {
 
             {Object.values(grouped).map((group) => {
               const groupTotal = group.items.reduce((sum, i) => sum + i.price * i.quantity, 0);
+              const estDelivery = 500;
+              const estService = 300;
+              const estTax = Math.round(groupTotal * 0.075);
+              const estTotal = groupTotal + estDelivery + estService + estTax;
               return (
                 <div key={group.restaurantId} className="bg-white rounded-2xl shadow-sm overflow-hidden">
                   <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
@@ -145,12 +149,34 @@ const Cart = () => {
                     ))}
                   </div>
 
-                  <div className="px-5 py-4 bg-slate-50/50 border-t border-slate-100 flex items-center justify-between">
-                    <span className="text-sm text-slate-500">
-                      {group.items.reduce((s, i) => s + i.quantity, 0)} {group.items.reduce((s, i) => s + i.quantity, 0) === 1 ? "item" : "items"}
-                    </span>
-                    <div className="flex items-center gap-4">
-                      <span className="font-bold text-slate-900">₦{groupTotal.toLocaleString()}</span>
+                  {/* Fee breakdown + Place Order */}
+                  <div className="px-5 py-4 bg-slate-50/50 border-t border-slate-100">
+                    <div className="space-y-1.5 mb-4 text-sm">
+                      <div className="flex justify-between text-slate-500">
+                        <span>Subtotal</span>
+                        <span>₦{groupTotal.toLocaleString()}</span>
+                      </div>
+                      <div className="flex justify-between text-slate-500">
+                        <span>Delivery fee</span>
+                        <span>₦{estDelivery.toLocaleString()}</span>
+                      </div>
+                      <div className="flex justify-between text-slate-500">
+                        <span>Service fee</span>
+                        <span>₦{estService.toLocaleString()}</span>
+                      </div>
+                      <div className="flex justify-between text-slate-500">
+                        <span>Tax (7.5%)</span>
+                        <span>₦{estTax.toLocaleString()}</span>
+                      </div>
+                      <div className="flex justify-between font-bold text-slate-900 pt-1.5 border-t border-slate-200">
+                        <span>Total</span>
+                        <span>₦{estTotal.toLocaleString()}</span>
+                      </div>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs text-slate-400">
+                        {group.items.reduce((s, i) => s + i.quantity, 0)} {group.items.reduce((s, i) => s + i.quantity, 0) === 1 ? "item" : "items"}
+                      </span>
                       <button
                         onClick={() => handlePlaceOrder(group.restaurantId, group.items)}
                         disabled={placing}
