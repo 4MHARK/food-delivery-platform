@@ -66,8 +66,6 @@ const AppLayout = ({
 
   const handleLogout = () => {
     logout();
-    setUserDropdownOpen(false);
-    setMenuOpen(false);
     navigate("/login");
   };
 
