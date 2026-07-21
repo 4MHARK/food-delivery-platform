@@ -11,7 +11,7 @@ const ORDER_STATUS = {
   DELIVERED:                         { label: "Delivered", color: "bg-green-100 text-green-700 border-green-200", dot: "bg-green-500" },
   CANCELLED:                         { label: "Cancelled", color: "bg-slate-100 text-slate-500 border-slate-200", dot: "bg-slate-400" },
 };
-const ACTIVE_STATUSES = ["PENDING_RESTAURANT_CONFIRMATION", "PREPARING", "OUT_FOR_DELIVERY"];
+const ACTIVE_STATUSES = ["PREPARING", "OUT_FOR_DELIVERY"];
 const TERMINAL_STATUSES = ["DELIVERED", "CANCELLED"];
 
 const initialRestForm = { name: "", description: "", address: "", phone: "", imageUrl: "" };
@@ -21,6 +21,7 @@ const Dashboard = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
   const pollRef = useRef(null);
+  const prevPendingRef = useRef(0);
 
   // ── Core state ──
   const [loading, setLoading] = useState(true);
@@ -116,27 +117,43 @@ const Dashboard = () => {
     init();
   }, [fetchRestaurant, fetchMenu, fetchOrders]);
 
-  // ── Auto-poll orders every 30s ──
+  // ── Poll for new orders (notification only, does not refresh the list) ──
   useEffect(() => {
     if (pollRef.current) clearInterval(pollRef.current);
     if (restaurant) {
-      pollRef.current = setInterval(() => {
-        fetchOrders(restaurant.id);
+      // Set initial count from already-loaded orders
+      prevPendingRef.current = orders.filter((o) => o.status === "PENDING_RESTAURANT_CONFIRMATION").length;
+      pollRef.current = setInterval(async () => {
+        try {
+          const res = await fetch(`${import.meta.env.VITE_API_URL}/restaurants/${restaurant.id}/orders`, {
+            headers: { Authorization: `Bearer ${token}` },
+          });
+          const data = await res.json();
+          if (!res.ok) return;
+          const currentPending = (data.orders || []).filter(
+            (o) => o.status === "PENDING_RESTAURANT_CONFIRMATION"
+          ).length;
+          if (currentPending > prevPendingRef.current) {
+            const diff = currentPending - prevPendingRef.current;
+            showMsg(`🔔 ${diff} new order${diff > 1 ? "s" : ""} received!`);
+          }
+          prevPendingRef.current = currentPending;
+        } catch { /* silent — notification poll should not disturb the user */ }
       }, 30000);
     }
     return () => { if (pollRef.current) clearInterval(pollRef.current); };
-  }, [restaurant, fetchOrders]);
+  }, [restaurant, token]);
 
   // ── Order actions ──
   const handleAcceptOrder = async (orderId) => {
     try {
       setUpdatingOrderId(orderId);
       const res = await fetch(`${import.meta.env.VITE_API_URL}/orders/${orderId}/status`, {
-        method: "PUT", headers: authHeaders, body: JSON.stringify({ status: "PENDING_RESTAURANT_CONFIRMATION" }),
+        method: "PUT", headers: authHeaders, body: JSON.stringify({ status: "PREPARING" }),
       });
       const data = await res.json();
       if (!res.ok) { showMsg(data.message || "Failed"); return; }
-      setOrders((prev) => prev.map((o) => (o.id === orderId ? { ...o, status: "PENDING_RESTAURANT_CONFIRMATION" } : o)));
+      setOrders((prev) => prev.map((o) => (o.id === orderId ? { ...o, status: "PREPARING" } : o)));
       showMsg(`Order #${orderId} accepted`);
     } catch {
       showMsg("Failed to accept order");
@@ -296,7 +313,7 @@ const Dashboard = () => {
   };
 
   // ── Derived ──
-  const pendingOrders = orders.filter((o) => o.status === "PENDING_PAYMENT");
+  const pendingOrders = orders.filter((o) => o.status === "PENDING_RESTAURANT_CONFIRMATION");
   const activeOrders = orders.filter((o) => ACTIVE_STATUSES.includes(o.status));
   const pastOrders = orders.filter((o) => TERMINAL_STATUSES.includes(o.status));
   const allStatuses = Object.keys(ORDER_STATUS);
