@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
@@ -11,7 +11,12 @@ const Login = () => {
   const [formData, setFormData] = useState({email: "", password: ""});
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
-  
+
+  // Wake up the Render server on page load (cold start workaround)
+  useEffect(() => {
+    fetch(`${import.meta.env.VITE_API_URL}/`).catch(() => {});
+  }, []);
+
   const handleChange = (e) => {
     setFormData({
       ...formData,
