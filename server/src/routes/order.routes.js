@@ -134,9 +134,9 @@ router.get("/orders", authMiddleware, async (req, res) => {
       orders,
     });
   } catch (error) {
+    console.error("GET /orders error:", error);
     res.status(500).json({
-      message: "Server error",
-      error: error.message,
+      message: error.message || "Server error",
     });
   }
 });

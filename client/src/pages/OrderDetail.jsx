@@ -262,10 +262,10 @@ const OrderDetail = () => {
                   </div>
                   <div>
                     <p className="text-sm font-semibold text-slate-900">{item.menuItem?.name || `Item #${item.menuItemId}`}</p>
-                    <p className="text-xs text-slate-400">₦{Number(item.price).toLocaleString()} × {item.quantity}</p>
+                    <p className="text-xs text-slate-400">₦{Number(item.unitPrice).toLocaleString()} × {item.quantity}</p>
                   </div>
                 </div>
-                <span className="text-sm font-bold text-slate-900">₦{(item.price * item.quantity).toLocaleString()}</span>
+                <span className="text-sm font-bold text-slate-900">₦{(Number(item.unitPrice) * item.quantity).toLocaleString()}</span>
               </div>
             ))}
           </div>

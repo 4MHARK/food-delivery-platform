@@ -141,7 +141,7 @@ const Orders = () => {
                     <span className="text-slate-600">
                       {item.quantity}× {item.menuItem?.name || `Item #${item.menuItemId}`}
                     </span>
-                    <span className="text-slate-400 text-xs">₦{(item.price * item.quantity).toLocaleString()}</span>
+                    <span className="text-slate-400 text-xs">₦{(Number(item.unitPrice) * item.quantity).toLocaleString()}</span>
                   </div>
                 ))}
               </div>
