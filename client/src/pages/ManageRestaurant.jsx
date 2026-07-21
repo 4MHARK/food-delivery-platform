@@ -54,7 +54,7 @@ const Dashboard = () => {
   const token = localStorage.getItem("token");
   const authHeaders = { "Content-Type": "application/json", Authorization: `Bearer ${token}` };
 
-  const showMsg = (msg) => { setMessage(msg); setTimeout(() => setMessage(""), 3000); };
+  const showMsg = (msg) => { setMessage(msg); setTimeout(() => setMessage(""), 10000); };
 
   // ── Fetch restaurant ──
   const fetchRestaurant = useCallback(async () => {
@@ -121,6 +121,10 @@ const Dashboard = () => {
   useEffect(() => {
     if (pollRef.current) clearInterval(pollRef.current);
     if (restaurant) {
+      // Request browser notification permission
+      if (Notification.permission === "default") {
+        Notification.requestPermission();
+      }
       // Set initial count from already-loaded orders
       prevPendingRef.current = orders.filter((o) => o.status === "PENDING_RESTAURANT_CONFIRMATION").length;
       pollRef.current = setInterval(async () => {
@@ -136,6 +140,13 @@ const Dashboard = () => {
           if (currentPending > prevPendingRef.current) {
             const diff = currentPending - prevPendingRef.current;
             showMsg(`🔔 ${diff} new order${diff > 1 ? "s" : ""} received!`);
+            // Browser notification
+            if (Notification.permission === "granted") {
+              new Notification("New Order!", {
+                body: `${diff} new order${diff > 1 ? "s" : ""} received!`,
+                icon: "/favicon.svg",
+              });
+            }
           }
           prevPendingRef.current = currentPending;
         } catch { /* silent — notification poll should not disturb the user */ }
@@ -433,7 +444,7 @@ const Dashboard = () => {
       <div className="px-4 lg:px-8 max-w-4xl mx-auto pt-6 pb-24 md:pb-8">
         {/* Toast */}
         {message && (
-          <div className="fixed top-20 left-1/2 -translate-x-1/2 z-50 bg-slate-900 text-white text-sm font-medium px-6 py-3 rounded-full shadow-lg animate-fade-up">
+          <div className="fixed top-20 left-1/2 -translate-x-1/2 z-50 bg-slate-900 text-white text-sm font-medium px-6 py-3 rounded-full shadow-lg animate-fade-up cursor-pointer" onClick={() => setMessage("")}>
             {message}
           </div>
         )}

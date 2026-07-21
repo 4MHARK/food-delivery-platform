@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import AppLayout from "../components/AppLayout";
@@ -27,6 +27,7 @@ const OrderDetail = () => {
   const [order, setOrder] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const pollRef = useRef(null);
 
   useEffect(() => {
     const fetchOrder = async () => {
@@ -45,6 +46,38 @@ const OrderDetail = () => {
       }
     };
     fetchOrder();
+  }, [id]);
+
+  // ── Poll for status changes (notification + auto-update) ──
+  useEffect(() => {
+    if (Notification.permission === "default") {
+      Notification.requestPermission();
+    }
+    if (pollRef.current) clearInterval(pollRef.current);
+    pollRef.current = setInterval(async () => {
+      try {
+        const token = localStorage.getItem("token");
+        const res = await fetch(`${import.meta.env.VITE_API_URL}/orders/${id}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const data = await res.json();
+        if (!res.ok) return;
+        const fresh = data.order;
+        setOrder((prev) => {
+          if (!prev || fresh.status === prev.status) return prev;
+          // Status changed — send browser notification
+          const label = STATUS_COLORS[fresh.status] ? fresh.status.replace(/_/g, " ").toLowerCase() : fresh.status;
+          if (Notification.permission === "granted") {
+            new Notification("Order Updated", {
+              body: `Order #${fresh.id} is now ${label}`,
+              icon: "/favicon.svg",
+            });
+          }
+          return fresh;
+        });
+      } catch { /* silent */ }
+    }, 15000);
+    return () => { if (pollRef.current) clearInterval(pollRef.current); };
   }, [id]);
 
   const getStepState = (stepKey) => {

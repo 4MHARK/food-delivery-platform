@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import AppLayout from "../components/AppLayout";
@@ -19,6 +19,7 @@ const Orders = () => {
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const pollRef = useRef(null);
 
   useEffect(() => {
     const fetchOrders = async () => {
@@ -37,6 +38,44 @@ const Orders = () => {
       }
     };
     fetchOrders();
+  }, []);
+
+  // ── Poll for status changes (auto-update + notification) ──
+  useEffect(() => {
+    if (Notification.permission === "default") {
+      Notification.requestPermission();
+    }
+    if (pollRef.current) clearInterval(pollRef.current);
+    pollRef.current = setInterval(async () => {
+      try {
+        const token = localStorage.getItem("token");
+        const res = await fetch(`${import.meta.env.VITE_API_URL}/orders`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const data = await res.json();
+        if (!res.ok) return;
+        const freshOrders = data.orders || [];
+        setOrders((prev) => {
+          for (const fresh of freshOrders) {
+            const old = prev.find((o) => o.id === fresh.id);
+            if (old && old.status !== fresh.status) {
+              const label = STATUS[fresh.status]
+                ? STATUS[fresh.status].label
+                : fresh.status;
+              if (Notification.permission === "granted") {
+                new Notification("Order Updated", {
+                  body: `Order #${fresh.id} is now "${label}"`,
+                  icon: "/favicon.svg",
+                });
+              }
+              break; // notify once per poll cycle
+            }
+          }
+          return freshOrders;
+        });
+      } catch { /* silent */ }
+    }, 20000);
+    return () => { if (pollRef.current) clearInterval(pollRef.current); };
   }, []);
 
   const formatDate = (dateString) => {
