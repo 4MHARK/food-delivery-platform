@@ -198,11 +198,15 @@ const Profile = () => {
 
       {/* Main content */}
       <div className="flex-1 p-6 md:p-12">
-        {/* Mobile header with logout */}
+        {/* Mobile header with back + logout */}
         <div className="md:hidden flex justify-between items-center mb-8">
-          <h1 className="text-xl font-bold">
-            <span className="text-amber-500">Chow</span>Zilla
-          </h1>
+          <button
+            onClick={() => navigate(-1)}
+            className="flex items-center gap-1 text-slate-600 font-semibold text-sm"
+          >
+            <span className="material-symbols-outlined text-xl">arrow_back</span>
+            Back
+          </button>
           <button
             onClick={handleLogout}
             className="flex items-center gap-1 text-slate-600 font-semibold text-sm"
@@ -211,6 +215,15 @@ const Profile = () => {
             Log out
           </button>
         </div>
+
+        {/* Desktop back button */}
+        <button
+          onClick={() => navigate(-1)}
+          className="hidden md:flex items-center gap-1.5 text-slate-500 hover:text-amber-500 font-semibold text-sm mb-6 transition-colors"
+        >
+          <span className="material-symbols-outlined text-xl">arrow_back</span>
+          Back
+        </button>
 
         {/* Tab content — switches based on activeTab */}
         <div className="max-w-2xl mx-auto">

@@ -215,12 +215,21 @@ const AppLayout = ({
               )}
             </div>
           ) : (
-            <button
-              onClick={() => navigate("/profile")}
-              className="w-8 h-8 rounded-full bg-amber-500 flex items-center justify-center text-white text-sm font-bold hidden md:flex"
-            >
-              {userInitial}
-            </button>
+            <div className="hidden md:flex items-center gap-2">
+              <button
+                onClick={() => navigate("/profile")}
+                className="w-8 h-8 rounded-full bg-amber-500 flex items-center justify-center text-white text-sm font-bold"
+              >
+                {userInitial}
+              </button>
+              <button
+                onClick={handleLogout}
+                className="p-2 text-slate-400 hover:text-red-500 rounded-full hover:bg-slate-100 transition"
+                title="Log out"
+              >
+                <span className="material-symbols-outlined text-xl">logout</span>
+              </button>
+            </div>
           )}
         </div>
       </div>
