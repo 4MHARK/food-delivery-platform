@@ -795,7 +795,7 @@ const Dashboard = () => {
                     <h4 className="text-xs font-bold text-blue-600 uppercase tracking-wider mb-3">Active ({activeOrders.length})</h4>
                     <div className="space-y-3">
                       {activeOrders.map((order) => {
-                        const status = ORDER_STATUS[order.status] || ORDER_STATUS.PENDING;
+                        const status = ORDER_STATUS[order.status] || ORDER_STATUS.PENDING_PAYMENT;
                         return (
                           <div key={order.id} className="bg-white rounded-2xl shadow-sm overflow-hidden">
                             <div className="px-5 py-4 flex items-center justify-between gap-4">
