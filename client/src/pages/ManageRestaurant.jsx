@@ -4,15 +4,14 @@ import { useAuth } from "../context/AuthContext";
 import AppLayout, { OWNER_NAV } from "../components/AppLayout";
 
 const ORDER_STATUS = {
-  PENDING:    { label: "Pending",    color: "bg-amber-100 text-amber-700 border-amber-200", dot: "bg-amber-500" },
-  CONFIRMED:  { label: "Confirmed",  color: "bg-blue-100 text-blue-700 border-blue-200",   dot: "bg-blue-500" },
-  PREPARING:  { label: "Preparing",  color: "bg-orange-100 text-orange-700 border-orange-200", dot: "bg-orange-500" },
-  READY:      { label: "Ready",      color: "bg-emerald-100 text-emerald-700 border-emerald-200", dot: "bg-emerald-500" },
-  DELIVERING: { label: "Delivering", color: "bg-purple-100 text-purple-700 border-purple-200", dot: "bg-purple-500" },
-  DELIVERED:  { label: "Delivered",  color: "bg-green-100 text-green-700 border-green-200", dot: "bg-green-500" },
-  CANCELLED:  { label: "Cancelled",  color: "bg-slate-100 text-slate-500 border-slate-200", dot: "bg-slate-400" },
+  PENDING_PAYMENT:                   { label: "Pending Payment", color: "bg-amber-100 text-amber-700 border-amber-200", dot: "bg-amber-500" },
+  PENDING_RESTAURANT_CONFIRMATION:   { label: "Awaiting Confirm", color: "bg-blue-100 text-blue-700 border-blue-200", dot: "bg-blue-500" },
+  PREPARING:                         { label: "Preparing", color: "bg-orange-100 text-orange-700 border-orange-200", dot: "bg-orange-500" },
+  OUT_FOR_DELIVERY:                  { label: "On the Way", color: "bg-purple-100 text-purple-700 border-purple-200", dot: "bg-purple-500" },
+  DELIVERED:                         { label: "Delivered", color: "bg-green-100 text-green-700 border-green-200", dot: "bg-green-500" },
+  CANCELLED:                         { label: "Cancelled", color: "bg-slate-100 text-slate-500 border-slate-200", dot: "bg-slate-400" },
 };
-const ACTIVE_STATUSES = ["CONFIRMED", "PREPARING", "READY", "DELIVERING"];
+const ACTIVE_STATUSES = ["PENDING_RESTAURANT_CONFIRMATION", "PREPARING", "OUT_FOR_DELIVERY"];
 const TERMINAL_STATUSES = ["DELIVERED", "CANCELLED"];
 
 const initialRestForm = { name: "", description: "", address: "", phone: "", imageUrl: "" };
@@ -133,11 +132,11 @@ const Dashboard = () => {
     try {
       setUpdatingOrderId(orderId);
       const res = await fetch(`${import.meta.env.VITE_API_URL}/orders/${orderId}/status`, {
-        method: "PUT", headers: authHeaders, body: JSON.stringify({ status: "CONFIRMED" }),
+        method: "PUT", headers: authHeaders, body: JSON.stringify({ status: "PENDING_RESTAURANT_CONFIRMATION" }),
       });
       const data = await res.json();
       if (!res.ok) { showMsg(data.message || "Failed"); return; }
-      setOrders((prev) => prev.map((o) => (o.id === orderId ? { ...o, status: "CONFIRMED" } : o)));
+      setOrders((prev) => prev.map((o) => (o.id === orderId ? { ...o, status: "PENDING_RESTAURANT_CONFIRMATION" } : o)));
       showMsg(`Order #${orderId} accepted`);
     } catch {
       showMsg("Failed to accept order");
@@ -297,7 +296,7 @@ const Dashboard = () => {
   };
 
   // ── Derived ──
-  const pendingOrders = orders.filter((o) => o.status === "PENDING");
+  const pendingOrders = orders.filter((o) => o.status === "PENDING_PAYMENT");
   const activeOrders = orders.filter((o) => ACTIVE_STATUSES.includes(o.status));
   const pastOrders = orders.filter((o) => TERMINAL_STATUSES.includes(o.status));
   const allStatuses = Object.keys(ORDER_STATUS);
@@ -739,7 +738,7 @@ const Dashboard = () => {
                               <div className="min-w-0">
                                 <div className="flex items-center gap-2 flex-wrap">
                                   <span className="text-xs text-slate-400 font-semibold uppercase tracking-wider">Order #{order.id}</span>
-                                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full border bg-amber-100 text-amber-700 border-amber-300">New</span>
+                                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${ORDER_STATUS.PENDING_PAYMENT.color}`}>New</span>
                                 </div>
                                 <p className="text-xs text-slate-500 mt-1">
                                   {order.customer?.name || "Customer"} ·{" "}
@@ -773,7 +772,7 @@ const Dashboard = () => {
                                 <span className="text-slate-600">
                                   {item.quantity}&times; {item.menuItem?.name || `Item #${item.menuItemId}`}
                                 </span>
-                                <span className="text-slate-400 text-xs">₦{(item.price * item.quantity).toLocaleString()}</span>
+                                <span className="text-slate-400 text-xs">₦{(item.unitPrice * item.quantity).toLocaleString()}</span>
                               </div>
                             ))}
                           </div>
@@ -782,7 +781,7 @@ const Dashboard = () => {
                               <span className="material-symbols-outlined text-sm shrink-0">location_on</span>
                               <span className="truncate">{order.deliveryAddress}</span>
                             </div>
-                            <span className="text-sm font-bold text-slate-900 shrink-0 ml-2">₦{Number(order.total).toLocaleString()}</span>
+                            <span className="text-sm font-bold text-slate-900 shrink-0 ml-2">₦{Number(order.totalAmount).toLocaleString()}</span>
                           </div>
                         </div>
                       ))}
@@ -819,7 +818,7 @@ const Dashboard = () => {
                                   disabled={updatingOrderId === order.id}
                                   className="text-xs font-semibold border border-slate-200 rounded-lg px-2 py-1.5 bg-slate-50 focus:ring-1 focus:ring-amber-500 outline-none disabled:opacity-50 cursor-pointer"
                                 >
-                                  {allStatuses.filter((s) => s !== "PENDING").map((s) => (
+                                  {allStatuses.filter((s) => s !== "PENDING_PAYMENT").map((s) => (
                                     <option key={s} value={s} disabled={s === order.status}>
                                       {ORDER_STATUS[s].label}
                                     </option>
@@ -836,7 +835,7 @@ const Dashboard = () => {
                                   <span className="text-slate-600">
                                     {item.quantity}&times; {item.menuItem?.name || `Item #${item.menuItemId}`}
                                   </span>
-                                  <span className="text-slate-400 text-xs">₦{(item.price * item.quantity).toLocaleString()}</span>
+                                  <span className="text-slate-400 text-xs">₦{(item.unitPrice * item.quantity).toLocaleString()}</span>
                                 </div>
                               ))}
                             </div>
@@ -845,7 +844,7 @@ const Dashboard = () => {
                                 <span className="material-symbols-outlined text-sm shrink-0">location_on</span>
                                 <span className="truncate">{order.deliveryAddress}</span>
                               </div>
-                              <span className="text-sm font-bold text-slate-900 shrink-0 ml-2">₦{Number(order.total).toLocaleString()}</span>
+                              <span className="text-sm font-bold text-slate-900 shrink-0 ml-2">₦{Number(order.totalAmount).toLocaleString()}</span>
                             </div>
                           </div>
                         );
@@ -884,7 +883,7 @@ const Dashboard = () => {
                                   {new Date(order.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
                                 </p>
                               </div>
-                              <span className="text-sm font-bold text-slate-400 shrink-0">₦{Number(order.total).toLocaleString()}</span>
+                              <span className="text-sm font-bold text-slate-400 shrink-0">₦{Number(order.totalAmount).toLocaleString()}</span>
                             </div>
                           </div>
                         );

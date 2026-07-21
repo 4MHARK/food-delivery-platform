@@ -4,20 +4,18 @@ import { useAuth } from "../context/AuthContext";
 import AppLayout from "../components/AppLayout";
 
 const STATUS_FLOW = [
-  { key: "PENDING", label: "Placed", icon: "receipt" },
-  { key: "CONFIRMED", label: "Confirmed", icon: "check_circle" },
+  { key: "PENDING_PAYMENT", label: "Placed", icon: "receipt" },
+  { key: "PENDING_RESTAURANT_CONFIRMATION", label: "Confirmed", icon: "check_circle" },
   { key: "PREPARING", label: "Preparing", icon: "cooking" },
-  { key: "READY", label: "Ready", icon: "inventory" },
-  { key: "DELIVERING", label: "On the way", icon: "local_shipping" },
+  { key: "OUT_FOR_DELIVERY", label: "On the way", icon: "local_shipping" },
   { key: "DELIVERED", label: "Delivered", icon: "done_all" },
 ];
 
 const STATUS_COLORS = {
-  PENDING: "border-amber-500 text-amber-700 bg-amber-50",
-  CONFIRMED: "border-blue-500 text-blue-700 bg-blue-50",
+  PENDING_PAYMENT: "border-amber-500 text-amber-700 bg-amber-50",
+  PENDING_RESTAURANT_CONFIRMATION: "border-blue-500 text-blue-700 bg-blue-50",
   PREPARING: "border-orange-500 text-orange-700 bg-orange-50",
-  READY: "border-emerald-500 text-emerald-700 bg-emerald-50",
-  DELIVERING: "border-purple-500 text-purple-700 bg-purple-50",
+  OUT_FOR_DELIVERY: "border-purple-500 text-purple-700 bg-purple-50",
   DELIVERED: "border-green-600 text-green-700 bg-green-50",
   CANCELLED: "border-red-400 text-red-600 bg-red-50",
 };
@@ -121,7 +119,7 @@ const OrderDetail = () => {
   // ── SUCCESS ──
   const isCancelled = order.status === "CANCELLED";
   const isDelivered = order.status === "DELIVERED";
-  const statusColor = STATUS_COLORS[order.status] || STATUS_COLORS.PENDING;
+  const statusColor = STATUS_COLORS[order.status] || STATUS_COLORS.PENDING_PAYMENT;
 
   return (
     <AppLayout backTo="/orders" showUserDropdown={false}>
@@ -273,7 +271,7 @@ const OrderDetail = () => {
           <div className="border-t border-slate-100 px-5 py-4 space-y-2 bg-slate-50/30">
             <div className="flex items-center justify-between text-sm">
               <span className="text-slate-500">Subtotal</span>
-              <span className="text-slate-700 font-medium">₦{Number(order.total).toLocaleString()}</span>
+              <span className="text-slate-700 font-medium">₦{Number(order.totalAmount).toLocaleString()}</span>
             </div>
             <div className="flex items-center justify-between text-sm">
               <span className="text-slate-500">Delivery Fee</span>
@@ -281,7 +279,7 @@ const OrderDetail = () => {
             </div>
             <div className="flex items-center justify-between pt-2 border-t border-slate-200">
               <span className="text-sm font-bold text-slate-900">Total</span>
-              <span className="text-lg font-extrabold text-slate-900">₦{Number(order.total).toLocaleString()}</span>
+              <span className="text-lg font-extrabold text-slate-900">₦{Number(order.totalAmount).toLocaleString()}</span>
             </div>
           </div>
         </div>

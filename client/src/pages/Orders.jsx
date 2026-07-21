@@ -4,11 +4,10 @@ import { useAuth } from "../context/AuthContext";
 import AppLayout from "../components/AppLayout";
 
 const STATUS = {
-  PENDING: { label: "Pending", color: "bg-amber-100 text-amber-700", icon: "hourglass_empty" },
-  CONFIRMED: { label: "Confirmed", color: "bg-blue-100 text-blue-700", icon: "check_circle" },
+  PENDING_PAYMENT: { label: "Pending Payment", color: "bg-amber-100 text-amber-700", icon: "hourglass_empty" },
+  PENDING_RESTAURANT_CONFIRMATION: { label: "Awaiting Confirm", color: "bg-blue-100 text-blue-700", icon: "check_circle" },
   PREPARING: { label: "Preparing", color: "bg-orange-100 text-orange-700", icon: "cooking" },
-  READY: { label: "Ready", color: "bg-emerald-100 text-emerald-700", icon: "inventory" },
-  DELIVERING: { label: "Delivering", color: "bg-purple-100 text-purple-700", icon: "local_shipping" },
+  OUT_FOR_DELIVERY: { label: "On the Way", color: "bg-purple-100 text-purple-700", icon: "local_shipping" },
   DELIVERED: { label: "Delivered", color: "bg-green-100 text-green-700", icon: "done_all" },
   CANCELLED: { label: "Cancelled", color: "bg-slate-100 text-slate-500", icon: "cancel" },
 };
@@ -114,7 +113,7 @@ const Orders = () => {
     return (
       <div className="space-y-4">
         {orders.map((order) => {
-          const status = STATUS[order.status] || STATUS.PENDING;
+          const status = STATUS[order.status] || STATUS.PENDING_PAYMENT;
           return (
             <article
               key={order.id}
@@ -151,7 +150,7 @@ const Orders = () => {
                   <span className="material-symbols-outlined text-sm">location_on</span>
                   <span className="truncate max-w-[180px]">{order.deliveryAddress}</span>
                 </div>
-                <span className="text-sm font-bold text-slate-900">₦{Number(order.total).toLocaleString()}</span>
+                <span className="text-sm font-bold text-slate-900">₦{Number(order.totalAmount).toLocaleString()}</span>
               </div>
             </article>
           );
