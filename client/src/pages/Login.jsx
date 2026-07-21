@@ -31,6 +31,9 @@ const Login = () => {
     try {
       setLoading(true);
 
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 15000);
+
       const response = await fetch(
         `${import.meta.env.VITE_API_URL}/users/login`,
         {
@@ -42,8 +45,11 @@ const Login = () => {
             email: formData.email,
             password: formData.password,
           }),
+          signal: controller.signal,
         }
       );
+
+      clearTimeout(timeoutId);
 
       const data = await response.json();
 
@@ -61,7 +67,11 @@ const Login = () => {
       }
     } catch (error) {
       console.log(error);
-      setError("Something went wrong. Please try again.");
+      if (error.name === "AbortError") {
+        setError("Server is taking too long to respond. Please try again.");
+      } else {
+        setError("Something went wrong. Please try again.");
+      }
     } finally {
       setLoading(false);
     }
