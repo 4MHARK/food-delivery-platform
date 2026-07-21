@@ -48,6 +48,9 @@ const Signup = () => {
     try {
       setLoading(true);
 
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 15000);
+
       const response = await fetch(`${import.meta.env.VITE_API_URL}/users`, {
         method: "POST",
         headers: {
@@ -59,7 +62,10 @@ const Signup = () => {
           password: formData.password,
           role: formData.role,
         }),
+        signal: controller.signal,
       });
+
+      clearTimeout(timeoutId);
 
       const data = await response.json();
 
@@ -77,7 +83,11 @@ const Signup = () => {
       }
     } catch (error) {
       console.log(error);
-      setError("Something went wrong. Please try again.");
+      if (error.name === "AbortError") {
+        setError("Server is taking too long to respond. Please try again.");
+      } else {
+        setError("Something went wrong. Please try again.");
+      }
     } finally {
       setLoading(false);
     }
