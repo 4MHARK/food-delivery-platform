@@ -271,12 +271,20 @@ const OrderDetail = () => {
           <div className="border-t border-slate-100 px-5 py-4 space-y-2 bg-slate-50/30">
             <div className="flex items-center justify-between text-sm">
               <span className="text-slate-500">Subtotal</span>
-              <span className="text-slate-700 font-medium">₦{Number(order.totalAmount).toLocaleString()}</span>
+              <span className="text-slate-700 font-medium">₦{Number(order.subtotal).toLocaleString()}</span>
             </div>
             <div className="flex items-center justify-between text-sm">
               <span className="text-slate-500">Delivery Fee</span>
-              <span className="text-emerald-600 font-medium">Free</span>
+              <span className="text-slate-700 font-medium">₦{Number(order.deliveryFee).toLocaleString()}</span>
             </div>
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-slate-500">Service Fee</span>
+              <span className="text-slate-700 font-medium">₦{Number(order.serviceFee).toLocaleString()}</span>
+            </div>
+            {/* <div className="flex items-center justify-between text-sm">
+              <span className="text-slate-500">Tax</span>
+              <span className="text-slate-700 font-medium">₦{Number(order.tax).toLocaleString()}</span>
+            </div> */}
             <div className="flex items-center justify-between pt-2 border-t border-slate-200">
               <span className="text-sm font-bold text-slate-900">Total</span>
               <span className="text-lg font-extrabold text-slate-900">₦{Number(order.totalAmount).toLocaleString()}</span>
