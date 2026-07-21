@@ -47,6 +47,7 @@ const AppLayout = ({
   const [userDropdownOpen, setUserDropdownOpen] = useState(false);
   const userDropdownRef = useRef(null);
   const mobileMenuRef = useRef(null);
+  const hamburgerRef = useRef(null);
 
   const userInitial = user?.name?.charAt(0)?.toUpperCase() || "?";
 
@@ -56,7 +57,9 @@ const AppLayout = ({
       if (userDropdownRef.current && !userDropdownRef.current.contains(e.target)) {
         setUserDropdownOpen(false);
       }
-      if (mobileMenuRef.current && !mobileMenuRef.current.contains(e.target)) {
+      const clickedInsideMenu = mobileMenuRef.current?.contains(e.target);
+      const clickedHamburger = hamburgerRef.current?.contains(e.target);
+      if (!clickedInsideMenu && !clickedHamburger) {
         setMenuOpen(false);
       }
     };
@@ -82,9 +85,9 @@ const AppLayout = ({
         <div className="flex items-center gap-3">
           {/* Mobile hamburger */}
           <button
+            ref={hamburgerRef}
             onClick={() => setMenuOpen(!menuOpen)}
             className="md:hidden p-2 -ml-2 text-slate-600 hover:text-amber-500 rounded-full hover:bg-slate-100 transition"
-            ref={mobileMenuRef}
           >
             <span className="material-symbols-outlined">
               {menuOpen ? "close" : "menu"}
@@ -234,7 +237,7 @@ const AppLayout = ({
 
       {/* Mobile slide-down menu */}
       {menuOpen && (
-        <div className="md:hidden border-t border-slate-100 bg-white px-4 py-4 animate-fade-up">
+        <div ref={mobileMenuRef} className="md:hidden border-t border-slate-100 bg-white px-4 py-4 animate-fade-up">
           <div className="flex items-center gap-3 mb-4 pb-4 border-b border-slate-100">
             <div className="w-10 h-10 rounded-full bg-amber-500 flex items-center justify-center text-white text-lg font-bold">
               {userInitial}
