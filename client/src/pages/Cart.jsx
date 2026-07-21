@@ -34,6 +34,8 @@ const Cart = () => {
       setPlacing(true);
       setError("");
       const token = localStorage.getItem("token");
+
+      // Step 1: Create the order on the backend
       const res = await fetch(`${import.meta.env.VITE_API_URL}/orders/checkout`, {
         method: "POST",
         headers: {
@@ -50,12 +52,43 @@ const Cart = () => {
         }),
       });
       const data = await res.json();
-      if (!res.ok) { setError(data.message || "Failed to place order"); return; }
+      if (!res.ok) { setError(data.message || "Failed to place order"); setPlacing(false); return; }
+
+      const { order, payment } = data;
+      setPlacing(false);
+
+      // Step 2: Clear cart items (the order exists regardless of payment outcome)
       restaurantItems.forEach((item) => clearItem(item.menuItemId));
-      navigate(`/orders/${data.order.id}`);
+
+      // Step 3: Open Paystack popup for payment
+      const handler = PaystackPop.setup({
+        key: import.meta.env.VITE_PAYSTACK_PUBLIC_KEY,
+        email: user.email,
+        amount: Math.round(Number(payment.amount) * 100), // Naira → kobo
+        currency: "NGN",
+        ref: payment.reference,
+        onSuccess: async () => {
+          // Step 4: Verify payment on the backend
+          await fetch(`${import.meta.env.VITE_API_URL}/payments/verify`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${token}`,
+            },
+            body: JSON.stringify({ reference: payment.reference }),
+          });
+          navigate(`/orders/${order.id}`);
+        },
+        onCancel: () => {
+          navigate(`/orders/${order.id}`);
+        },
+        onClose: () => {
+          navigate(`/orders/${order.id}`);
+        },
+      });
+      handler.openIframe();
     } catch {
       setError("Something went wrong. Please try again.");
-    } finally {
       setPlacing(false);
     }
   };
