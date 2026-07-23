@@ -10,6 +10,7 @@ const Signup = () => {
   const [formData, setFormData] = useState({
     name: "",
     email: "",
+    phone: "",
     password: "",
     role: "CUSTOMER",
     confirmPassword: "",
@@ -66,6 +67,7 @@ const Signup = () => {
           email: formData.email,
           password: formData.password,
           role: formData.role,
+          ...(formData.phone && { phone: formData.phone }),
         }),
         signal: controller.signal,
       });
@@ -83,6 +85,8 @@ const Signup = () => {
 
       if (data.user.role === "OWNER") {
         navigate("/dashboard");
+      } else if (data.user.role === "RIDER") {
+        navigate("/rider");
       } else {
         navigate("/restaurants");
       }
@@ -192,6 +196,25 @@ const Signup = () => {
               />
             </div>
 
+            {/* Phone (optional) */}
+            <div>
+              <label
+                htmlFor="phone"
+                className="block text-sm font-semibold text-slate-700 mb-1.5"
+              >
+                Phone <span className="text-slate-400 font-normal">(optional)</span>
+              </label>
+              <input
+                type="tel"
+                id="phone"
+                name="phone"
+                placeholder="+234 812 345 6789"
+                value={formData.phone}
+                onChange={handleChange}
+                className="w-full h-12 px-4 rounded-xl border-2 border-slate-200 focus:border-amber-500 focus:ring-1 focus:ring-amber-500 outline-none transition-shadow placeholder:text-slate-400 text-base"
+              />
+            </div>
+
             {/* Password */}
             <div>
               <label
@@ -237,9 +260,9 @@ const Signup = () => {
               <label className="block text-sm font-semibold text-slate-700 mb-3">
                 I want to...
               </label>
-              <div className="flex gap-4">
+              <div className="grid grid-cols-3 gap-3">
                 <label
-                  className={`flex-1 flex items-center gap-3 rounded-xl border-2 px-4 py-3 cursor-pointer transition ${
+                  className={`flex flex-col items-center text-center gap-1 rounded-xl border-2 px-3 py-3 cursor-pointer transition ${
                     formData.role === "CUSTOMER"
                       ? "border-amber-500 bg-amber-50"
                       : "border-slate-200 hover:border-slate-300"
@@ -260,7 +283,7 @@ const Signup = () => {
                 </label>
 
                 <label
-                  className={`flex-1 flex items-center gap-3 rounded-xl border-2 px-4 py-3 cursor-pointer transition ${
+                  className={`flex flex-col items-center text-center gap-1 rounded-xl border-2 px-3 py-3 cursor-pointer transition ${
                     formData.role === "OWNER"
                       ? "border-amber-500 bg-amber-50"
                       : "border-slate-200 hover:border-slate-300"
@@ -277,6 +300,27 @@ const Signup = () => {
                   <div>
                     <p className="text-sm font-semibold text-slate-900">Owner</p>
                     <p className="text-xs text-slate-400">Run a restaurant</p>
+                  </div>
+                </label>
+
+                <label
+                  className={`flex flex-col items-center text-center gap-1 rounded-xl border-2 px-3 py-3 cursor-pointer transition ${
+                    formData.role === "RIDER"
+                      ? "border-amber-500 bg-amber-50"
+                      : "border-slate-200 hover:border-slate-300"
+                  }`}
+                >
+                  <input
+                    type="radio"
+                    name="role"
+                    value="RIDER"
+                    checked={formData.role === "RIDER"}
+                    onChange={handleChange}
+                    className="accent-amber-500"
+                  />
+                  <div>
+                    <p className="text-sm font-semibold text-slate-900">Rider</p>
+                    <p className="text-xs text-slate-400">Deliver orders</p>
                   </div>
                 </label>
               </div>

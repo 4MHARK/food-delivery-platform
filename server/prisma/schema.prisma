@@ -16,6 +16,7 @@ datasource db {
 enum UserRole {
   CUSTOMER
   OWNER
+  RIDER
 }
 
 enum OrderStatus {
@@ -33,17 +34,44 @@ enum PaymentStatus {
   FAILED
 }
 
+enum DeliveryStatus {
+  ZILLA_ON_IT
+  AT_KITCHEN
+  BAGGED
+  MOVING
+  CLOSE_BY
+  DELIVERED
+  FAILED
+}
+
 
 model User {
   id        Int      @id @default(autoincrement())
   name      String
   email     String   @unique
   password  String
+  phone     String?
   role      UserRole @default(CUSTOMER)
   restaurants Restaurant[]
   orders      Order[]
+  rider       Rider?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+}
+
+model Rider {
+  id            Int         @id @default(autoincrement())
+  userId        Int         @unique
+  vehicleType   String
+  licensePlate  String
+  licenseNumber String      @unique
+  phone         String
+  isAvailable   Boolean     @default(true)
+  isVerified    Boolean     @default(false)
+  user          User        @relation(fields: [userId], references: [id])
+  deliveries    Delivery[]
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
 }
 
 model Restaurant {
@@ -88,6 +116,7 @@ model Order {
   paidAt DateTime?
   paymentReference String?
   payment Payment?
+  delivery Delivery?
   deliveryAddress String
   customerId      Int
   restaurantId    Int
@@ -96,6 +125,19 @@ model Order {
   orderItems      OrderItem[]
   createdAt       DateTime    @default(now())
   updatedAt       DateTime    @updatedAt
+}
+
+model Delivery {
+  id          Int            @id @default(autoincrement())
+  orderId     Int            @unique
+  riderId     Int
+  status      DeliveryStatus @default(ZILLA_ON_IT)
+  pickedUpAt  DateTime?
+  deliveredAt DateTime?
+  order       Order          @relation(fields: [orderId], references: [id])
+  rider       Rider          @relation(fields: [riderId], references: [id])
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
 }
 
 model OrderItem {

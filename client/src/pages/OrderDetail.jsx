@@ -20,6 +20,24 @@ const STATUS_COLORS = {
   CANCELLED: "border-red-400 text-red-600 bg-red-50",
 };
 
+const DELIVERY_STEPS = [
+  { key: "ZILLA_ON_IT", label: "Zilla On It", icon: "assignment_ind" },
+  { key: "AT_KITCHEN", label: "At Kitchen", icon: "storefront" },
+  { key: "BAGGED", label: "Bagged", icon: "shopping_bag" },
+  { key: "MOVING", label: "Moving", icon: "local_shipping" },
+  { key: "CLOSE_BY", label: "Close By", icon: "near_me" },
+  { key: "DELIVERED", label: "Delivered", icon: "done_all" },
+];
+
+const DELIVERY_COLORS = {
+  ZILLA_ON_IT: "border-blue-400 text-blue-600 bg-blue-50",
+  AT_KITCHEN: "border-yellow-400 text-yellow-600 bg-yellow-50",
+  BAGGED: "border-orange-400 text-orange-600 bg-orange-50",
+  MOVING: "border-purple-400 text-purple-600 bg-purple-50",
+  CLOSE_BY: "border-pink-400 text-pink-600 bg-pink-50",
+  DELIVERED: "border-green-500 text-green-600 bg-green-50",
+};
+
 const OrderDetail = () => {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -64,14 +82,29 @@ const OrderDetail = () => {
         if (!res.ok) return;
         const fresh = data.order;
         setOrder((prev) => {
-          if (!prev || fresh.status === prev.status) return prev;
-          // Status changed — send browser notification
-          const label = STATUS_COLORS[fresh.status] ? fresh.status.replace(/_/g, " ").toLowerCase() : fresh.status;
+          if (!prev) return fresh;
+
+          const orderStatusChanged = fresh.status !== prev.status;
+          const deliveryStatusChanged =
+            fresh.delivery?.status !== prev.delivery?.status;
+
+          if (!orderStatusChanged && !deliveryStatusChanged) return prev;
+
+          // Send browser notification on change
           if (Notification.permission === "granted") {
-            new Notification("Order Updated", {
-              body: `Order #${fresh.id} is now ${label}`,
-              icon: "/favicon.svg",
-            });
+            if (orderStatusChanged) {
+              const label = fresh.status.replace(/_/g, " ").toLowerCase();
+              new Notification("Order Updated", {
+                body: `Order #${fresh.id} is now ${label}`,
+                icon: "/favicon.svg",
+              });
+            } else if (deliveryStatusChanged) {
+              const step = DELIVERY_STEPS.find((s) => s.key === fresh.delivery?.status);
+              new Notification("Delivery Update", {
+                body: `Your rider: "${step?.label || "Status updated"}"`,
+                icon: "/favicon.svg",
+              });
+            }
           }
           return fresh;
         });
@@ -85,6 +118,16 @@ const OrderDetail = () => {
     if (order.status === "CANCELLED") return "cancelled";
     const currentIdx = STATUS_FLOW.findIndex((s) => s.key === order.status);
     const stepIdx = STATUS_FLOW.findIndex((s) => s.key === stepKey);
+    if (stepIdx < currentIdx) return "completed";
+    if (stepIdx === currentIdx) return "current";
+    return "upcoming";
+  };
+
+  const getDeliveryStepState = (stepKey) => {
+    if (!order?.delivery) return "upcoming";
+    if (order.delivery.status === "FAILED") return "upcoming";
+    const currentIdx = DELIVERY_STEPS.findIndex((s) => s.key === order.delivery.status);
+    const stepIdx = DELIVERY_STEPS.findIndex((s) => s.key === stepKey);
     if (stepIdx < currentIdx) return "completed";
     if (stepIdx === currentIdx) return "current";
     return "upcoming";
@@ -253,6 +296,110 @@ const OrderDetail = () => {
             </div>
             <h3 className="text-lg font-bold text-red-700 mb-1">Order Cancelled</h3>
             <p className="text-sm text-red-500">This order has been cancelled and is no longer active.</p>
+          </div>
+        )}
+
+        {/* ── Delivery Tracker (visible when order is out for delivery) ── */}
+        {order.delivery && order.status === "OUT_FOR_DELIVERY" && (
+          <div className="bg-white rounded-2xl shadow-sm p-6 mb-6 border border-purple-100">
+            <div className="flex items-center gap-3 mb-5">
+              <div className="w-10 h-10 rounded-full bg-purple-100 flex items-center justify-center">
+                <span className="material-symbols-outlined text-purple-600 text-xl">two_wheeler</span>
+              </div>
+              <div>
+                <h3 className="text-sm font-bold text-slate-900">Delivery Tracker</h3>
+                <p className="text-xs text-slate-500">
+                  Rider: <span className="font-semibold text-slate-700">{order.delivery.rider?.user?.name || "Assigned"}</span>
+                  {order.delivery.rider?.phone && (
+                    <span className="text-slate-400"> · {order.delivery.rider.phone}</span>
+                  )}
+                </p>
+              </div>
+              <span className={`ml-auto inline-flex items-center gap-1.5 text-[10px] font-bold px-2.5 py-1.5 rounded-full border ${DELIVERY_COLORS[order.delivery.status] || "border-slate-300 text-slate-500 bg-slate-50"}`}>
+                <span className="material-symbols-outlined text-sm">{DELIVERY_STEPS.find((s) => s.key === order.delivery.status)?.icon || "local_shipping"}</span>
+                {DELIVERY_STEPS.find((s) => s.key === order.delivery.status)?.label || order.delivery.status}
+              </span>
+            </div>
+
+            {/* Desktop: horizontal steps */}
+            <div className="hidden sm:flex items-start justify-between">
+              {DELIVERY_STEPS.map((step, idx) => {
+                const state = getDeliveryStepState(step.key);
+                return (
+                  <div key={step.key} className="flex flex-col items-center flex-1 relative">
+                    {idx > 0 && (
+                      <div className="absolute right-1/2 top-4 w-full h-0.5 -translate-y-1/2">
+                        <div className={`h-full transition-colors ${state === "completed" ? "bg-purple-400" : "bg-slate-200"}`} />
+                      </div>
+                    )}
+                    <div
+                      className={`relative z-10 w-8 h-8 rounded-full flex items-center justify-center transition ${
+                        state === "completed" ? "bg-purple-500 text-white"
+                        : state === "current" ? "bg-white border-2 border-purple-500 text-purple-500 animate-pulse"
+                        : "bg-slate-100 text-slate-300"
+                      }`}
+                    >
+                      {state === "completed" ? (
+                        <span className="material-symbols-outlined text-sm font-bold">check</span>
+                      ) : (
+                        <span className="material-symbols-outlined text-sm">{step.icon}</span>
+                      )}
+                    </div>
+                    <span className={`text-[10px] font-semibold mt-2 text-center leading-tight transition ${
+                      state === "completed" ? "text-purple-600" : state === "current" ? "text-slate-900" : "text-slate-400"
+                    }`}>
+                      {step.label}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Mobile: vertical steps */}
+            <div className="sm:hidden space-y-0">
+              {DELIVERY_STEPS.map((step, idx) => {
+                const state = getDeliveryStepState(step.key);
+                const isLast = idx === DELIVERY_STEPS.length - 1;
+                return (
+                  <div key={step.key} className="flex gap-3">
+                    <div className="flex flex-col items-center">
+                      <div className={`w-6 h-6 rounded-full flex items-center justify-center shrink-0 transition ${
+                        state === "completed" ? "bg-purple-500 text-white"
+                        : state === "current" ? "bg-white border-2 border-purple-500 text-purple-500 animate-pulse"
+                        : "bg-slate-100 text-slate-300"
+                      }`}>
+                        {state === "completed" ? (
+                          <span className="material-symbols-outlined text-sm font-bold">check</span>
+                        ) : (
+                          <span className="material-symbols-outlined text-sm">{step.icon}</span>
+                        )}
+                      </div>
+                      {!isLast && <div className={`w-0.5 h-5 transition ${state === "completed" ? "bg-purple-400" : "bg-slate-200"}`} />}
+                    </div>
+                    <span className={`text-xs font-semibold pt-0.5 transition ${
+                      state === "completed" ? "text-purple-600" : state === "current" ? "text-slate-900" : "text-slate-400"
+                    }`}>
+                      {step.label}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* Delivered confirmation */}
+        {order.delivery && order.status === "DELIVERED" && (
+          <div className="bg-green-50 rounded-2xl p-6 mb-6 text-center border border-green-100">
+            <div className="w-14 h-14 rounded-full bg-green-100 flex items-center justify-center mx-auto mb-3">
+              <span className="material-symbols-outlined text-3xl text-green-500">done_all</span>
+            </div>
+            <h3 className="text-lg font-bold text-green-700 mb-1">Order Delivered!</h3>
+            <p className="text-sm text-green-600">
+              Delivered by {order.delivery.rider?.user?.name || "your rider"}
+              {order.delivery.rider?.phone && <span> · {order.delivery.rider.phone}</span>}
+              {order.delivery.deliveredAt && ` at ${new Date(order.delivery.deliveredAt).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}`}
+            </p>
           </div>
         )}
 

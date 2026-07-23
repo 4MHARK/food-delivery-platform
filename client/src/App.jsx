@@ -11,8 +11,10 @@ import RestaurantDetail from "./pages/RestaurantDetail";
 import Cart from "./pages/Cart";
 import OrderDetail from "./pages/OrderDetail";
 import Dashboard from "./pages/ManageRestaurant";
+import RiderDashboard from "./pages/RiderDashboard";
 import ProtectedRoute from "./components/ProtectedRoute";
 import OwnerRoute from "./components/OwnerRoute";
+import RiderRoute from "./components/RiderRoute";
 
 function HomeRedirect() {
   const { user, isAuthenticated } = useAuth();
@@ -23,7 +25,8 @@ function HomeRedirect() {
   }
 
   // Logged in — route by role
-  return <Navigate to={user?.role === "OWNER" ? "/dashboard" : "/restaurants"} replace />;
+  const dest = user?.role === "OWNER" ? "/dashboard" : user?.role === "RIDER" ? "/rider" : "/restaurants";
+  return <Navigate to={dest} replace />;
 }
 
 function App() {
@@ -51,6 +54,14 @@ function App() {
                 <OwnerRoute>
                   <Dashboard />
                 </OwnerRoute>
+              }
+            />
+            <Route
+              path="/rider"
+              element={
+                <RiderRoute>
+                  <RiderDashboard />
+                </RiderRoute>
               }
             />
             <Route

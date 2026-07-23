@@ -35,7 +35,7 @@ router.get("/users", authMiddleware, async (req, res) => {
 
 router.post("/users", async (req, res) => {
   try {
-    const { name, email, password, role } = req.body;
+    const { name, email, password, role, phone } = req.body;
 
     if (!name || !email || !password) {
       return res.status(400).json({
@@ -43,7 +43,7 @@ router.post("/users", async (req, res) => {
       });
     }
 
-    if(role!== "OWNER" && role !== "CUSTOMER"){
+    if(role!== "OWNER" && role !== "CUSTOMER" && role !== "RIDER"){
       return res.status(400).json({
         message: "invalid role"
       })
@@ -68,7 +68,8 @@ router.post("/users", async (req, res) => {
         name,
         email,
         password: hashedPassword,
-        role
+        role,
+        ...(phone && { phone }),
       },
     });
 
@@ -86,6 +87,7 @@ router.post("/users", async (req, res) => {
         name: newUser.name,
         email: newUser.email,
         role: newUser.role,
+        phone: newUser.phone,
         createdAt: newUser.createdAt,
       },
     });
@@ -144,6 +146,7 @@ router.post("/users/login", async (req, res) => {
         id: user.id,
         name: user.name,
         email: user.email,
+        phone: user.phone,
         role: user.role,
         createdAt: user.createdAt,
         updatedAt: user.updatedAt,
@@ -168,6 +171,7 @@ router.get("/users/profile", authMiddleware, async (req, res) => {
         id: true,
         name: true,
         email: true,
+        phone: true,
         role: true,
         createdAt: true,
         updatedAt: true,
@@ -194,7 +198,7 @@ router.get("/users/profile", authMiddleware, async (req, res) => {
 
 router.put("/users/profile", authMiddleware, async (req, res) => {
   try {
-    const { name, email } = req.body;
+    const { name, email, phone } = req.body;
 
     if (!name || !email) {
       return res.status(400).json({
@@ -215,11 +219,16 @@ router.put("/users/profile", authMiddleware, async (req, res) => {
 
     const updatedUser = await prisma.user.update({
       where: { id: req.user.id },
-      data: { name, email },
+      data: {
+        name,
+        email,
+        ...(phone !== undefined && { phone }),
+      },
       select: {
         id: true,
         name: true,
         email: true,
+        phone: true,
         role: true,
         createdAt: true,
         updatedAt: true,

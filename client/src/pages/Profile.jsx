@@ -71,7 +71,7 @@ const Profile = () => {
         firstName: nameParts[0] || "",
         lastName: nameParts.slice(1).join(" ") || "",
         email: user.email || "",
-        phone: "", // not in DB yet, placeholder
+        phone: user.phone || "",
       });
     }
   }, [user]); // runs when `user` changes
@@ -95,6 +95,7 @@ const Profile = () => {
           body: JSON.stringify({
             name: fullName,
             email: formData.email,
+            phone: formData.phone || null,
           }),
         }
       );

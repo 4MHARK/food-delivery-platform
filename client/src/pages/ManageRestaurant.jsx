@@ -140,6 +140,8 @@ const Dashboard = () => {
           if (currentPending > prevPendingRef.current) {
             const diff = currentPending - prevPendingRef.current;
             showMsg(`🔔 ${diff} new order${diff > 1 ? "s" : ""} received!`);
+            setOrders(data.orders || []);
+            setLastUpdated(new Date());
             // Browser notification
             if (Notification.permission === "granted") {
               new Notification("New Order!", {

@@ -204,6 +204,15 @@ router.get("/orders/:id", authMiddleware, async (req, res) => {
             },
           },
         },
+        delivery: {
+          include: {
+            rider: {
+              include: {
+                user: { select: { id: true, name: true } },
+              },
+            },
+          },
+        },
       },
     });
     if (!order) {
@@ -214,8 +223,9 @@ router.get("/orders/:id", authMiddleware, async (req, res) => {
 
     const isCustomer = order.customerId === req.user.id;
     const isOwner = order.restaurant.ownerId === req.user.id;
+    const isRider = order.delivery?.rider?.userId === req.user.id;
 
-    if (!isCustomer && !isOwner) {
+    if (!isCustomer && !isOwner && !isRider) {
       return res.status(403).json({
         message: "You are not allowed to view this order",
       });
@@ -241,7 +251,7 @@ router.put("/orders/:id/status", authMiddleware, ownerMiddleware, async (req, re
       return res.status(400).json({ message: "Status is required" });
     }
 
-    const validStatuses = ["PENDING_RESTAURANT_CONFIRMATION", "PREPARING", "OUT_FOR_DELIVERY", "DELIVERED", "CANCELLED"];
+    const validStatuses = ["PENDING_RESTAURANT_CONFIRMATION", "PREPARING", "CANCELLED"];
     if (!validStatuses.includes(status)) {
       return res.status(400).json({ message: "Invalid status" });
     }

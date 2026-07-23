@@ -67,6 +67,8 @@ const Login = () => {
 
       if (data.user.role === "OWNER") {
         navigate("/dashboard");
+      } else if (data.user.role === "RIDER") {
+        navigate("/rider");
       } else {
         navigate("/restaurants");
       }
