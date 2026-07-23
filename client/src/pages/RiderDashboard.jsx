@@ -77,6 +77,7 @@ const RiderDashboard = () => {
 
   // Per-row loading
   const [acceptingOrderId, setAcceptingOrderId] = useState(null);
+  const [rejectingOrderId, setRejectingOrderId] = useState(null);
   const [updatingDeliveryId, setUpdatingDeliveryId] = useState(null);
   const [togglingAvailability, setTogglingAvailability] = useState(false);
 
@@ -241,6 +242,28 @@ const RiderDashboard = () => {
       showMsg("Something went wrong. Please try again.");
     } finally {
       setAcceptingOrderId(null);
+    }
+  };
+
+  // ── Reject / skip an available order ──
+  const handleReject = async (orderId) => {
+    // Optimistic: hide from list immediately
+    setAvailableOrders((prev) => prev.filter((o) => o.id !== orderId));
+    try {
+      setRejectingOrderId(orderId);
+      const res = await fetch(`${import.meta.env.VITE_API_URL}/riders/reject-order/${orderId}`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) {
+        // Rollback — refetch to restore correct state
+        showMsg("Could not skip order. It may reappear on refresh.");
+        await fetchData();
+      }
+    } catch {
+      showMsg("Something went wrong. The order may reappear on refresh.");
+    } finally {
+      setRejectingOrderId(null);
     }
   };
 
@@ -703,17 +726,31 @@ const RiderDashboard = () => {
                           <span>{order.deliveryAddress}</span>
                         </div>
 
-                        <div className="flex items-center justify-between">
+                        <div className="flex items-center justify-between gap-2">
                           <span className="text-sm font-bold text-slate-900">
                             ₦{Number(order.totalAmount).toLocaleString()}
                           </span>
-                          <button
-                            onClick={() => handleAccept(order.id)}
-                            disabled={acceptingOrderId === order.id}
-                            className="bg-green-600 hover:bg-green-700 disabled:bg-green-300 text-white text-sm font-bold px-6 py-2.5 rounded-full transition active:scale-95"
-                          >
-                            {acceptingOrderId === order.id ? "Accepting..." : "Accept Delivery"}
-                          </button>
+                          <div className="flex items-center gap-2">
+                            <button
+                              onClick={() => handleReject(order.id)}
+                              disabled={rejectingOrderId === order.id || acceptingOrderId === order.id}
+                              className="bg-white hover:bg-slate-50 text-slate-400 hover:text-slate-500 border border-slate-200 text-sm font-semibold px-3 py-2.5 rounded-full transition active:scale-95"
+                              title="Skip this order"
+                            >
+                              {rejectingOrderId === order.id ? (
+                                "Skipping..."
+                              ) : (
+                                <span className="material-symbols-outlined text-base">close</span>
+                              )}
+                            </button>
+                            <button
+                              onClick={() => handleAccept(order.id)}
+                              disabled={acceptingOrderId === order.id || rejectingOrderId === order.id}
+                              className="bg-green-600 hover:bg-green-700 disabled:bg-green-300 text-white text-sm font-bold px-6 py-2.5 rounded-full transition active:scale-95"
+                            >
+                              {acceptingOrderId === order.id ? "Accepting..." : "Accept Delivery"}
+                            </button>
+                          </div>
                         </div>
                       </div>
                     </div>

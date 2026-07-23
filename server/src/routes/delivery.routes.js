@@ -17,13 +17,20 @@ const VALID_TRANSITIONS = {
   FAILED:      [],
 };
 
-// Get available orders for riders (PREPARING, no delivery assigned)
+// Get available orders for riders (PREPARING, no delivery assigned, not rejected by this rider)
 router.get("/riders/available-orders", authMiddleware, riderMiddleware, async (req, res) => {
   try {
+    const rider = await prisma.rider.findUnique({
+      where: { userId: req.user.id },
+    });
+
     const orders = await prisma.order.findMany({
       where: {
         status: "PREPARING",
         delivery: null, // No rider assigned yet
+        rejectedBy: rider
+          ? { none: { riderId: rider.id } } // Exclude orders this rider skipped
+          : undefined,
       },
       include: {
         orderItems: {
@@ -47,6 +54,52 @@ router.get("/riders/available-orders", authMiddleware, riderMiddleware, async (r
     });
   } catch (error) {
     console.error("GET /riders/available-orders error:", error);
+    res.status(500).json({
+      message: error.message || "Server error",
+    });
+  }
+});
+
+// Reject an available order (rider skips it — hidden only from them)
+router.post("/riders/reject-order/:orderId", authMiddleware, riderMiddleware, async (req, res) => {
+  try {
+    const rider = await prisma.rider.findUnique({
+      where: { userId: req.user.id },
+    });
+
+    if (!rider) {
+      return res.status(404).json({ message: "Rider profile not found." });
+    }
+
+    const orderId = Number(req.params.orderId);
+
+    // Verify the order exists and is still available
+    const order = await prisma.order.findUnique({
+      where: { id: orderId },
+    });
+
+    if (!order) {
+      return res.status(404).json({ message: "Order not found" });
+    }
+
+    if (order.status !== "PREPARING") {
+      return res.status(400).json({ message: "This order is no longer available" });
+    }
+
+    // Create the rejection (upsert — idempotent, no duplicate error)
+    await prisma.rejectedOrder.upsert({
+      where: {
+        riderId_orderId: { riderId: rider.id, orderId },
+      },
+      create: { riderId: rider.id, orderId },
+      update: {}, // no-op if already rejected
+    });
+
+    res.status(200).json({
+      message: "Order skipped — it will no longer appear in your available list.",
+    });
+  } catch (error) {
+    console.error("POST /riders/reject-order/:orderId error:", error);
     res.status(500).json({
       message: error.message || "Server error",
     });
