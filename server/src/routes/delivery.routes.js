@@ -2,6 +2,7 @@ import express from "express";
 import prisma from "../config/prisma.js";
 import authMiddleware from "../middleware/auth.middleware.js";
 import riderMiddleware from "../middleware/rider.middleware.js";
+import { notify } from "../services/events.js";
 
 const router = express.Router();
 
@@ -66,6 +67,18 @@ router.post("/deliveries/:orderId/accept", authMiddleware, riderMiddleware, asyn
       });
     }
 
+    if (!rider.isAvailable) {
+      return res.status(400).json({
+        message: "You are currently unavailable. Set yourself available to accept orders.",
+      });
+    }
+
+    if (!rider.isVerified) {
+      return res.status(403).json({
+        message: "Your rider profile is pending verification. You cannot accept orders yet.",
+      });
+    }
+
     const orderId = Number(req.params.orderId);
 
     // Active delivery statuses (non-terminal)
@@ -103,7 +116,12 @@ router.post("/deliveries/:orderId/accept", authMiddleware, riderMiddleware, asyn
       }
 
       if (order.delivery) {
-        throw { status: 409, message: "This order has already been assigned to a rider" };
+        // If the previous delivery failed, clean it up so a new rider can accept
+        if (order.delivery.status === "FAILED") {
+          await tx.delivery.delete({ where: { id: order.delivery.id } });
+        } else {
+          throw { status: 409, message: "This order has already been assigned to a rider" };
+        }
       }
 
       // Create delivery and update order status atomically
@@ -128,6 +146,9 @@ router.post("/deliveries/:orderId/accept", authMiddleware, riderMiddleware, asyn
       return { delivery, order: updatedOrder };
     });
 
+    // Notify customer their order has been picked up
+    notify("order:accepted", [result.order.customerId]);
+
     res.status(201).json({
       message: "Order accepted successfully",
       delivery: result.delivery,
@@ -148,42 +169,44 @@ router.post("/deliveries/:orderId/accept", authMiddleware, riderMiddleware, asyn
 // Update delivery status
 router.put("/deliveries/:id/status", authMiddleware, riderMiddleware, async (req, res) => {
   try {
-    const { status } = req.body;
+    const { status, reason } = req.body;
 
     if (!status) {
       return res.status(400).json({ message: "Status is required" });
     }
 
     const deliveryId = Number(req.params.id);
+    const userId = req.user.id;
 
-    // Fetch the delivery
-    const delivery = await prisma.delivery.findUnique({
-      where: { id: deliveryId },
-      include: {
-        rider: true,
-        order: true,
-      },
-    });
-
-    if (!delivery) {
-      return res.status(404).json({ message: "Delivery not found" });
-    }
-
-    // Verify this rider owns the delivery
-    if (delivery.rider.userId !== req.user.id) {
-      return res.status(403).json({ message: "You can only update your own deliveries" });
-    }
-
-    // Validate the transition
-    const allowed = VALID_TRANSITIONS[delivery.status] || [];
-    if (!allowed.includes(status)) {
-      return res.status(400).json({
-        message: `Cannot transition from ${delivery.status} to ${status}. Allowed: ${allowed.join(", ") || "none"}`,
-      });
-    }
-
-    // Use transaction to update delivery and possibly order
+    // ── Transaction: fetch, validate, and update atomically ──
     const result = await prisma.$transaction(async (tx) => {
+      // Fetch the delivery (inside TX — prevents race conditions)
+      const delivery = await tx.delivery.findUnique({
+        where: { id: deliveryId },
+        include: {
+          rider: true,
+          order: true,
+        },
+      });
+
+      if (!delivery) {
+        throw { status: 404, message: "Delivery not found" };
+      }
+
+      // Verify this rider owns the delivery
+      if (delivery.rider.userId !== userId) {
+        throw { status: 403, message: "You can only update your own deliveries" };
+      }
+
+      // Validate the transition (inside TX — atomic with the update below)
+      const allowed = VALID_TRANSITIONS[delivery.status] || [];
+      if (!allowed.includes(status)) {
+        throw {
+          status: 400,
+          message: `Cannot transition from ${delivery.status} to ${status}. Allowed: ${allowed.join(", ") || "none"}`,
+        };
+      }
+
       // Set timestamps based on new status
       const data = { status };
       if (status === "BAGGED") {
@@ -191,6 +214,9 @@ router.put("/deliveries/:id/status", authMiddleware, riderMiddleware, async (req
       }
       if (status === "DELIVERED") {
         data.deliveredAt = new Date();
+      }
+      if (status === "FAILED" && reason) {
+        data.failureReason = reason;
       }
 
       const updatedDelivery = await tx.delivery.update({
@@ -214,11 +240,9 @@ router.put("/deliveries/:id/status", authMiddleware, riderMiddleware, async (req
 
       let updatedOrder = null;
 
-      // When delivery is marked FAILED: delete it and reset order to PREPARING
-      // so another rider can accept it
+      // When delivery is marked FAILED: keep the record for audit trail
+      // and reset the order to PREPARING so another rider can accept it
       if (status === "FAILED") {
-        await tx.delivery.delete({ where: { id: deliveryId } });
-
         updatedOrder = await tx.order.update({
           where: { id: delivery.orderId },
           data: { status: "PREPARING" },
@@ -255,8 +279,18 @@ router.put("/deliveries/:id/status", authMiddleware, riderMiddleware, async (req
       response.order = result.order;
     }
 
+    // Notify customer of delivery progress
+    const customerId = result.delivery.order?.customer?.id;
+    if (customerId) {
+      notify("delivery:updated", [customerId]);
+    }
+
     res.status(200).json(response);
   } catch (error) {
+    // Handle structured throws from the transaction
+    if (error.status) {
+      return res.status(error.status).json({ message: error.message });
+    }
     console.error("PUT /deliveries/:id/status error:", error);
     res.status(500).json({
       message: error.message || "Server error",
@@ -300,6 +334,58 @@ router.get("/riders/my-deliveries", authMiddleware, riderMiddleware, async (req,
     res.status(500).json({
       message: error.message || "Server error",
     });
+  }
+});
+
+// Get rider stats (earnings, completed deliveries)
+router.get("/riders/stats", authMiddleware, riderMiddleware, async (req, res) => {
+  try {
+    const rider = await prisma.rider.findUnique({
+      where: { userId: req.user.id },
+    });
+
+    if (!rider) {
+      return res.status(404).json({ message: "Rider profile not found." });
+    }
+
+    // Completed deliveries with their order's delivery fee
+    const completed = await prisma.delivery.findMany({
+      where: { riderId: rider.id, status: "DELIVERED" },
+      include: {
+        order: { select: { deliveryFee: true, totalAmount: true } },
+      },
+    });
+
+    const totalDeliveries = completed.length;
+    const totalEarnings = completed.reduce(
+      (sum, d) => sum + Number(d.order.deliveryFee),
+      0
+    );
+
+    // This week's stats
+    const weekStart = new Date();
+    weekStart.setDate(weekStart.getDate() - weekStart.getDay());
+    weekStart.setHours(0, 0, 0, 0);
+
+    const thisWeek = completed.filter((d) => d.deliveredAt && new Date(d.deliveredAt) >= weekStart);
+    const thisWeekDeliveries = thisWeek.length;
+    const thisWeekEarnings = thisWeek.reduce(
+      (sum, d) => sum + Number(d.order.deliveryFee),
+      0
+    );
+
+    res.status(200).json({
+      message: "Rider stats fetched successfully",
+      stats: {
+        totalDeliveries,
+        totalEarnings,
+        thisWeekDeliveries,
+        thisWeekEarnings,
+      },
+    });
+  } catch (error) {
+    console.error("GET /riders/stats error:", error);
+    res.status(500).json({ message: error.message || "Server error" });
   }
 });
 

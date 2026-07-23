@@ -25,6 +25,29 @@ const DELIVERY_STATUS = {
 const ACTIVE_DELIVERY_STATUSES = ["ZILLA_ON_IT", "AT_KITCHEN", "BAGGED", "MOVING", "CLOSE_BY"];
 const PAST_DELIVERY_STATUSES = ["DELIVERED", "FAILED"];
 
+// Estimated delivery time ranges in minutes per vehicle type.
+// Placeholder until GPS/maps integration provides real distance-based ETAs.
+const ETA_RANGES = {
+  Bicycle:   [20, 35],
+  Motorcycle: [10, 25],
+  Car:       [10, 20],
+};
+const DEFAULT_ETA = [10, 30];
+
+/** Calculate remaining ETA based on delivery progress (0 = not started, 1 = complete). */
+function estimateETA(vehicleType, deliveryStatus) {
+  const [low, high] = ETA_RANGES[vehicleType] || DEFAULT_ETA;
+  const totalSteps = Object.keys(DELIVERY_STATUS).filter(
+    (k) => k !== "FAILED"
+  ).length - 1; // exclude FAILED, count steps from ZILLA_ON_IT to DELIVERED
+  const progress = Object.keys(DELIVERY_STATUS).indexOf(deliveryStatus);
+  const factor = Math.max(0, 1 - progress / Math.max(1, totalSteps));
+  return [
+    Math.max(1, Math.round(low * factor)),
+    Math.max(2, Math.round(high * factor)),
+  ];
+}
+
 const RiderDashboard = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
@@ -39,28 +62,38 @@ const RiderDashboard = () => {
     vehicleType: "",
     licensePlate: "",
     licenseNumber: "",
+    matricNumber: "",
     phone: "",
   });
+  const [idType, setIdType] = useState("license"); // "license" | "matric"
   const [registering, setRegistering] = useState(false);
 
   // Orders & deliveries
   const [availableOrders, setAvailableOrders] = useState([]);
   const [myDeliveries, setMyDeliveries] = useState([]);
+  const [stats, setStats] = useState(null);
   const [dataLoading, setDataLoading] = useState(false);
   const [dataError, setDataError] = useState("");
 
   // Per-row loading
   const [acceptingOrderId, setAcceptingOrderId] = useState(null);
   const [updatingDeliveryId, setUpdatingDeliveryId] = useState(null);
+  const [togglingAvailability, setTogglingAvailability] = useState(false);
+
+  // FAILED confirmation dialog
+  const [failTarget, setFailTarget] = useState(null); // deliveryId | null
+  const [failReason, setFailReason] = useState("");
 
   // Toast
   const [message, setMessage] = useState("");
   const messageTimer = useRef(null);
 
   // Polling
-  const pollRef = useRef(null);
   const prevAvailableRef = useRef(0);
   const [lastUpdated, setLastUpdated] = useState(null);
+
+  // SSE error tracking: stop after 30s of continuous failure
+  const sseFailSinceRef = useRef(null);
 
   const showMsg = (msg) => {
     setMessage(msg);
@@ -90,53 +123,86 @@ const RiderDashboard = () => {
   };
 
   // ── Fetch available orders and my deliveries ──
-  const fetchData = async () => {
+  const fetchData = async (opts = {}) => {
+    const { silent = false } = opts;
     try {
-      setDataLoading(true);
-      setDataError("");
+      if (!silent) {
+        setDataLoading(true);
+        setDataError("");
+      }
 
-      const [ordersRes, deliveriesRes] = await Promise.all([
+      const [ordersRes, deliveriesRes, statsRes] = await Promise.all([
         fetch(`${import.meta.env.VITE_API_URL}/riders/available-orders`, {
           headers: { Authorization: `Bearer ${token}` },
         }),
         fetch(`${import.meta.env.VITE_API_URL}/riders/my-deliveries`, {
           headers: { Authorization: `Bearer ${token}` },
         }),
+        fetch(`${import.meta.env.VITE_API_URL}/riders/stats`, {
+          headers: { Authorization: `Bearer ${token}` },
+        }),
       ]);
 
+      let availableOrders = [];
       if (ordersRes.ok) {
         const ordersData = await ordersRes.json();
-        setAvailableOrders(ordersData.orders || []);
+        availableOrders = ordersData.orders || [];
+        setAvailableOrders(availableOrders);
       }
       if (deliveriesRes.ok) {
         const deliveriesData = await deliveriesRes.json();
         setMyDeliveries(deliveriesData.deliveries || []);
       }
+      if (statsRes.ok) {
+        const statsData = await statsRes.json();
+        setStats(statsData.stats);
+      }
 
       setLastUpdated(new Date());
+      return { availableOrders };
     } catch {
-      setDataError("Failed to load data.");
+      if (!silent) setDataError("Failed to load data.");
+      return null;
     } finally {
-      setDataLoading(false);
+      if (!silent) setDataLoading(false);
     }
   };
 
   // ── Register rider profile ──
   const handleRegister = async (e) => {
     e.preventDefault();
-    if (!riderForm.vehicleType || !riderForm.licensePlate || !riderForm.licenseNumber || !riderForm.phone) {
-      showMsg("Please fill in all fields.");
+    if (!riderForm.vehicleType || !riderForm.phone) {
+      showMsg("Please fill in vehicle type and phone.");
+      return;
+    }
+    if (idType === "license" && (!riderForm.licensePlate || !riderForm.licenseNumber)) {
+      showMsg("Please fill in license plate and license number.");
+      return;
+    }
+    if (idType === "matric" && !riderForm.matricNumber) {
+      showMsg("Please fill in your matriculation number.");
       return;
     }
     try {
       setRegistering(true);
+      const body = {
+        vehicleType: riderForm.vehicleType,
+        phone: riderForm.phone,
+      };
+      if (idType === "license") {
+        body.licensePlate = riderForm.licensePlate;
+        body.licenseNumber = riderForm.licenseNumber;
+      } else {
+        body.matricNumber = riderForm.matricNumber;
+      }
+
       const res = await fetch(`${import.meta.env.VITE_API_URL}/riders/register`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify(riderForm),
+        body: JSON.stringify(body),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -179,16 +245,17 @@ const RiderDashboard = () => {
   };
 
   // ── Update delivery status ──
-  const handleUpdateDeliveryStatus = async (deliveryId, newStatus) => {
+  const handleUpdateDeliveryStatus = async (deliveryId, newStatus, extra = {}) => {
     try {
       setUpdatingDeliveryId(deliveryId);
+      const body = { status: newStatus, ...extra };
       const res = await fetch(`${import.meta.env.VITE_API_URL}/deliveries/${deliveryId}/status`, {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({ status: newStatus }),
+        body: JSON.stringify(body),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -202,6 +269,43 @@ const RiderDashboard = () => {
       showMsg("Something went wrong. Please try again.");
     } finally {
       setUpdatingDeliveryId(null);
+    }
+  };
+
+  // ── Confirm and execute FAILED ──
+  const confirmFail = async () => {
+    const deliveryId = failTarget;
+    setFailTarget(null);
+    if (!deliveryId) return;
+    const reason = failReason.trim() || undefined;
+    setFailReason("");
+    await handleUpdateDeliveryStatus(deliveryId, "FAILED", reason ? { reason } : {});
+  };
+
+  // ── Toggle availability ──
+  const handleToggleAvailability = async () => {
+    try {
+      setTogglingAvailability(true);
+      const newVal = !rider.isAvailable;
+      const res = await fetch(`${import.meta.env.VITE_API_URL}/riders/me`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ isAvailable: newVal }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        showMsg(data.message || "Failed to update availability.");
+        return;
+      }
+      setRider(data.rider);
+      showMsg(newVal ? "You are now available for deliveries 🟢" : "You are now unavailable ⚫");
+    } catch {
+      showMsg("Something went wrong. Please try again.");
+    } finally {
+      setTogglingAvailability(false);
     }
   };
 
@@ -222,48 +326,43 @@ const RiderDashboard = () => {
     }
   }, [rider]);
 
-  // ── Polling ──
+  // ── SSE: real-time updates ──
   useEffect(() => {
     if (!rider) return;
-    if (pollRef.current) clearInterval(pollRef.current);
 
-    pollRef.current = setInterval(async () => {
-      try {
-        const res = await fetch(`${import.meta.env.VITE_API_URL}/riders/available-orders`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        if (res.ok) {
-          const data = await res.json();
-          const fresh = data.orders || [];
-          const currentAvailable = fresh.length;
-          if (currentAvailable > prevAvailableRef.current) {
-            const diff = currentAvailable - prevAvailableRef.current;
-            showMsg(`🔔 ${diff} new order${diff > 1 ? "s" : ""} available!`);
-            setAvailableOrders(fresh);
-            setLastUpdated(new Date());
-            if (Notification.permission === "granted") {
-              new Notification("New Order Available!", {
-                body: `${diff} new order${diff > 1 ? "s" : ""} ready for pickup.`,
-              });
-            }
+    const es = new EventSource(
+      `${import.meta.env.VITE_API_URL}/events?token=${encodeURIComponent(token)}`
+    );
+
+    es.onmessage = async () => {
+      const result = await fetchData({ silent: true });
+      if (result) {
+        const currentAvailable = result.availableOrders.length;
+        if (currentAvailable > prevAvailableRef.current) {
+          const diff = currentAvailable - prevAvailableRef.current;
+          showMsg(`🔔 ${diff} new order${diff > 1 ? "s" : ""} available!`);
+          if (Notification.permission === "granted") {
+            new Notification("New Order Available!", {
+              body: `${diff} new order${diff > 1 ? "s" : ""} ready for pickup.`,
+            });
           }
-          prevAvailableRef.current = currentAvailable;
         }
-
-        // Also refresh deliveries
-        const delRes = await fetch(`${import.meta.env.VITE_API_URL}/riders/my-deliveries`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        if (delRes.ok) {
-          const delData = await delRes.json();
-          setMyDeliveries(delData.deliveries || []);
-        }
-      } catch {
-        // Silently ignore poll errors
+        prevAvailableRef.current = currentAvailable;
       }
-    }, 15000);
+    };
 
-    return () => clearInterval(pollRef.current);
+    es.onerror = () => {
+      if (!sseFailSinceRef.current) sseFailSinceRef.current = Date.now();
+      if (Date.now() - sseFailSinceRef.current > 30_000) {
+        es.close();
+      }
+    };
+
+    es.onopen = () => {
+      sseFailSinceRef.current = null; // reset — connection is back
+    };
+
+    return () => es.close();
   }, [rider, token]);
 
   // ── Request notification permission ──
@@ -342,26 +441,74 @@ const RiderDashboard = () => {
                 <option value="Bicycle">Bicycle</option>
               </select>
             </div>
+            {/* ID Type Toggle */}
             <div>
-              <label className="block text-sm font-semibold text-slate-700 mb-1.5">License Plate</label>
-              <input
-                required
-                placeholder="e.g. ABC 123 XY"
-                value={riderForm.licensePlate}
-                onChange={(e) => setRiderForm({ ...riderForm, licensePlate: e.target.value })}
-                className="w-full h-12 px-4 rounded-xl border-2 border-slate-200 focus:border-amber-500 focus:ring-1 focus:ring-amber-500 outline-none transition text-sm"
-              />
+              <label className="block text-sm font-semibold text-slate-700 mb-2">Identification</label>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setIdType("license")}
+                  className={`flex-1 h-12 rounded-xl border-2 text-sm font-semibold transition ${
+                    idType === "license"
+                      ? "border-amber-500 bg-amber-50 text-amber-700"
+                      : "border-slate-200 text-slate-500 hover:border-slate-300"
+                  }`}
+                >
+                  🪪 License
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIdType("matric")}
+                  className={`flex-1 h-12 rounded-xl border-2 text-sm font-semibold transition ${
+                    idType === "matric"
+                      ? "border-amber-500 bg-amber-50 text-amber-700"
+                      : "border-slate-200 text-slate-500 hover:border-slate-300"
+                  }`}
+                >
+                  🎓 Student ID
+                </button>
+              </div>
             </div>
-            <div>
-              <label className="block text-sm font-semibold text-slate-700 mb-1.5">License Number</label>
-              <input
-                required
-                placeholder="e.g. DL-2024-12345"
-                value={riderForm.licenseNumber}
-                onChange={(e) => setRiderForm({ ...riderForm, licenseNumber: e.target.value })}
-                className="w-full h-12 px-4 rounded-xl border-2 border-slate-200 focus:border-amber-500 focus:ring-1 focus:ring-amber-500 outline-none transition text-sm"
-              />
-            </div>
+
+            {/* License fields */}
+            {idType === "license" && (
+              <>
+                <div>
+                  <label className="block text-sm font-semibold text-slate-700 mb-1.5">License Plate</label>
+                  <input
+                    required
+                    placeholder="e.g. ABC 123 XY"
+                    value={riderForm.licensePlate}
+                    onChange={(e) => setRiderForm({ ...riderForm, licensePlate: e.target.value })}
+                    className="w-full h-12 px-4 rounded-xl border-2 border-slate-200 focus:border-amber-500 focus:ring-1 focus:ring-amber-500 outline-none transition text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-slate-700 mb-1.5">License Number</label>
+                  <input
+                    required
+                    placeholder="e.g. DL-2024-12345"
+                    value={riderForm.licenseNumber}
+                    onChange={(e) => setRiderForm({ ...riderForm, licenseNumber: e.target.value })}
+                    className="w-full h-12 px-4 rounded-xl border-2 border-slate-200 focus:border-amber-500 focus:ring-1 focus:ring-amber-500 outline-none transition text-sm"
+                  />
+                </div>
+              </>
+            )}
+
+            {/* Matric number field */}
+            {idType === "matric" && (
+              <div>
+                <label className="block text-sm font-semibold text-slate-700 mb-1.5">Matriculation Number</label>
+                <input
+                  required
+                  placeholder="e.g. FPI/2024/12345"
+                  value={riderForm.matricNumber}
+                  onChange={(e) => setRiderForm({ ...riderForm, matricNumber: e.target.value })}
+                  className="w-full h-12 px-4 rounded-xl border-2 border-slate-200 focus:border-amber-500 focus:ring-1 focus:ring-amber-500 outline-none transition text-sm"
+                />
+              </div>
+            )}
             <div>
               <label className="block text-sm font-semibold text-slate-700 mb-1.5">Phone Number</label>
               <input
@@ -390,6 +537,7 @@ const RiderDashboard = () => {
   //  MAIN DASHBOARD
   // ═════════════════════════════════════
   return (
+    <>
     <AppLayout desktopNavItems={RIDER_NAV} bottomNavItems={RIDER_NAV}>
       <div className="px-4 lg:px-8 max-w-2xl mx-auto pt-6 pb-24 md:pb-8">
         {/* Header */}
@@ -397,14 +545,32 @@ const RiderDashboard = () => {
           <div>
             <h2 className="text-2xl font-bold text-slate-900">Deliveries</h2>
             <p className="text-slate-500 text-sm">
-              {rider?.vehicleType} • {rider?.licensePlate}
+              {rider?.vehicleType}
+              {rider?.licensePlate ? ` • ${rider.licensePlate}` : ""}
+              {rider?.matricNumber ? ` • ${rider.matricNumber}` : ""}
             </p>
           </div>
-          {lastUpdated && (
-            <p className="text-xs text-slate-400">
-              Updated {lastUpdated.toLocaleTimeString()}
-            </p>
-          )}
+          <div className="flex items-center gap-3">
+            {/* Availability toggle */}
+            <button
+              onClick={handleToggleAvailability}
+              disabled={togglingAvailability}
+              className={`relative inline-flex h-7 w-12 items-center rounded-full transition-colors ${
+                rider?.isAvailable ? "bg-green-500" : "bg-slate-300"
+              } ${togglingAvailability ? "opacity-50" : ""}`}
+            >
+              <span
+                className={`inline-block h-5 w-5 transform rounded-full bg-white shadow-sm transition-transform ${
+                  rider?.isAvailable ? "translate-x-6" : "translate-x-1"
+                }`}
+              />
+            </button>
+            {lastUpdated && (
+              <p className="text-xs text-slate-400 hidden sm:block">
+                Updated {lastUpdated.toLocaleTimeString()}
+              </p>
+            )}
+          </div>
         </div>
 
         {/* Toast */}
@@ -426,6 +592,28 @@ const RiderDashboard = () => {
           </div>
         )}
 
+        {/* ── Stats Card ── */}
+        {stats && !dataLoading && (
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
+            <div className="bg-white rounded-2xl shadow-sm p-4">
+              <p className="text-xs text-slate-400 font-semibold uppercase tracking-wider mb-1">Earnings</p>
+              <p className="text-xl font-extrabold text-slate-900">₦{stats.totalEarnings.toLocaleString()}</p>
+            </div>
+            <div className="bg-white rounded-2xl shadow-sm p-4">
+              <p className="text-xs text-slate-400 font-semibold uppercase tracking-wider mb-1">Deliveries</p>
+              <p className="text-xl font-extrabold text-slate-900">{stats.totalDeliveries}</p>
+            </div>
+            <div className="bg-white rounded-2xl shadow-sm p-4">
+              <p className="text-xs text-slate-400 font-semibold uppercase tracking-wider mb-1">This Week</p>
+              <p className="text-xl font-extrabold text-slate-900">₦{stats.thisWeekEarnings.toLocaleString()}</p>
+            </div>
+            <div className="bg-white rounded-2xl shadow-sm p-4">
+              <p className="text-xs text-slate-400 font-semibold uppercase tracking-wider mb-1">Week Trips</p>
+              <p className="text-xl font-extrabold text-slate-900">{stats.thisWeekDeliveries}</p>
+            </div>
+          </div>
+        )}
+
         {/* Skeleton loading */}
         {dataLoading && (
           <div className="space-y-4 animate-pulse">
@@ -443,6 +631,7 @@ const RiderDashboard = () => {
         {!dataLoading && (
           <div className="space-y-6">
             {/* Available Orders Section */}
+            {rider?.isAvailable ? (
             <div>
               <h3 className="text-sm font-bold text-slate-500 uppercase tracking-wider mb-3 flex items-center gap-2">
                 <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
@@ -484,6 +673,9 @@ const RiderDashboard = () => {
                         <div className="flex items-center gap-2 mb-3">
                           <span className="material-symbols-outlined text-amber-500 text-lg">storefront</span>
                           <span className="text-sm font-semibold text-slate-700">{order.restaurant?.name}</span>
+                          {order.restaurant?.phone && (
+                            <span className="text-xs text-slate-400">· {order.restaurant.phone}</span>
+                          )}
                         </div>
 
                         {/* Items */}
@@ -529,6 +721,15 @@ const RiderDashboard = () => {
                 </div>
               )}
             </div>
+            ) : (
+              <div className="text-center py-8">
+                <div className="w-16 h-16 rounded-full bg-slate-200 flex items-center justify-center mx-auto mb-3">
+                  <span className="material-symbols-outlined text-3xl text-slate-400">do_not_disturb</span>
+                </div>
+                <p className="text-sm font-medium text-slate-500">You are currently unavailable</p>
+                <p className="text-xs text-slate-400 mt-1">Toggle availability to see new orders.</p>
+              </div>
+            )}
 
             {/* ── My Active Delivery ── */}
             <div>
@@ -567,6 +768,9 @@ const RiderDashboard = () => {
                         <p className="text-xs text-slate-400 mb-0.5">Pickup</p>
                         <p className="font-semibold text-slate-800">{activeDelivery.order?.restaurant?.name}</p>
                         <p className="text-xs text-slate-500">{activeDelivery.order?.restaurant?.address}</p>
+                        {activeDelivery.order?.restaurant?.phone && (
+                          <p className="text-xs text-slate-500 mt-0.5">{activeDelivery.order.restaurant.phone}</p>
+                        )}
                       </div>
                       <div className="bg-slate-50 rounded-xl p-3">
                         <p className="text-xs text-slate-400 mb-0.5">Customer</p>
@@ -587,9 +791,19 @@ const RiderDashboard = () => {
                       ))}
                     </div>
 
-                    {/* Total */}
-                    <div className="text-sm font-bold text-slate-900 mb-4">
-                      Total: ₦{Number(activeDelivery.order?.totalAmount).toLocaleString()}
+                    {/* Total + ETA */}
+                    <div className="flex items-center justify-between mb-4">
+                      <span className="text-sm font-bold text-slate-900">
+                        Total: ₦{Number(activeDelivery.order?.totalAmount).toLocaleString()}
+                      </span>
+                      {(() => {
+                        const [etaMin, etaMax] = estimateETA(rider?.vehicleType, activeDelivery.status);
+                        return (
+                          <span className="text-xs text-slate-400 font-medium">
+                            ⏱ ~{etaMin}–{etaMax} min
+                          </span>
+                        );
+                      })()}
                     </div>
 
                     {/* Status advancement buttons */}
@@ -604,7 +818,7 @@ const RiderDashboard = () => {
                             {updatingDeliveryId === activeDelivery.id ? "Updating..." : "At Kitchen"}
                           </button>
                           <button
-                            onClick={() => handleUpdateDeliveryStatus(activeDelivery.id, "FAILED")}
+                            onClick={() => { setFailTarget(activeDelivery.id); setFailReason(""); }}
                             disabled={updatingDeliveryId === activeDelivery.id}
                             className="bg-white hover:bg-red-50 text-red-600 border-2 border-red-200 text-sm font-bold px-4 py-2.5 rounded-full transition active:scale-95"
                           >
@@ -622,7 +836,7 @@ const RiderDashboard = () => {
                             {updatingDeliveryId === activeDelivery.id ? "Updating..." : "Bagged"}
                           </button>
                           <button
-                            onClick={() => handleUpdateDeliveryStatus(activeDelivery.id, "FAILED")}
+                            onClick={() => { setFailTarget(activeDelivery.id); setFailReason(""); }}
                             disabled={updatingDeliveryId === activeDelivery.id}
                             className="bg-white hover:bg-red-50 text-red-600 border-2 border-red-200 text-sm font-bold px-4 py-2.5 rounded-full transition active:scale-95"
                           >
@@ -640,7 +854,7 @@ const RiderDashboard = () => {
                             {updatingDeliveryId === activeDelivery.id ? "Updating..." : "Moving"}
                           </button>
                           <button
-                            onClick={() => handleUpdateDeliveryStatus(activeDelivery.id, "FAILED")}
+                            onClick={() => { setFailTarget(activeDelivery.id); setFailReason(""); }}
                             disabled={updatingDeliveryId === activeDelivery.id}
                             className="bg-white hover:bg-red-50 text-red-600 border-2 border-red-200 text-sm font-bold px-4 py-2.5 rounded-full transition active:scale-95"
                           >
@@ -658,7 +872,7 @@ const RiderDashboard = () => {
                             {updatingDeliveryId === activeDelivery.id ? "Updating..." : "Close By"}
                           </button>
                           <button
-                            onClick={() => handleUpdateDeliveryStatus(activeDelivery.id, "FAILED")}
+                            onClick={() => { setFailTarget(activeDelivery.id); setFailReason(""); }}
                             disabled={updatingDeliveryId === activeDelivery.id}
                             className="bg-white hover:bg-red-50 text-red-600 border-2 border-red-200 text-sm font-bold px-4 py-2.5 rounded-full transition active:scale-95"
                           >
@@ -676,7 +890,7 @@ const RiderDashboard = () => {
                             {updatingDeliveryId === activeDelivery.id ? "Updating..." : "Delivered"}
                           </button>
                           <button
-                            onClick={() => handleUpdateDeliveryStatus(activeDelivery.id, "FAILED")}
+                            onClick={() => { setFailTarget(activeDelivery.id); setFailReason(""); }}
                             disabled={updatingDeliveryId === activeDelivery.id}
                             className="bg-white hover:bg-red-50 text-red-600 border-2 border-red-200 text-sm font-bold px-4 py-2.5 rounded-full transition active:scale-95"
                           >
@@ -760,6 +974,58 @@ const RiderDashboard = () => {
         )}
       </div>
     </AppLayout>
+
+    {/* ── FAILED Confirmation Dialog ── */}
+    {failTarget && (
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+        {/* Backdrop */}
+        <div
+          className="absolute inset-0 bg-black/40 backdrop-blur-sm"
+          onClick={() => { setFailTarget(null); setFailReason(""); }}
+        />
+        {/* Dialog */}
+        <div className="relative bg-white rounded-2xl shadow-xl max-w-sm w-full p-6 space-y-4">
+          <div className="text-center">
+            <div className="w-12 h-12 rounded-full bg-red-100 flex items-center justify-center mx-auto mb-3">
+              <span className="material-symbols-outlined text-2xl text-red-500">warning</span>
+            </div>
+            <h3 className="text-lg font-bold text-slate-900">Report Delivery Issue?</h3>
+            <p className="text-sm text-slate-500 mt-1">
+              This will release the order for another rider. The customer will be notified.
+            </p>
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold text-slate-600 mb-1.5">
+              Reason (optional)
+            </label>
+            <textarea
+              value={failReason}
+              onChange={(e) => setFailReason(e.target.value)}
+              placeholder="e.g. Restaurant closed, customer unreachable..."
+              rows={3}
+              className="w-full px-4 py-2.5 rounded-xl border-2 border-slate-200 focus:border-red-400 focus:ring-1 focus:ring-red-400 outline-none transition text-sm resize-none"
+            />
+          </div>
+
+          <div className="flex gap-3">
+            <button
+              onClick={() => { setFailTarget(null); setFailReason(""); }}
+              className="flex-1 h-12 rounded-xl border-2 border-slate-200 text-slate-600 font-semibold text-sm hover:bg-slate-50 transition active:scale-95"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={confirmFail}
+              className="flex-1 h-12 rounded-xl bg-red-600 hover:bg-red-700 text-white font-bold text-sm transition active:scale-95"
+            >
+              Confirm
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
+    </>
   );
 };
 

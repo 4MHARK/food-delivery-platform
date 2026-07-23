@@ -8,11 +8,64 @@ const router = express.Router();
 // Register a rider profile
 router.post("/riders/register", authMiddleware, async (req, res) => {
   try {
-    const { vehicleType, licensePlate, licenseNumber, phone } = req.body;
+    const { vehicleType, licensePlate, licenseNumber, matricNumber, phone } = req.body;
 
-    if (!vehicleType || !licensePlate || !licenseNumber || !phone) {
+    // ── Validation ──
+
+    // vehicleType and phone are always required
+    if (!vehicleType || !phone) {
       return res.status(400).json({
-        message: "vehicleType, licensePlate, licenseNumber, and phone are required",
+        message: "vehicleType and phone are required",
+      });
+    }
+
+    // Must provide either driver's license OR matric number (not both, not neither)
+    const hasLicense = licensePlate || licenseNumber;
+    const hasMatric = !!matricNumber;
+
+    if (!hasLicense && !hasMatric) {
+      return res.status(400).json({
+        message: "Provide either a driver's license (plate + number) or a matriculation number",
+      });
+    }
+
+    if (hasLicense && hasMatric) {
+      return res.status(400).json({
+        message: "Provide either a driver's license OR a matriculation number, not both",
+      });
+    }
+
+    // License path: both plate and number required
+    if (hasLicense && (!licensePlate || !licenseNumber)) {
+      return res.status(400).json({
+        message: "Both license plate and license number are required for license registration",
+      });
+    }
+
+    // Format validations
+    if (licensePlate && !/^[A-Za-z0-9]{2,15}$/.test(licensePlate.replace(/\s/g, ""))) {
+      return res.status(400).json({
+        message: "License plate must be 2-15 alphanumeric characters",
+      });
+    }
+
+    if (licenseNumber && !/^[A-Za-z0-9][-A-Za-z0-9]{4,20}$/.test(licenseNumber)) {
+      return res.status(400).json({
+        message: "License number must be 5-20 characters (letters, numbers, hyphens)",
+      });
+    }
+
+    if (matricNumber && !/^[A-Za-z0-9/-]{5,20}$/.test(matricNumber)) {
+      return res.status(400).json({
+        message: "Matric number must be 5-20 alphanumeric characters",
+      });
+    }
+
+    // Phone: must be 10-15 digits, optionally starting with +
+    const phoneDigits = phone.replace(/\D/g, "");
+    if (phoneDigits.length < 10 || phoneDigits.length > 15) {
+      return res.status(400).json({
+        message: "Phone number must be 10-15 digits",
       });
     }
 
@@ -34,23 +87,37 @@ router.post("/riders/register", authMiddleware, async (req, res) => {
       });
     }
 
-    // Check for duplicate license number
-    const duplicateLicense = await prisma.rider.findUnique({
-      where: { licenseNumber },
-    });
-
-    if (duplicateLicense) {
-      return res.status(400).json({
-        message: "This license number is already registered",
+    // Check for duplicate license number (only if provided)
+    if (licenseNumber) {
+      const duplicateLicense = await prisma.rider.findUnique({
+        where: { licenseNumber },
       });
+      if (duplicateLicense) {
+        return res.status(400).json({
+          message: "This license number is already registered",
+        });
+      }
+    }
+
+    // Check for duplicate matric number (only if provided)
+    if (matricNumber) {
+      const duplicateMatric = await prisma.rider.findUnique({
+        where: { matricNumber },
+      });
+      if (duplicateMatric) {
+        return res.status(400).json({
+          message: "This matriculation number is already registered",
+        });
+      }
     }
 
     const rider = await prisma.rider.create({
       data: {
         userId: req.user.id,
         vehicleType,
-        licensePlate,
-        licenseNumber,
+        licensePlate: licensePlate || null,
+        licenseNumber: licenseNumber || null,
+        matricNumber: matricNumber || null,
         phone,
       },
       include: {
@@ -105,7 +172,7 @@ router.get("/riders/me", authMiddleware, riderMiddleware, async (req, res) => {
 // Update rider profile
 router.put("/riders/me", authMiddleware, riderMiddleware, async (req, res) => {
   try {
-    const { vehicleType, licensePlate, licenseNumber, phone, isAvailable } = req.body;
+    const { vehicleType, licensePlate, licenseNumber, matricNumber, phone, isAvailable } = req.body;
 
     const rider = await prisma.rider.findUnique({
       where: { userId: req.user.id },
@@ -129,12 +196,25 @@ router.put("/riders/me", authMiddleware, riderMiddleware, async (req, res) => {
       }
     }
 
+    // If matricNumber is being changed, check uniqueness
+    if (matricNumber && matricNumber !== rider.matricNumber) {
+      const duplicateMatric = await prisma.rider.findUnique({
+        where: { matricNumber },
+      });
+      if (duplicateMatric) {
+        return res.status(400).json({
+          message: "This matriculation number is already registered",
+        });
+      }
+    }
+
     const updated = await prisma.rider.update({
       where: { userId: req.user.id },
       data: {
         ...(vehicleType !== undefined && { vehicleType }),
         ...(licensePlate !== undefined && { licensePlate }),
         ...(licenseNumber !== undefined && { licenseNumber }),
+        ...(matricNumber !== undefined && { matricNumber }),
         ...(phone !== undefined && { phone }),
         ...(isAvailable !== undefined && { isAvailable }),
       },

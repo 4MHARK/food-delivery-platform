@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import AppLayout from "../components/AppLayout";
@@ -38,6 +38,21 @@ const DELIVERY_COLORS = {
   DELIVERED: "border-green-500 text-green-600 bg-green-50",
 };
 
+// Estimated delivery time in minutes. Scaled down as rider progresses.
+// Placeholder until maps integration provides real ETAs.
+const CUSTOMER_ETA_RANGE = [5, 25];
+const DELIVERY_STEP_COUNT = DELIVERY_STEPS.length - 1; // exclude FAILED
+
+function estimateCustomerETA(deliveryStatus) {
+  const currentIdx = DELIVERY_STEPS.findIndex((s) => s.key === deliveryStatus);
+  const factor = Math.max(0, 1 - currentIdx / Math.max(1, DELIVERY_STEP_COUNT));
+  const [low, high] = CUSTOMER_ETA_RANGE;
+  return [
+    Math.max(1, Math.round(low * factor)),
+    Math.max(2, Math.round(high * factor)),
+  ];
+}
+
 const OrderDetail = () => {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -45,7 +60,6 @@ const OrderDetail = () => {
   const [order, setOrder] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const pollRef = useRef(null);
 
   useEffect(() => {
     const fetchOrder = async () => {
@@ -66,15 +80,20 @@ const OrderDetail = () => {
     fetchOrder();
   }, [id]);
 
-  // ── Poll for status changes (notification + auto-update) ──
+  // ── SSE: real-time status updates ──
   useEffect(() => {
     if (Notification.permission === "default") {
       Notification.requestPermission();
     }
-    if (pollRef.current) clearInterval(pollRef.current);
-    pollRef.current = setInterval(async () => {
+
+    const token = localStorage.getItem("token");
+    let failSince = null;
+    const es = new EventSource(
+      `${import.meta.env.VITE_API_URL}/events?token=${encodeURIComponent(token)}`
+    );
+
+    es.onmessage = async () => {
       try {
-        const token = localStorage.getItem("token");
         const res = await fetch(`${import.meta.env.VITE_API_URL}/orders/${id}`, {
           headers: { Authorization: `Bearer ${token}` },
         });
@@ -90,7 +109,6 @@ const OrderDetail = () => {
 
           if (!orderStatusChanged && !deliveryStatusChanged) return prev;
 
-          // Send browser notification on change
           if (Notification.permission === "granted") {
             if (orderStatusChanged) {
               const label = fresh.status.replace(/_/g, " ").toLowerCase();
@@ -109,8 +127,20 @@ const OrderDetail = () => {
           return fresh;
         });
       } catch { /* silent */ }
-    }, 15000);
-    return () => { if (pollRef.current) clearInterval(pollRef.current); };
+    };
+
+    es.onerror = () => {
+      if (!failSince) failSince = Date.now();
+      if (Date.now() - failSince > 30_000) {
+        es.close();
+      }
+    };
+
+    es.onopen = () => {
+      failSince = null; // reset — connection is back
+    };
+
+    return () => es.close();
   }, [id]);
 
   const getStepState = (stepKey) => {
@@ -299,6 +329,25 @@ const OrderDetail = () => {
           </div>
         )}
 
+        {/* ── Delivery Failed Notice (delivery failed, awaiting new rider) ── */}
+        {order.delivery && order.delivery.status === "FAILED" && order.status === "PREPARING" && (
+          <div className="bg-amber-50 rounded-2xl p-6 mb-6 text-center border border-amber-200">
+            <div className="w-14 h-14 rounded-full bg-amber-100 flex items-center justify-center mx-auto mb-3">
+              <span className="material-symbols-outlined text-3xl text-amber-500">assignment_late</span>
+            </div>
+            <h3 className="text-lg font-bold text-amber-800 mb-1">Delivery Attempt Unsuccessful</h3>
+            <p className="text-sm text-amber-600 mb-1">
+              The rider was unable to complete this delivery.
+              {order.delivery.failureReason && (
+                <span className="block mt-1 italic">Reason: &ldquo;{order.delivery.failureReason}&rdquo;</span>
+              )}
+            </p>
+            <p className="text-xs text-amber-500 mt-2">
+              A new rider is being assigned — your order is still being prepared.
+            </p>
+          </div>
+        )}
+
         {/* ── Delivery Tracker (visible when order is out for delivery) ── */}
         {order.delivery && order.status === "OUT_FOR_DELIVERY" && (
           <div className="bg-white rounded-2xl shadow-sm p-6 mb-6 border border-purple-100">
@@ -315,10 +364,20 @@ const OrderDetail = () => {
                   )}
                 </p>
               </div>
-              <span className={`ml-auto inline-flex items-center gap-1.5 text-[10px] font-bold px-2.5 py-1.5 rounded-full border ${DELIVERY_COLORS[order.delivery.status] || "border-slate-300 text-slate-500 bg-slate-50"}`}>
-                <span className="material-symbols-outlined text-sm">{DELIVERY_STEPS.find((s) => s.key === order.delivery.status)?.icon || "local_shipping"}</span>
-                {DELIVERY_STEPS.find((s) => s.key === order.delivery.status)?.label || order.delivery.status}
-              </span>
+              <div className="ml-auto flex items-center gap-2">
+                {(() => {
+                  const [etaMin, etaMax] = estimateCustomerETA(order.delivery.status);
+                  return (
+                    <span className="text-[10px] text-slate-400 font-medium">
+                      ~{etaMin}–{etaMax} min
+                    </span>
+                  );
+                })()}
+                <span className={`inline-flex items-center gap-1.5 text-[10px] font-bold px-2.5 py-1.5 rounded-full border ${DELIVERY_COLORS[order.delivery.status] || "border-slate-300 text-slate-500 bg-slate-50"}`}>
+                  <span className="material-symbols-outlined text-sm">{DELIVERY_STEPS.find((s) => s.key === order.delivery.status)?.icon || "local_shipping"}</span>
+                  {DELIVERY_STEPS.find((s) => s.key === order.delivery.status)?.label || order.delivery.status}
+                </span>
+              </div>
             </div>
 
             {/* Desktop: horizontal steps */}

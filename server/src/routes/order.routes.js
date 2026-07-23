@@ -3,6 +3,7 @@ import prisma from "../config/prisma.js";
 import authMiddleware from "../middleware/auth.middleware.js";
 import ownerMiddleware from "../middleware/owner.middleware.js";
 import { calculateFees } from "../services/feecalculator.js";
+import { notify } from "../services/events.js";
 import crypto from "crypto";
 
 const router = express.Router();
@@ -277,6 +278,14 @@ router.put("/orders/:id/status", authMiddleware, ownerMiddleware, async (req, re
         restaurant: true,
       },
     });
+
+    // Notify customer of order status change
+    notify("order:updated", [order.customerId]);
+
+    // When order becomes PREPARING, also notify all riders (new available order)
+    if (status === "PREPARING") {
+      notify("order:updated", ["*"]);
+    }
 
     res.status(200).json({
       message: "Order status updated successfully",

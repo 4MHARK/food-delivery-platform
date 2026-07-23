@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import AppLayout from "../components/AppLayout";
@@ -19,7 +19,6 @@ const Orders = () => {
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const pollRef = useRef(null);
 
   useEffect(() => {
     const fetchOrders = async () => {
@@ -40,15 +39,20 @@ const Orders = () => {
     fetchOrders();
   }, []);
 
-  // ── Poll for status changes (auto-update + notification) ──
+  // ── SSE: real-time status updates ──
   useEffect(() => {
     if (Notification.permission === "default") {
       Notification.requestPermission();
     }
-    if (pollRef.current) clearInterval(pollRef.current);
-    pollRef.current = setInterval(async () => {
+
+    const token = localStorage.getItem("token");
+    let failSince = null;
+    const es = new EventSource(
+      `${import.meta.env.VITE_API_URL}/events?token=${encodeURIComponent(token)}`
+    );
+
+    es.onmessage = async () => {
       try {
-        const token = localStorage.getItem("token");
         const res = await fetch(`${import.meta.env.VITE_API_URL}/orders`, {
           headers: { Authorization: `Bearer ${token}` },
         });
@@ -56,26 +60,39 @@ const Orders = () => {
         if (!res.ok) return;
         const freshOrders = data.orders || [];
         setOrders((prev) => {
-          for (const fresh of freshOrders) {
+          const changed = freshOrders.filter((fresh) => {
             const old = prev.find((o) => o.id === fresh.id);
-            if (old && old.status !== fresh.status) {
-              const label = STATUS[fresh.status]
-                ? STATUS[fresh.status].label
-                : fresh.status;
-              if (Notification.permission === "granted") {
-                new Notification("Order Updated", {
-                  body: `Order #${fresh.id} is now "${label}"`,
-                  icon: "/favicon.svg",
-                });
-              }
-              break; // notify once per poll cycle
+            return old && old.status !== fresh.status;
+          });
+          // Notify for each changed order (browser batches notifications)
+          if (Notification.permission === "granted") {
+            for (const order of changed) {
+              const label = STATUS[order.status]
+                ? STATUS[order.status].label
+                : order.status;
+              new Notification("Order Updated", {
+                body: `Order #${order.id} is now "${label}"`,
+                icon: "/favicon.svg",
+              });
             }
           }
           return freshOrders;
         });
       } catch { /* silent */ }
-    }, 20000);
-    return () => { if (pollRef.current) clearInterval(pollRef.current); };
+    };
+
+    es.onerror = () => {
+      if (!failSince) failSince = Date.now();
+      if (Date.now() - failSince > 30_000) {
+        es.close();
+      }
+    };
+
+    es.onopen = () => {
+      failSince = null; // reset — connection is back
+    };
+
+    return () => es.close();
   }, []);
 
   const formatDate = (dateString) => {
