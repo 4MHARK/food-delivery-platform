@@ -12,9 +12,12 @@ import Cart from "./pages/Cart";
 import OrderDetail from "./pages/OrderDetail";
 import Dashboard from "./pages/ManageRestaurant";
 import RiderDashboard from "./pages/RiderDashboard";
+import AdminDashboard from "./pages/AdminDashboard";
+import AdminSignup from "./pages/AdminSignup";
 import ProtectedRoute from "./components/ProtectedRoute";
 import OwnerRoute from "./components/OwnerRoute";
 import RiderRoute from "./components/RiderRoute";
+import AdminRoute from "./components/AdminRoute";
 
 function HomeRedirect() {
   const { user, isAuthenticated } = useAuth();
@@ -25,7 +28,11 @@ function HomeRedirect() {
   }
 
   // Logged in — route by role
-  const dest = user?.role === "OWNER" ? "/dashboard" : user?.role === "RIDER" ? "/rider" : "/restaurants";
+  const dest =
+    user?.role === "ADMIN" ? "/admin"
+    : user?.role === "OWNER" ? "/dashboard"
+    : user?.role === "RIDER" ? "/rider"
+    : "/restaurants";
   return <Navigate to={dest} replace />;
 }
 
@@ -38,6 +45,7 @@ function App() {
             <Route path="/" element={<HomeRedirect />} />
             <Route path="/signup" element={<Signup />} />
             <Route path="/login" element={<Login />} />
+            <Route path="/admin/register" element={<AdminSignup />} />
             <Route path="/restaurants" element={<RestaurantList />} />
             <Route path="/restaurants/:id" element={<RestaurantDetail />} />
             <Route
@@ -62,6 +70,14 @@ function App() {
                 <RiderRoute>
                   <RiderDashboard />
                 </RiderRoute>
+              }
+            />
+            <Route
+              path="/admin"
+              element={
+                <AdminRoute>
+                  <AdminDashboard />
+                </AdminRoute>
               }
             />
             <Route

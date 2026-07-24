@@ -17,6 +17,7 @@ enum UserRole {
   CUSTOMER
   OWNER
   RIDER
+  ADMIN
 }
 
 enum OrderStatus {
