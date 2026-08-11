@@ -5,11 +5,12 @@ import ownerMiddleware from "../middleware/owner.middleware.js";
 import { calculateFees } from "../services/feecalculator.js";
 import { notify } from "../services/events.js";
 import crypto from "crypto";
+import { checkoutLimiter } from "../middleware/rate-limiter.js";
 
 const router = express.Router();
 
 // ── Checkout: create order + payment ──
-router.post("/orders/checkout", authMiddleware, async (req, res) => {
+router.post("/orders/checkout", checkoutLimiter, authMiddleware, async (req, res) => {
   try {
     const { restaurantId, deliveryAddress, items } = req.body;
 
@@ -108,9 +109,7 @@ router.post("/orders/checkout", authMiddleware, async (req, res) => {
     });
   } catch (error) {
     console.error("POST /orders/checkout error:", error);
-    res.status(500).json({
-      message: error.message || "Server error",
-    });
+    next(error)
   }
 });
 
@@ -136,9 +135,7 @@ router.get("/orders", authMiddleware, async (req, res) => {
     });
   } catch (error) {
     console.error("GET /orders error:", error);
-    res.status(500).json({
-      message: error.message || "Server error",
-    });
+    next(error)
   }
 });
 
@@ -180,9 +177,7 @@ router.get("/restaurants/:id/orders", authMiddleware, async (req, res) => {
     });
   } catch (error) {
     console.error("GET /restaurants/:id/orders error:", error);
-    res.status(500).json({
-      message: error.message || "Server error",
-    });
+   next(error)
   }
 });
 
@@ -238,9 +233,7 @@ router.get("/orders/:id", authMiddleware, async (req, res) => {
     });
   } catch (error) {
     console.error("GET /orders/:id error:", error);
-    res.status(500).json({
-      message: error.message || "Server error",
-    });
+   next(error)
   }
 });
 
@@ -293,9 +286,7 @@ router.put("/orders/:id/status", authMiddleware, ownerMiddleware, async (req, re
     });
   } catch (error) {
     console.error("PUT /orders/:id/status error:", error);
-    res.status(500).json({
-      message: error.message || "Server error",
-    });
+  next(error)
   }
 });
 

@@ -1,28 +1,19 @@
 import express from "express";
-import jwt from "jsonwebtoken";
 import { bus } from "../services/events.js";
+import { createTicket, consumeTicket} from "../services/sseTickets.js"
+import authMiddleware from "../middleware/auth.middleware.js";
 
 const router = express.Router();
 
 router.get("/events", (req, res) => {
-  // Auth: try Authorization header first, then query param (EventSource can't set headers)
-  let token;
-  const authHeader = req.headers.authorization;
-  if (authHeader?.startsWith("Bearer ")) {
-    token = authHeader.slice(7);
-  } else if (req.query.token) {
-    token = req.query.token;
-  } else {
-    return res.status(401).json({ message: "Authentication required" });
-  }
-
-  let userId;
-  try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    userId = decoded.id;
-  } catch {
-    return res.status(401).json({ message: "Invalid or expired token" });
-  }
+const ticket = req.query.ticket;
+if(!ticket){
+  return res.status(401).json({message: "Ticket required"})
+}
+const userId = consumeTicket(ticket);
+if(!userId){
+  return res.status(400).json({message: "Invalid or expired ticket"})
+}
 
   // SSE headers
   res.writeHead(200, {
@@ -60,5 +51,17 @@ router.get("/events", (req, res) => {
     bus.off("order:accepted", handler);
   });
 });
+
+router.post("/sseTicket",authMiddleware, async (req, res) =>{
+  try{
+    const userId = req.user.id;
+    const ticket = createTicket(userId);
+    res.status(200).json({ticket})
+  }catch{
+    res.status(500).json({
+      message: "Failed to create ticket"
+    })
+  }
+})
 
 export default router;

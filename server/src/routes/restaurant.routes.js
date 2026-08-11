@@ -19,10 +19,7 @@ router.get("/restaurants", async (req, res) => {
       restaurants,
     });
   } catch (error) {
-    res.status(500).json({
-      message: "Failed to fetch restaurants",
-      error: error.message,
-    });
+  next(error)
   }
 });
 
@@ -49,10 +46,7 @@ router.get("/restaurants/:id", async (req, res) => {
       restaurant,
     });
   } catch (error) {
-    res.status(500).json({
-      message: "Does not exist",
-      error: error.message,
-    });
+ next(error)
   }
 });
 
@@ -65,7 +59,7 @@ router.get("/my-restaurant", authMiddleware, async (req, res) => {
     });
     res.status(200).json({ restaurant: restaurant || null });
   } catch (error) {
-    res.status(500).json({ message: "Server error", error: error.message });
+  next(error)
   }
 });
 
@@ -105,10 +99,7 @@ router.post("/restaurants", authMiddleware, ownerMiddleware, async (req, res) =>
       restaurant: newRestaurant,
     });
   } catch (error) {
-    res.status(500).json({
-      message: "Server Error",
-      error: error.message,
-    });
+  next(error)
   }
 });
 
@@ -148,10 +139,7 @@ router.put("/restaurants/:id", authMiddleware, ownerMiddleware, async (req, res)
     });
 
   } catch (error) {
-    res.status(500).json({
-      message: "Server error",
-      error: error.message
-    });
+  next(error)
   }
 });
 

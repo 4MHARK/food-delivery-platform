@@ -55,7 +55,7 @@ router.post("/admin/register", async (req, res) => {
     });
   } catch (error) {
     console.error("POST /admin/register error:", error);
-    res.status(500).json({ message: error.message || "Server error" });
+    next(error)
   }
 });
 
@@ -101,7 +101,7 @@ router.get("/admin/riders", async (req, res) => {
     });
   } catch (error) {
     console.error("GET /admin/riders error:", error);
-    res.status(500).json({ message: error.message || "Server error" });
+   next(error)
   }
 });
 
@@ -139,7 +139,7 @@ router.put("/admin/riders/:id/verify", async (req, res) => {
     });
   } catch (error) {
     console.error("PUT /admin/riders/:id/verify error:", error);
-    res.status(500).json({ message: error.message || "Server error" });
+    next(error)
   }
 });
 
@@ -180,7 +180,7 @@ router.get("/admin/overview", async (req, res) => {
     });
   } catch (error) {
     console.error("GET /admin/overview error:", error);
-    res.status(500).json({ message: error.message || "Server error" });
+    next(error)
   }
 });
 

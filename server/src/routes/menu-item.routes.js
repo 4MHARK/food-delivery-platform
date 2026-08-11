@@ -44,10 +44,7 @@ router.post("/restaurants/:id/menu-items", authMiddleware, ownerMiddleware, asyn
       menu: newMenu,
     });
   } catch (error) {
-    res.status(500).json({
-      message: " Server error",
-      error: error.message,
-    });
+   next(error)
   }
 });
 
@@ -72,10 +69,7 @@ router.get("/restaurants/:id/menu-items", async (req, res) => {
       menuItems,
     });
   } catch (error) {
-    res.status(500).json({
-      message: "Does not exist",
-      error: error.message,
-    });
+  next(error)
   }
 });
 
@@ -114,10 +108,7 @@ router.put("/menu-items/:id", authMiddleware, ownerMiddleware, async (req, res) 
       update,
     });
   } catch (error) {
-    res.status(500).json({
-      message: "Server error",
-      error: error.message,
-    });
+   next(error)
   }
 });
 
@@ -161,10 +152,7 @@ router.delete("/menu-items/:id", authMiddleware,ownerMiddleware ,async (req, res
       deleteMenuItem,
     });
     }catch(error){
-        res.status(500).json({
-            message: "Server error",
-            error: error.message
-        })
+     next(error)
     }
 })
 export default router;

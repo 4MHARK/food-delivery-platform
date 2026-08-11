@@ -3,6 +3,7 @@ import prisma from "../config/prisma.js";
 import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken"
 import authMiddleware from "../middleware/auth.middleware.js";
+import { loginLimiter, registerLimiter } from "../middleware/rate-limiter.js";
 
 
 // Create a express app that only handles Routes
@@ -26,14 +27,11 @@ router.get("/users", authMiddleware, async (req, res) => {
       users,
     });
   } catch (error) {
-    res.status(500).json({
-      message: "Failed to fetch users",
-      error: error.message,
-    });
+   next(error)
   }
 });
 
-router.post("/users", async (req, res) => {
+router.post("/users",registerLimiter, async (req, res) => {
   try {
     const { name, email, password, role, phone } = req.body;
 
@@ -92,14 +90,11 @@ router.post("/users", async (req, res) => {
       },
     });
   } catch (error) {
-    res.status(500).json({
-      message: "Failed to create user",
-      error: error.message,
-    });
+   next(error)
   }
 });
 
-router.post("/users/login", async (req, res) => {
+router.post("/users/login", loginLimiter, async (req, res) => {
   try {
     const { email, password } = req.body;
 
@@ -154,10 +149,7 @@ router.post("/users/login", async (req, res) => {
     });
 
   } catch (error) {
-    res.status(500).json({
-      message: "Failed to login user",
-      error: error.message,
-    });
+  next(error)
   }
 });
 
@@ -189,10 +181,7 @@ router.get("/users/profile", authMiddleware, async (req, res) => {
       user,
     });
   } catch (error) {
-    return res.status(500).json({
-      message: "Failed to fetch profile",
-      error: error.message,
-    });
+  next(error)
   }
 });
 
@@ -240,10 +229,7 @@ router.put("/users/profile", authMiddleware, async (req, res) => {
       user: updatedUser,
     });
   } catch (error) {
-    res.status(500).json({
-      message: "Failed to update profile",
-      error: error.message,
-    });
+   next(error)
   }
 });
 export default router;

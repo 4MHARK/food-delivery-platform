@@ -92,9 +92,7 @@ router.post("/payments/verify", authMiddleware, async (req, res) => {
     });
   } catch (error) {
     console.error("POST /payments/verify error:", error);
-    res.status(500).json({
-      message: error.message || "Server error",
-    });
+   next(error)
   }
 });
 

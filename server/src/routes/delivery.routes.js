@@ -54,9 +54,7 @@ router.get("/riders/available-orders", authMiddleware, riderMiddleware, async (r
     });
   } catch (error) {
     console.error("GET /riders/available-orders error:", error);
-    res.status(500).json({
-      message: error.message || "Server error",
-    });
+  next(error)
   }
 });
 
@@ -100,9 +98,7 @@ router.post("/riders/reject-order/:orderId", authMiddleware, riderMiddleware, as
     });
   } catch (error) {
     console.error("POST /riders/reject-order/:orderId error:", error);
-    res.status(500).json({
-      message: error.message || "Server error",
-    });
+  next(error)
   }
 });
 
@@ -210,12 +206,11 @@ router.post("/deliveries/:orderId/accept", authMiddleware, riderMiddleware, asyn
   } catch (error) {
     // Handle structured throws from the transaction
     if (error.status) {
-      return res.status(error.status).json({ message: error.message });
+      
+     next(error)
     }
     console.error("POST /deliveries/:orderId/accept error:", error);
-    res.status(500).json({
-      message: error.message || "Server error",
-    });
+   next(error)
   }
 });
 
@@ -342,12 +337,10 @@ router.put("/deliveries/:id/status", authMiddleware, riderMiddleware, async (req
   } catch (error) {
     // Handle structured throws from the transaction
     if (error.status) {
-      return res.status(error.status).json({ message: error.message });
+      return next(error)
     }
     console.error("PUT /deliveries/:id/status error:", error);
-    res.status(500).json({
-      message: error.message || "Server error",
-    });
+   next(error)
   }
 });
 
@@ -384,9 +377,7 @@ router.get("/riders/my-deliveries", authMiddleware, riderMiddleware, async (req,
     });
   } catch (error) {
     console.error("GET /riders/my-deliveries error:", error);
-    res.status(500).json({
-      message: error.message || "Server error",
-    });
+   next(error)
   }
 });
 
@@ -438,7 +429,7 @@ router.get("/riders/stats", authMiddleware, riderMiddleware, async (req, res) =>
     });
   } catch (error) {
     console.error("GET /riders/stats error:", error);
-    res.status(500).json({ message: error.message || "Server error" });
+   next(error)
   }
 });
 

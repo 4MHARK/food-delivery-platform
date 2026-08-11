@@ -133,9 +133,7 @@ router.post("/riders/register", authMiddleware, async (req, res) => {
     });
   } catch (error) {
     console.error("POST /riders/register error:", error);
-    res.status(500).json({
-      message: error.message || "Server error",
-    });
+   next(error)
   }
 });
 
@@ -163,9 +161,7 @@ router.get("/riders/me", authMiddleware, riderMiddleware, async (req, res) => {
     });
   } catch (error) {
     console.error("GET /riders/me error:", error);
-    res.status(500).json({
-      message: error.message || "Server error",
-    });
+   next(error)
   }
 });
 
@@ -231,9 +227,7 @@ router.put("/riders/me", authMiddleware, riderMiddleware, async (req, res) => {
     });
   } catch (error) {
     console.error("PUT /riders/me error:", error);
-    res.status(500).json({
-      message: error.message || "Server error",
-    });
+   next(error)
   }
 });
 
