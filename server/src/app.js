@@ -1,9 +1,11 @@
 // Create the application
 import cors from "cors";
 import express, { json } from "express"
+import helmet from "helmet";
 import indexRoutes from "./routes/index.js"
 import { globalLimiter } from "./middleware/rate-limiter.js";
 const app = express();
+app.use(helmet());
 app.use(cors({
   origin: process.env.CLIENT_URL || "http://localhost:5173",
 }));
