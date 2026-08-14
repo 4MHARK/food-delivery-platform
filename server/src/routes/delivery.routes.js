@@ -18,7 +18,7 @@ const VALID_TRANSITIONS = {
 };
 
 // Get available orders for riders (PREPARING, no delivery assigned, not rejected by this rider)
-router.get("/riders/available-orders", authMiddleware, riderMiddleware, async (req, res) => {
+router.get("/riders/available-orders", authMiddleware, riderMiddleware, async (req, res, next) => {
   try {
     const rider = await prisma.rider.findUnique({
       where: { userId: req.user.id },
@@ -59,7 +59,7 @@ router.get("/riders/available-orders", authMiddleware, riderMiddleware, async (r
 });
 
 // Reject an available order (rider skips it — hidden only from them)
-router.post("/riders/reject-order/:orderId", authMiddleware, riderMiddleware, async (req, res) => {
+router.post("/riders/reject-order/:orderId", authMiddleware, riderMiddleware, async (req, res, next) => {
   try {
     const rider = await prisma.rider.findUnique({
       where: { userId: req.user.id },
@@ -103,7 +103,7 @@ router.post("/riders/reject-order/:orderId", authMiddleware, riderMiddleware, as
 });
 
 // Accept an order (assign rider, create delivery, move order to OUT_FOR_DELIVERY)
-router.post("/deliveries/:orderId/accept", authMiddleware, riderMiddleware, async (req, res) => {
+router.post("/deliveries/:orderId/accept", authMiddleware, riderMiddleware, async (req, res, next) => {
   try {
     // Look up the rider
     const rider = await prisma.rider.findUnique({
@@ -215,7 +215,7 @@ router.post("/deliveries/:orderId/accept", authMiddleware, riderMiddleware, asyn
 });
 
 // Update delivery status
-router.put("/deliveries/:id/status", authMiddleware, riderMiddleware, async (req, res) => {
+router.put("/deliveries/:id/status", authMiddleware, riderMiddleware, async (req, res, next) => {
   try {
     const { status, reason } = req.body;
 
@@ -345,7 +345,7 @@ router.put("/deliveries/:id/status", authMiddleware, riderMiddleware, async (req
 });
 
 // Get rider's own deliveries
-router.get("/riders/my-deliveries", authMiddleware, riderMiddleware, async (req, res) => {
+router.get("/riders/my-deliveries", authMiddleware, riderMiddleware, async (req, res, next) => {
   try {
     const rider = await prisma.rider.findUnique({
       where: { userId: req.user.id },
@@ -382,7 +382,7 @@ router.get("/riders/my-deliveries", authMiddleware, riderMiddleware, async (req,
 });
 
 // Get rider stats (earnings, completed deliveries)
-router.get("/riders/stats", authMiddleware, riderMiddleware, async (req, res) => {
+router.get("/riders/stats", authMiddleware, riderMiddleware, async (req, res, next) => {
   try {
     const rider = await prisma.rider.findUnique({
       where: { userId: req.user.id },

@@ -5,7 +5,7 @@ import { verifyPayment } from "../services/paystack.js";
 
 const router = express.Router();
 
-router.post("/payments/verify", authMiddleware, async (req, res) => {
+router.post("/payments/verify", authMiddleware, async (req, res, next) => {
   try {
     const { reference } = req.body;
 

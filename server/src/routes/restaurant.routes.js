@@ -5,7 +5,7 @@ import ownerMiddleware from "../middleware/owner.middleware.js";
 
 const router = express.Router();
 //Fetch all restaurants
-router.get("/restaurants", async (req, res) => {
+router.get("/restaurants", async (req, res, next) => {
   try {
     const restaurants = await prisma.restaurant.findMany({
       include: {
@@ -24,7 +24,7 @@ router.get("/restaurants", async (req, res) => {
 });
 
 //fetched 1 restaurant with ID
-router.get("/restaurants/:id", async (req, res) => {
+router.get("/restaurants/:id", async (req, res, next) => {
   try {
     const restaurant = await prisma.restaurant.findUnique({
       where: { id: Number(req.params.id) },
@@ -51,7 +51,7 @@ router.get("/restaurants/:id", async (req, res) => {
 });
 
 // Get the current owner's restaurant (or null)
-router.get("/my-restaurant", authMiddleware, async (req, res) => {
+router.get("/my-restaurant", authMiddleware, async (req, res, next) => {
   try {
     const restaurant = await prisma.restaurant.findFirst({
       where: { ownerId: req.user.id },
@@ -64,7 +64,7 @@ router.get("/my-restaurant", authMiddleware, async (req, res) => {
 });
 
 // creates a new restaurant
-router.post("/restaurants", authMiddleware, ownerMiddleware, async (req, res) => {
+router.post("/restaurants", authMiddleware, ownerMiddleware, async (req, res, next) => {
   try {
     const { name, description, address, phone, imageUrl } = req.body;
 
@@ -104,7 +104,7 @@ router.post("/restaurants", authMiddleware, ownerMiddleware, async (req, res) =>
 });
 
 //Updates restaurants per ID
-router.put("/restaurants/:id", authMiddleware, ownerMiddleware, async (req, res) => {
+router.put("/restaurants/:id", authMiddleware, ownerMiddleware, async (req, res, next) => {
   try {
      const { name, description, address, phone, imageUrl } = req.body;
     const restaurant = await prisma.restaurant.findUnique({

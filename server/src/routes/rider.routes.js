@@ -6,7 +6,7 @@ import riderMiddleware from "../middleware/rider.middleware.js";
 const router = express.Router();
 
 // Register a rider profile
-router.post("/riders/register", authMiddleware, async (req, res) => {
+router.post("/riders/register", authMiddleware, async (req, res, next) => {
   try {
     const { vehicleType, licensePlate, licenseNumber, matricNumber, phone } = req.body;
 
@@ -138,7 +138,7 @@ router.post("/riders/register", authMiddleware, async (req, res) => {
 });
 
 // Get the current rider's profile
-router.get("/riders/me", authMiddleware, riderMiddleware, async (req, res) => {
+router.get("/riders/me", authMiddleware, riderMiddleware, async (req, res, next) => {
   try {
     const rider = await prisma.rider.findUnique({
       where: { userId: req.user.id },
@@ -166,7 +166,7 @@ router.get("/riders/me", authMiddleware, riderMiddleware, async (req, res) => {
 });
 
 // Update rider profile
-router.put("/riders/me", authMiddleware, riderMiddleware, async (req, res) => {
+router.put("/riders/me", authMiddleware, riderMiddleware, async (req, res, next) => {
   try {
     const { vehicleType, licensePlate, licenseNumber, matricNumber, phone, isAvailable } = req.body;
 

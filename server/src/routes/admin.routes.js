@@ -8,7 +8,7 @@ import adminMiddleware from "../middleware/admin.middleware.js";
 const router = express.Router();
 
 // ── Admin registration (public — requires invite code) ──
-router.post("/admin/register", async (req, res) => {
+router.post("/admin/register", async (req, res, next) => {
   try {
     const { name, email, password, inviteCode } = req.body;
 
@@ -63,7 +63,7 @@ router.post("/admin/register", async (req, res) => {
 router.use(authMiddleware, adminMiddleware);
 
 // ── Riders: list all ──
-router.get("/admin/riders", async (req, res) => {
+router.get("/admin/riders", async (req, res, next) => {
   try {
     const riders = await prisma.rider.findMany({
       include: {
@@ -106,7 +106,7 @@ router.get("/admin/riders", async (req, res) => {
 });
 
 // ── Riders: toggle verification ──
-router.put("/admin/riders/:id/verify", async (req, res) => {
+router.put("/admin/riders/:id/verify", async (req, res, next) => {
   try {
     const riderId = Number(req.params.id);
 
@@ -144,7 +144,7 @@ router.put("/admin/riders/:id/verify", async (req, res) => {
 });
 
 // ── Platform overview (stats for admin dashboard) ──
-router.get("/admin/overview", async (req, res) => {
+router.get("/admin/overview", async (req, res, next) => {
   try {
     const [totalUsers, totalOrders, totalRiders, totalRestaurants, recentOrders] =
       await Promise.all([

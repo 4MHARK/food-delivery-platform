@@ -10,7 +10,7 @@ import { checkoutLimiter } from "../middleware/rate-limiter.js";
 const router = express.Router();
 
 // ── Checkout: create order + payment ──
-router.post("/orders/checkout", checkoutLimiter, authMiddleware, async (req, res) => {
+router.post("/orders/checkout", checkoutLimiter, authMiddleware, async (req, res, next) => {
   try {
     const { restaurantId, deliveryAddress, items, idempotencyKey } = req.body;
 
@@ -144,7 +144,7 @@ router.post("/orders/checkout", checkoutLimiter, authMiddleware, async (req, res
   }
 });
 
-router.get("/orders", authMiddleware, async (req, res) => {
+router.get("/orders", authMiddleware, async (req, res, next) => {
   try {
     const orders = await prisma.order.findMany({
       where: { customerId: req.user.id },
@@ -171,7 +171,7 @@ router.get("/orders", authMiddleware, async (req, res) => {
 });
 
 // Fetch all orders for a restaurant (owner only)
-router.get("/restaurants/:id/orders", authMiddleware, async (req, res) => {
+router.get("/restaurants/:id/orders", authMiddleware, async (req, res, next) => {
   try {
     const restaurantId = Number(req.params.id);
 
@@ -212,7 +212,7 @@ router.get("/restaurants/:id/orders", authMiddleware, async (req, res) => {
   }
 });
 
-router.get("/orders/:id", authMiddleware, async (req, res) => {
+router.get("/orders/:id", authMiddleware, async (req, res, next) => {
   try {
     const order = await prisma.order.findUnique({
       where: {
@@ -268,7 +268,7 @@ router.get("/orders/:id", authMiddleware, async (req, res) => {
   }
 });
 
-router.put("/orders/:id/status", authMiddleware, ownerMiddleware, async (req, res) => {
+router.put("/orders/:id/status", authMiddleware, ownerMiddleware, async (req, res, next) => {
   try {
     const { status } = req.body;
 

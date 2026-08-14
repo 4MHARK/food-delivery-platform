@@ -9,7 +9,7 @@ import { loginLimiter, registerLimiter } from "../middleware/rate-limiter.js";
 // Create a express app that only handles Routes
 const router = express.Router();
 
-router.get("/users", authMiddleware, async (req, res) => {
+router.get("/users", authMiddleware, async (req, res, next) => {
   try {
     const users = await prisma.user.findMany({
       select: {
@@ -31,7 +31,7 @@ router.get("/users", authMiddleware, async (req, res) => {
   }
 });
 
-router.post("/users",registerLimiter, async (req, res) => {
+router.post("/users",registerLimiter, async (req, res, next) => {
   try {
     const { name, email, password, role, phone } = req.body;
 
@@ -94,7 +94,7 @@ router.post("/users",registerLimiter, async (req, res) => {
   }
 });
 
-router.post("/users/login", loginLimiter, async (req, res) => {
+router.post("/users/login", loginLimiter, async (req, res, next) => {
   try {
     const { email, password } = req.body;
 
@@ -153,7 +153,7 @@ router.post("/users/login", loginLimiter, async (req, res) => {
   }
 });
 
-router.get("/users/profile", authMiddleware, async (req, res) => {
+router.get("/users/profile", authMiddleware, async (req, res, next) => {
   try {
     const user = await prisma.user.findUnique({
       where: {
@@ -185,7 +185,7 @@ router.get("/users/profile", authMiddleware, async (req, res) => {
   }
 });
 
-router.put("/users/profile", authMiddleware, async (req, res) => {
+router.put("/users/profile", authMiddleware, async (req, res, next) => {
   try {
     const { name, email, phone } = req.body;
 

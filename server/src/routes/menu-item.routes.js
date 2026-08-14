@@ -4,7 +4,7 @@ import authMiddleware from "../middleware/auth.middleware.js";
 import ownerMiddleware from "../middleware/owner.middleware.js";
 
 const router = express.Router();
-router.post("/restaurants/:id/menu-items", authMiddleware, ownerMiddleware, async (req, res) => {
+router.post("/restaurants/:id/menu-items", authMiddleware, ownerMiddleware, async (req, res, next) => {
   try {
     const { name, description, imageUrl, price, category } = req.body;
     const restaurant = await prisma.restaurant.findUnique({
@@ -48,7 +48,7 @@ router.post("/restaurants/:id/menu-items", authMiddleware, ownerMiddleware, asyn
   }
 });
 
-router.get("/restaurants/:id/menu-items", async (req, res) => {
+router.get("/restaurants/:id/menu-items", async (req, res, next) => {
   try {
     const restaurant = await prisma.restaurant.findUnique({
       where: { id: Number(req.params.id) },
@@ -73,7 +73,7 @@ router.get("/restaurants/:id/menu-items", async (req, res) => {
   }
 });
 
-router.put("/menu-items/:id", authMiddleware, ownerMiddleware, async (req, res) => {
+router.put("/menu-items/:id", authMiddleware, ownerMiddleware, async (req, res, next) => {
   try {
     const { name, description, price, imageUrl, category } = req.body;
     const menuItem = await prisma.menuItem.findUnique({
@@ -112,7 +112,7 @@ router.put("/menu-items/:id", authMiddleware, ownerMiddleware, async (req, res) 
   }
 });
 
-router.delete("/menu-items/:id", authMiddleware,ownerMiddleware ,async (req, res) =>{
+router.delete("/menu-items/:id", authMiddleware,ownerMiddleware ,async (req, res, next) =>{
     try{
           const menuItem = await prisma.menuItem.findUnique({
         where:{ id: Number(req.params.id)},
