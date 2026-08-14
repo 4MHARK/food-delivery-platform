@@ -89,15 +89,23 @@ const Cart = () => {
         ref: payment.reference,
         onSuccess: async () => {
           // Step 4: Verify payment on the backend
-          await fetch(`${import.meta.env.VITE_API_URL}/payments/verify`, {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              Authorization: `Bearer ${token}`,
-            },
-            body: JSON.stringify({ reference: payment.reference }),
-          });
-          navigate(`/orders/${order.id}`);
+          try {
+            const verifyRes = await fetch(`${import.meta.env.VITE_API_URL}/payments/verify`, {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${token}`,
+              },
+              body: JSON.stringify({ reference: payment.reference }),
+            });
+            if (!verifyRes.ok) {
+              throw new Error("Payment verification failed");
+            }
+            navigate(`/orders/${order.id}`);
+          } catch {
+            // Surface the failure instead of silently swallowing it
+            setError("Payment received, but we couldn't confirm it with our servers. Please check your Orders page or contact support.");
+          }
         },
         onCancel: () => {
           navigate(`/orders/${order.id}`);
@@ -121,6 +129,10 @@ const Cart = () => {
           {itemCount} {itemCount === 1 ? "item" : "items"}
         </p>
 
+        {error && (
+          <p className="mb-4 rounded-xl bg-red-50 px-4 py-3 text-sm text-red-600 font-medium">{error}</p>
+        )}
+
         {/* Empty cart */}
         {items.length === 0 && (
           <div className="text-center py-16">
@@ -141,10 +153,6 @@ const Cart = () => {
         {/* Cart items grouped by restaurant */}
         {items.length > 0 && (
           <div className="space-y-8">
-            {error && (
-              <p className="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-600 font-medium">{error}</p>
-            )}
-
             {/* Delivery address */}
             <div>
               <label htmlFor="address" className="block text-sm font-semibold text-slate-700 mb-2">Delivery Address</label>
