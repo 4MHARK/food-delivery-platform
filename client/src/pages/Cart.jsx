@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { useCart } from "../context/CartContext";
@@ -11,6 +11,7 @@ const Cart = () => {
   const [deliveryAddress, setDeliveryAddress] = useState("");
   const [placing, setPlacing] = useState(false);
   const [error, setError] = useState("");
+  const idempotencyKeyRef = useRef(null);
 
   // Group items by restaurant
   const grouped = items.reduce((acc, item) => {
@@ -30,6 +31,12 @@ const Cart = () => {
       setError("Please enter a delivery address");
       return;
     }
+
+    // Generate an idempotency key once per checkout attempt — reused on retry
+    if (!idempotencyKeyRef.current) {
+      idempotencyKeyRef.current = crypto.randomUUID();
+    }
+
     try {
       setPlacing(true);
       setError("");
@@ -45,6 +52,7 @@ const Cart = () => {
         body: JSON.stringify({
           restaurantId,
           deliveryAddress: deliveryAddress.trim(),
+          idempotencyKey: idempotencyKeyRef.current,
           items: restaurantItems.map((item) => ({
             menuItemId: item.menuItemId,
             quantity: item.quantity,
@@ -56,6 +64,9 @@ const Cart = () => {
 
       const { order, payment } = data;
       setPlacing(false);
+
+      // Order created — reset the key so the next order gets a fresh one
+      idempotencyKeyRef.current = null;
 
       // Step 2: Clear cart items (the order exists regardless of payment outcome)
       restaurantItems.forEach((item) => clearItem(item.menuItemId));
