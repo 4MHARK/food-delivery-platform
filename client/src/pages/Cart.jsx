@@ -159,7 +159,7 @@ const Cart = () => {
               const groupTotal = group.items.reduce((sum, i) => sum + i.price * i.quantity, 0);
               const estDelivery = 400;
               const estService = 200;
-              const estTax = Math.round(groupTotal * 0.015);
+              const estTax = Math.round(groupTotal * 0.075);
               const estTotal = groupTotal + estDelivery + estService + estTax;
               return (
                 <div key={group.restaurantId} className="bg-white rounded-2xl shadow-sm overflow-hidden">
