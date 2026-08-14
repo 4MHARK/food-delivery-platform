@@ -8,12 +8,13 @@
 
 | ID | Type | Severity | Title | Fix Time |
 |----|------|----------|-------|-----------|
+order payments, 2 separate files
 | S01 | SECURITY | P0 | JWT tokens exposed in URL query parameters (SSE) | 15 min |(Done)
 | S02 | SECURITY | P0 | Weak JWT secret | 5 min |(Done)
 | S03 | SECURITY | P1 | Server returns raw error messages to clients | 15 min |(Done)
 | S04 | SECURITY | P1 | No rate limiting on any endpoint | 30 min |(Done)
-| S05 | SECURITY | P1 | No security headers (no helmet) | 5 min |
-| B01 | BACKEND | P1 | Missing global error-handling middleware | 15 min |
+| S05 | SECURITY | P1 | No security headers (no helmet) | 5 min |(Done)
+| B01 | BACKEND | P1 | Missing global error-handling middleware | 15 min |(Done)
 | B02 | BACKEND | P1 | No input validation library — all manual checks | 2+ hr |
 | B03 | BACKEND | P2 | `console.error` littered across all route files | 15 min |
 | B04 | BACKEND | P2 | No structured logging (no Morgan/Winston) | 15 min |
