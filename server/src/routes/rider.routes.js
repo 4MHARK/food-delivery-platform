@@ -132,7 +132,6 @@ router.post("/riders/register", authMiddleware, async (req, res, next) => {
       rider,
     });
   } catch (error) {
-    console.error("POST /riders/register error:", error);
    next(error)
   }
 });
@@ -160,7 +159,6 @@ router.get("/riders/me", authMiddleware, riderMiddleware, async (req, res, next)
       rider,
     });
   } catch (error) {
-    console.error("GET /riders/me error:", error);
    next(error)
   }
 });
@@ -226,7 +224,6 @@ router.put("/riders/me", authMiddleware, riderMiddleware, async (req, res, next)
       rider: updated,
     });
   } catch (error) {
-    console.error("PUT /riders/me error:", error);
    next(error)
   }
 });

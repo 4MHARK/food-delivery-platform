@@ -54,7 +54,6 @@ router.post("/admin/register", async (req, res, next) => {
       },
     });
   } catch (error) {
-    console.error("POST /admin/register error:", error);
     next(error)
   }
 });
@@ -100,7 +99,6 @@ router.get("/admin/riders", async (req, res, next) => {
       riders: formatted,
     });
   } catch (error) {
-    console.error("GET /admin/riders error:", error);
    next(error)
   }
 });
@@ -138,7 +136,6 @@ router.put("/admin/riders/:id/verify", async (req, res, next) => {
       },
     });
   } catch (error) {
-    console.error("PUT /admin/riders/:id/verify error:", error);
     next(error)
   }
 });
@@ -179,7 +176,6 @@ router.get("/admin/overview", async (req, res, next) => {
       },
     });
   } catch (error) {
-    console.error("GET /admin/overview error:", error);
     next(error)
   }
 });

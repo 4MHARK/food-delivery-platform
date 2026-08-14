@@ -139,7 +139,6 @@ router.post("/orders/checkout", checkoutLimiter, authMiddleware, async (req, res
       fees,
     });
   } catch (error) {
-    console.error("POST /orders/checkout error:", error);
     next(error)
   }
 });
@@ -165,7 +164,6 @@ router.get("/orders", authMiddleware, async (req, res, next) => {
       orders,
     });
   } catch (error) {
-    console.error("GET /orders error:", error);
     next(error)
   }
 });
@@ -207,7 +205,6 @@ router.get("/restaurants/:id/orders", authMiddleware, async (req, res, next) => 
       orders,
     });
   } catch (error) {
-    console.error("GET /restaurants/:id/orders error:", error);
    next(error)
   }
 });
@@ -263,7 +260,6 @@ router.get("/orders/:id", authMiddleware, async (req, res, next) => {
       order,
     });
   } catch (error) {
-    console.error("GET /orders/:id error:", error);
    next(error)
   }
 });
@@ -316,7 +312,6 @@ router.put("/orders/:id/status", authMiddleware, ownerMiddleware, async (req, re
       order: updated,
     });
   } catch (error) {
-    console.error("PUT /orders/:id/status error:", error);
   next(error)
   }
 });

@@ -20,7 +20,7 @@ app.get("/", (req, res) =>{
 app.use(globalLimiter)
 app.use(indexRoutes)
 app.use((err, req, res, next) =>{
-    console.error(err)
+    console.error(`${req.method} ${req.originalUrl} —`, err)
     const status= err.status || 500
     const message = err.status ? err.message: "Unexpected error occured"
     res.status(status).json({message})

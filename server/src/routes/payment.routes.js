@@ -91,7 +91,6 @@ router.post("/payments/verify", authMiddleware, async (req, res, next) => {
       order: updatedOrder,
     });
   } catch (error) {
-    console.error("POST /payments/verify error:", error);
    next(error)
   }
 });

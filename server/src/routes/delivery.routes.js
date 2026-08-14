@@ -53,7 +53,6 @@ router.get("/riders/available-orders", authMiddleware, riderMiddleware, async (r
       orders,
     });
   } catch (error) {
-    console.error("GET /riders/available-orders error:", error);
   next(error)
   }
 });
@@ -97,7 +96,6 @@ router.post("/riders/reject-order/:orderId", authMiddleware, riderMiddleware, as
       message: "Order skipped — it will no longer appear in your available list.",
     });
   } catch (error) {
-    console.error("POST /riders/reject-order/:orderId error:", error);
   next(error)
   }
 });
@@ -209,7 +207,6 @@ router.post("/deliveries/:orderId/accept", authMiddleware, riderMiddleware, asyn
       
      next(error)
     }
-    console.error("POST /deliveries/:orderId/accept error:", error);
    next(error)
   }
 });
@@ -339,7 +336,6 @@ router.put("/deliveries/:id/status", authMiddleware, riderMiddleware, async (req
     if (error.status) {
       return next(error)
     }
-    console.error("PUT /deliveries/:id/status error:", error);
    next(error)
   }
 });
@@ -376,7 +372,6 @@ router.get("/riders/my-deliveries", authMiddleware, riderMiddleware, async (req,
       deliveries,
     });
   } catch (error) {
-    console.error("GET /riders/my-deliveries error:", error);
    next(error)
   }
 });
@@ -428,7 +423,6 @@ router.get("/riders/stats", authMiddleware, riderMiddleware, async (req, res, ne
       },
     });
   } catch (error) {
-    console.error("GET /riders/stats error:", error);
    next(error)
   }
 });
