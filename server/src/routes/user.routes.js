@@ -4,6 +4,8 @@ import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken"
 import authMiddleware from "../middleware/auth.middleware.js";
 import { loginLimiter, registerLimiter } from "../middleware/rate-limiter.js";
+import { validate } from "../middleware/validate.js";
+import { signupSchema, loginSchema } from "../validation/schemas.js";
 
 
 // Create a express app that only handles Routes
@@ -31,21 +33,9 @@ router.get("/users", authMiddleware, async (req, res, next) => {
   }
 });
 
-router.post("/users",registerLimiter, async (req, res, next) => {
+router.post("/users", registerLimiter, validate(signupSchema), async (req, res, next) => {
   try {
     const { name, email, password, role, phone } = req.body;
-
-    if (!name || !email || !password) {
-      return res.status(400).json({
-        message: "Name, email, and password are required",
-      });
-    }
-
-    if(role!== "OWNER" && role !== "CUSTOMER" && role !== "RIDER"){
-      return res.status(400).json({
-        message: "invalid role"
-      })
-    }
 
     const existingUser = await prisma.user.findUnique({
       where: {
@@ -94,15 +84,9 @@ router.post("/users",registerLimiter, async (req, res, next) => {
   }
 });
 
-router.post("/users/login", loginLimiter, async (req, res, next) => {
+router.post("/users/login", loginLimiter, validate(loginSchema), async (req, res, next) => {
   try {
     const { email, password } = req.body;
-
-    if (!email || !password) {
-      return res.status(400).json({
-        message: "Email and password are required",
-      });
-    }
 
     const user = await prisma.user.findUnique({
       where: {

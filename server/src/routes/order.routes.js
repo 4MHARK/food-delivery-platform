@@ -2,6 +2,8 @@ import express from "express";
 import prisma from "../config/prisma.js";
 import authMiddleware from "../middleware/auth.middleware.js";
 import ownerMiddleware from "../middleware/owner.middleware.js";
+import { validate } from "../middleware/validate.js";
+import { checkoutSchema } from "../validation/schemas.js";
 import { calculateFees } from "../services/feecalculator.js";
 import { notify } from "../services/events.js";
 import crypto from "crypto";
@@ -10,23 +12,11 @@ import { checkoutLimiter } from "../middleware/rate-limiter.js";
 const router = express.Router();
 
 // ── Checkout: create order + payment ──
-router.post("/orders/checkout", checkoutLimiter, authMiddleware, async (req, res, next) => {
+router.post("/orders/checkout", checkoutLimiter, authMiddleware, validate(checkoutSchema), async (req, res, next) => {
   try {
     const { restaurantId, deliveryAddress, items, idempotencyKey } = req.body;
 
-    // 1. Validate input
-    if (!items || items.length === 0) {
-      return res.status(400).json({ message: "Order must have at least one item" });
-    }
-    if (!restaurantId) {
-      return res.status(400).json({ message: "Restaurant id is required" });
-    }
-    if (!deliveryAddress) {
-      return res.status(400).json({ message: "Delivery address is required" });
-    }
-    if (!idempotencyKey) {
-      return res.status(400).json({ message: "Idempotency key is required" });
-    }
+    // 1. Input validated by validate(checkoutSchema) middleware (zod)
 
     // 2. Check restaurant exists
     const restaurant = await prisma.restaurant.findUnique({
