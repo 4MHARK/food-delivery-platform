@@ -2,9 +2,11 @@ import express from "express";
 import prisma from "../config/prisma.js";
 import authMiddleware from "../middleware/auth.middleware.js";
 import ownerMiddleware from "../middleware/owner.middleware.js";
+import { validate } from "../middleware/validate.js";
+import { menuItemSchema } from "../validation/schemas.js";
 
 const router = express.Router();
-router.post("/restaurants/:id/menu-items", authMiddleware, ownerMiddleware, async (req, res, next) => {
+router.post("/restaurants/:id/menu-items", authMiddleware, ownerMiddleware, validate(menuItemSchema), async (req, res, next) => {
   try {
     const { name, description, imageUrl, price, category } = req.body;
     const restaurant = await prisma.restaurant.findUnique({
@@ -73,7 +75,7 @@ router.get("/restaurants/:id/menu-items", async (req, res, next) => {
   }
 });
 
-router.put("/menu-items/:id", authMiddleware, ownerMiddleware, async (req, res, next) => {
+router.put("/menu-items/:id", authMiddleware, ownerMiddleware, validate(menuItemSchema), async (req, res, next) => {
   try {
     const { name, description, price, imageUrl, category } = req.body;
     const menuItem = await prisma.menuItem.findUnique({

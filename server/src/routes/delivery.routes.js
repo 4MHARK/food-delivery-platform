@@ -2,6 +2,8 @@ import express from "express";
 import prisma from "../config/prisma.js";
 import authMiddleware from "../middleware/auth.middleware.js";
 import riderMiddleware from "../middleware/rider.middleware.js";
+import { validate } from "../middleware/validate.js";
+import { deliveryStatusSchema } from "../validation/schemas.js";
 import { notify } from "../services/events.js";
 
 const router = express.Router();
@@ -212,13 +214,9 @@ router.post("/deliveries/:orderId/accept", authMiddleware, riderMiddleware, asyn
 });
 
 // Update delivery status
-router.put("/deliveries/:id/status", authMiddleware, riderMiddleware, async (req, res, next) => {
+router.put("/deliveries/:id/status", authMiddleware, riderMiddleware, validate(deliveryStatusSchema), async (req, res, next) => {
   try {
     const { status, reason } = req.body;
-
-    if (!status) {
-      return res.status(400).json({ message: "Status is required" });
-    }
 
     const deliveryId = Number(req.params.id);
     const userId = req.user.id;

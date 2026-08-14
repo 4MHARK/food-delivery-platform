@@ -4,17 +4,15 @@ import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
 import authMiddleware from "../middleware/auth.middleware.js";
 import adminMiddleware from "../middleware/admin.middleware.js";
+import { validate } from "../middleware/validate.js";
+import { adminRegisterSchema } from "../validation/schemas.js";
 
 const router = express.Router();
 
 // ── Admin registration (public — requires invite code) ──
-router.post("/admin/register", async (req, res, next) => {
+router.post("/admin/register", validate(adminRegisterSchema), async (req, res, next) => {
   try {
     const { name, email, password, inviteCode } = req.body;
-
-    if (!name || !email || !password || !inviteCode) {
-      return res.status(400).json({ message: "All fields are required." });
-    }
 
     if (inviteCode !== process.env.ADMIN_INVITE_CODE) {
       return res.status(403).json({ message: "Invalid invite code." });

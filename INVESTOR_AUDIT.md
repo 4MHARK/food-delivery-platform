@@ -15,7 +15,7 @@ order payments, 2 separate files
 | S04 | SECURITY | P1 | No rate limiting on any endpoint | 30 min |(Done)
 | S05 | SECURITY | P1 | No security headers (no helmet) | 5 min |(Done)
 | B01 | BACKEND | P1 | Missing global error-handling middleware | 15 min |(Done)
-| B02 | BACKEND | P1 | No input validation library — all manual checks | 2+ hr |
+| B02 | BACKEND | P1 | No input validation library — all manual checks | 2+ hr |(Done)
 | B03 | BACKEND | P2 | `console.error` littered across all route files | 15 min |
 | B04 | BACKEND | P2 | No structured logging (no Morgan/Winston) | 15 min |
 | F01 | FRONTEND | P0 | `PaystackPop` accessed as unchecked global — runtime crash risk | 15 min |

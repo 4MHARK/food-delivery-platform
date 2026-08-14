@@ -2,72 +2,15 @@ import express from "express";
 import prisma from "../config/prisma.js";
 import authMiddleware from "../middleware/auth.middleware.js";
 import riderMiddleware from "../middleware/rider.middleware.js";
+import { validate } from "../middleware/validate.js";
+import { riderRegisterSchema, riderUpdateSchema } from "../validation/schemas.js";
 
 const router = express.Router();
 
 // Register a rider profile
-router.post("/riders/register", authMiddleware, async (req, res, next) => {
+router.post("/riders/register", authMiddleware, validate(riderRegisterSchema), async (req, res, next) => {
   try {
     const { vehicleType, licensePlate, licenseNumber, matricNumber, phone } = req.body;
-
-    // ── Validation ──
-
-    // vehicleType and phone are always required
-    if (!vehicleType || !phone) {
-      return res.status(400).json({
-        message: "vehicleType and phone are required",
-      });
-    }
-
-    // Must provide either driver's license OR matric number (not both, not neither)
-    const hasLicense = licensePlate || licenseNumber;
-    const hasMatric = !!matricNumber;
-
-    if (!hasLicense && !hasMatric) {
-      return res.status(400).json({
-        message: "Provide either a driver's license (plate + number) or a matriculation number",
-      });
-    }
-
-    if (hasLicense && hasMatric) {
-      return res.status(400).json({
-        message: "Provide either a driver's license OR a matriculation number, not both",
-      });
-    }
-
-    // License path: both plate and number required
-    if (hasLicense && (!licensePlate || !licenseNumber)) {
-      return res.status(400).json({
-        message: "Both license plate and license number are required for license registration",
-      });
-    }
-
-    // Format validations
-    if (licensePlate && !/^[A-Za-z0-9]{2,15}$/.test(licensePlate.replace(/\s/g, ""))) {
-      return res.status(400).json({
-        message: "License plate must be 2-15 alphanumeric characters",
-      });
-    }
-
-    if (licenseNumber && !/^[A-Za-z0-9][-A-Za-z0-9]{4,20}$/.test(licenseNumber)) {
-      return res.status(400).json({
-        message: "License number must be 5-20 characters (letters, numbers, hyphens)",
-      });
-    }
-
-    if (matricNumber && !/^[A-Za-z0-9/-]{5,20}$/.test(matricNumber)) {
-      return res.status(400).json({
-        message: "Matric number must be 5-20 alphanumeric characters",
-      });
-    }
-
-    // Phone: must be 10-15 digits, optionally starting with +
-    const phoneDigits = phone.replace(/\D/g, "");
-    if (phoneDigits.length < 10 || phoneDigits.length > 15) {
-      return res.status(400).json({
-        message: "Phone number must be 10-15 digits",
-      });
-    }
 
     // Only RIDER role users can register a rider profile
     if (req.user.role !== "RIDER") {
@@ -164,7 +107,7 @@ router.get("/riders/me", authMiddleware, riderMiddleware, async (req, res, next)
 });
 
 // Update rider profile
-router.put("/riders/me", authMiddleware, riderMiddleware, async (req, res, next) => {
+router.put("/riders/me", authMiddleware, riderMiddleware, validate(riderUpdateSchema), async (req, res, next) => {
   try {
     const { vehicleType, licensePlate, licenseNumber, matricNumber, phone, isAvailable } = req.body;
 
