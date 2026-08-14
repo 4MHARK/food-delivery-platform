@@ -12,7 +12,7 @@ const router = express.Router();
 // ── Checkout: create order + payment ──
 router.post("/orders/checkout", checkoutLimiter, authMiddleware, async (req, res) => {
   try {
-    const { restaurantId, deliveryAddress, items } = req.body;
+    const { restaurantId, deliveryAddress, items, idempotencyKey } = req.body;
 
     // 1. Validate input
     if (!items || items.length === 0) {
@@ -23,6 +23,9 @@ router.post("/orders/checkout", checkoutLimiter, authMiddleware, async (req, res
     }
     if (!deliveryAddress) {
       return res.status(400).json({ message: "Delivery address is required" });
+    }
+    if (!idempotencyKey) {
+      return res.status(400).json({ message: "Idempotency key is required" });
     }
 
     // 2. Check restaurant exists
@@ -62,32 +65,60 @@ router.post("/orders/checkout", checkoutLimiter, authMiddleware, async (req, res
     // 4. Calculate fees on the backend (never trust frontend totals)
     const fees = calculateFees(validatedItems);
 
-    // 5. Create the order
-    const order = await prisma.order.create({
-      data: {
-        customerId: req.user.id,
-        restaurantId: Number(restaurantId),
-        deliveryAddress,
-        status: "PENDING_PAYMENT",
-        subtotal: fees.subtotal,
-        deliveryFee: fees.deliveryFee,
-        serviceFee: fees.serviceFee,
-        tax: fees.tax,
-        totalAmount: fees.totalAmount,
-        orderItems: {
-          create: validatedItems.map((item) => ({
-            quantity: item.quantity,
-            unitPrice: item.unitPrice,
-            totalPrice: item.unitPrice * item.quantity,
-            menuItemId: item.menuItemId,
-          })),
+    // 5. Create the order — idempotent: a duplicate (customerId, idempotencyKey) returns the existing order
+    let order;
+    try {
+      order = await prisma.order.create({
+        data: {
+          customerId: req.user.id,
+          restaurantId: Number(restaurantId),
+          deliveryAddress,
+          idempotencyKey,
+          status: "PENDING_PAYMENT",
+          subtotal: fees.subtotal,
+          deliveryFee: fees.deliveryFee,
+          serviceFee: fees.serviceFee,
+          tax: fees.tax,
+          totalAmount: fees.totalAmount,
+          orderItems: {
+            create: validatedItems.map((item) => ({
+              quantity: item.quantity,
+              unitPrice: item.unitPrice,
+              totalPrice: item.unitPrice * item.quantity,
+              menuItemId: item.menuItemId,
+            })),
+          },
         },
-      },
-      include: {
-        orderItems: { include: { menuItem: true } },
-        restaurant: true,
-      },
-    });
+        include: {
+          orderItems: { include: { menuItem: true } },
+          restaurant: true,
+        },
+      });
+    } catch (error) {
+      if (error.code === "P2002") {
+        // This customer already has an order with this key → return it instead of creating a duplicate
+        const existing = await prisma.order.findUnique({
+          where: {
+            customerId_idempotencyKey: {
+              customerId: req.user.id,
+              idempotencyKey,
+            },
+          },
+          include: {
+            orderItems: { include: { menuItem: true } },
+            restaurant: true,
+            payment: true,
+          },
+        });
+
+        return res.status(200).json({
+          message: "Order already exists",
+          order: existing,
+          payment: existing.payment,
+        });
+      }
+      throw error;
+    }
 
     // 6. Create payment record
     const reference = `CHOW-${Date.now()}-${crypto.randomBytes(4).toString("hex")}`;
