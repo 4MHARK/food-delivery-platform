@@ -63,6 +63,15 @@ const Cart = () => {
       if (!res.ok) { setError(data.message || "Failed to place order"); setPlacing(false); return; }
 
       const { order, payment } = data;
+
+      // Guard: the Paystack script may have failed to load (ad blocker, CDN down).
+      // Check before committing cart state so the user can retry cleanly.
+      if (typeof window.PaystackPop === "undefined") {
+        setError("Payment system is unavailable. Please try again.");
+        setPlacing(false);
+        return;
+      }
+
       setPlacing(false);
 
       // Order created — reset the key so the next order gets a fresh one
