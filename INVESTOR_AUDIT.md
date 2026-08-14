@@ -17,7 +17,7 @@ order payments, 2 separate files
 | B01 | BACKEND | P1 | Missing global error-handling middleware | 15 min |(Done)
 | B02 | BACKEND | P1 | No input validation library — all manual checks | 2+ hr |(Done)
 | B03 | BACKEND | P2 | `console.error` littered across all route files | 15 min |(Done)
-| B04 | BACKEND | P2 | No structured logging (no Morgan/Winston) | 15 min |
+| B04 | BACKEND | P2 | No structured logging (no Morgan/Winston) | 15 min |(Done)
 | F01 | FRONTEND | P0 | `PaystackPop` accessed as unchecked global — runtime crash risk | 15 min |
 | F02 | FRONTEND | P1 | Tax label says 7.5% but calculation uses 1.5% | 5 min |
 | F03 | FRONTEND | P1 | Payment verification fetch has no `.catch()` — silent failure | 10 min |
