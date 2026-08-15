@@ -118,6 +118,13 @@ export const deliveryStatusSchema = z.object({
   reason: z.string().trim().max(500, "Reason must be 500 characters or less").optional(),
 });
 
+// ── Reviews ──
+
+export const reviewSchema = z.object({
+  rating: z.coerce.number().int("Rating must be a whole number").min(1, "Rating must be at least 1").max(5, "Rating must be at most 5"),
+  comment: z.string().trim().max(500, "Comment must be 500 characters or less").optional(),
+});
+
 // ── Admin ──
 
 export const adminRegisterSchema = z.object({

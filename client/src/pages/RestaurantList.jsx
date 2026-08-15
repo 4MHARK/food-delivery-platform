@@ -179,8 +179,15 @@ const RestaurantList = () => {
 
               <div className="p-5 flex-1 flex flex-col justify-between">
                 <div>
-                  <div className="flex items-start justify-between mb-1">
+                  <div className="flex items-start justify-between gap-2 mb-1">
                     <h3 className="text-lg font-bold text-slate-900 group-hover:text-amber-600 transition-colors">{r.name}</h3>
+                    {r.reviewCount > 0 && (
+                      <span className="flex items-center gap-1 shrink-0 text-xs font-bold text-slate-700 bg-amber-50 px-2 py-1 rounded-full">
+                        <span className="material-symbols-outlined filled-icon text-amber-500 text-sm">star</span>
+                        {r.avgRating ?? "–"}
+                        <span className="text-slate-400 font-medium">({r.reviewCount})</span>
+                      </span>
+                    )}
                   </div>
                   <p className="text-sm text-slate-500 line-clamp-2 leading-relaxed">{r.description}</p>
                 </div>

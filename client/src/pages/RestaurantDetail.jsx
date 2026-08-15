@@ -1,12 +1,14 @@
 import { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useCart } from "../context/CartContext";
+import { useAuth } from "../context/AuthContext";
 import AppLayout from "../components/AppLayout";
 
 const RestaurantDetail = () => {
   const { id } = useParams();
   const navigate = useNavigate();
   const { addItem, removeItem, itemCount: cartItemCount, items: cartItems } = useCart();
+  const { isAuthenticated } = useAuth();
 
   const [restaurant, setRestaurant] = useState(null);
   const [menuItems, setMenuItems] = useState([]);
@@ -14,18 +16,29 @@ const RestaurantDetail = () => {
   const [error, setError] = useState("");
   const [activeCategory, setActiveCategory] = useState("All");
 
+  // Reviews
+  const [reviews, setReviews] = useState([]);
+  const [rating, setRating] = useState(0);
+  const [hoverRating, setHoverRating] = useState(0);
+  const [comment, setComment] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [reviewMsg, setReviewMsg] = useState(null); // { type: "error" | "success", text }
+
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const [restaurantRes, menuRes] = await Promise.all([
+        const [restaurantRes, menuRes, reviewsRes] = await Promise.all([
           fetch(`${import.meta.env.VITE_API_URL}/restaurants/${id}`),
           fetch(`${import.meta.env.VITE_API_URL}/restaurants/${id}/menu-items`),
+          fetch(`${import.meta.env.VITE_API_URL}/restaurants/${id}/reviews`),
         ]);
         const restaurantData = await restaurantRes.json();
         const menuData = await menuRes.json();
+        const reviewsData = await reviewsRes.json();
         if (!restaurantRes.ok) { setError(restaurantData.message || "Restaurant not found"); return; }
         setRestaurant(restaurantData.restaurant);
         setMenuItems(menuRes.ok ? menuData.menuItems : []);
+        setReviews(reviewsRes.ok ? reviewsData.reviews : []);
       } catch {
         setError("Something went wrong. Please try again.");
       } finally {
@@ -34,6 +47,44 @@ const RestaurantDetail = () => {
     };
     fetchData();
   }, [id]);
+
+  const refreshReviews = async () => {
+    try {
+      const [restaurantRes, reviewsRes] = await Promise.all([
+        fetch(`${import.meta.env.VITE_API_URL}/restaurants/${id}`),
+        fetch(`${import.meta.env.VITE_API_URL}/restaurants/${id}/reviews`),
+      ]);
+      const restaurantData = await restaurantRes.json();
+      const reviewsData = await reviewsRes.json();
+      if (restaurantRes.ok) setRestaurant(restaurantData.restaurant);
+      if (reviewsRes.ok) setReviews(reviewsData.reviews);
+    } catch { /* best-effort refresh after submit */ }
+  };
+
+  const handleSubmitReview = async (e) => {
+    e.preventDefault();
+    if (!rating) { setReviewMsg({ type: "error", text: "Please select a star rating." }); return; }
+    setSubmitting(true);
+    setReviewMsg(null);
+    try {
+      const token = localStorage.getItem("token");
+      const res = await fetch(`${import.meta.env.VITE_API_URL}/restaurants/${id}/reviews`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ rating, comment: comment.trim() || undefined }),
+      });
+      const data = await res.json();
+      if (!res.ok) { setReviewMsg({ type: "error", text: data.message || "Could not submit review." }); return; }
+      setReviewMsg({ type: "success", text: "Review saved. Thank you!" });
+      setRating(0);
+      setComment("");
+      await refreshReviews();
+    } catch {
+      setReviewMsg({ type: "error", text: "Something went wrong. Please try again." });
+    } finally {
+      setSubmitting(false);
+    }
+  };
 
   const categories = ["All", ...new Set(menuItems.map((item) => item.category))];
   const filteredItems = activeCategory === "All" ? menuItems : menuItems.filter((item) => item.category === activeCategory);
@@ -119,6 +170,13 @@ const RestaurantDetail = () => {
           <div className="flex flex-wrap items-center gap-3">
             <span className="bg-white/20 backdrop-blur-sm text-white text-sm font-semibold px-3 py-1 rounded-full">20–30 min</span>
             <span className="bg-white/20 backdrop-blur-sm text-white text-sm font-semibold px-3 py-1 rounded-full">$$</span>
+            {restaurant.reviewCount > 0 && (
+              <span className="bg-white/20 backdrop-blur-sm text-white text-sm font-semibold px-3 py-1 rounded-full flex items-center gap-1">
+                <span className="material-symbols-outlined filled-icon text-amber-300 text-base">star</span>
+                {restaurant.avgRating}
+                <span className="text-white/70 font-normal">({restaurant.reviewCount})</span>
+              </span>
+            )}
           </div>
         </div>
       </div>
@@ -138,6 +196,96 @@ const RestaurantDetail = () => {
             </span>
           </div>
         </div>
+
+        {/* Reviews Section */}
+        <section className="mb-8">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-xl font-bold text-slate-900">Reviews</h2>
+            {reviews.length > 0 && (
+              <p className="text-sm text-slate-400">{reviews.length} {reviews.length === 1 ? "review" : "reviews"}</p>
+            )}
+          </div>
+
+          {/* Write a review */}
+          <div className="bg-white rounded-2xl shadow-sm p-6 mb-6">
+            <h3 className="text-sm font-bold text-slate-900 mb-4">Write a review</h3>
+            {!isAuthenticated ? (
+              <p className="text-sm text-slate-500">
+                <button onClick={() => navigate("/login")} className="text-amber-500 font-semibold hover:text-amber-600 transition">Log in</button>{" "}
+                to leave a review.
+              </p>
+            ) : (
+              <form onSubmit={handleSubmitReview}>
+                <div className="flex items-center gap-2 mb-4">
+                  {[1, 2, 3, 4, 5].map((n) => (
+                    <button
+                      key={n}
+                      type="button"
+                      onClick={() => setRating(n)}
+                      onMouseEnter={() => setHoverRating(n)}
+                      onMouseLeave={() => setHoverRating(0)}
+                      aria-label={`${n} star${n > 1 ? "s" : ""}`}
+                      className="transition active:scale-90"
+                    >
+                      <span className={`material-symbols-outlined text-2xl ${(hoverRating || rating) >= n ? "text-amber-500 filled-icon" : "text-slate-300"}`}>star</span>
+                    </button>
+                  ))}
+                  {rating > 0 && <span className="text-xs text-slate-400 ml-1">{rating} star{rating > 1 ? "s" : ""}</span>}
+                </div>
+                <textarea
+                  value={comment}
+                  onChange={(e) => setComment(e.target.value)}
+                  placeholder="Share your experience (optional)"
+                  rows={3}
+                  maxLength={500}
+                  className="w-full px-4 py-3 rounded-xl border-2 border-slate-200 focus:border-amber-500 focus:ring-1 focus:ring-amber-500 outline-none transition text-sm resize-none mb-4"
+                />
+                {reviewMsg && (
+                  <p className={`mb-4 text-sm font-medium ${reviewMsg.type === "error" ? "text-red-600" : "text-green-600"}`}>{reviewMsg.text}</p>
+                )}
+                <button
+                  type="submit"
+                  disabled={submitting}
+                  className="bg-amber-500 hover:bg-amber-600 disabled:bg-amber-300 text-white text-sm font-bold px-6 py-2.5 rounded-full transition active:scale-95"
+                >
+                  {submitting ? "Submitting..." : "Submit Review"}
+                </button>
+              </form>
+            )}
+          </div>
+
+          {/* Reviews list */}
+          {reviews.length === 0 ? (
+            <div className="bg-white rounded-2xl shadow-sm p-8 text-center">
+              <div className="w-16 h-16 rounded-full bg-slate-100 flex items-center justify-center mx-auto mb-3">
+                <span className="material-symbols-outlined text-3xl text-slate-300">rate_review</span>
+              </div>
+              <p className="text-sm text-slate-500">No reviews yet. Be the first to share your experience!</p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {reviews.map((review) => (
+                <div key={review.id} className="bg-white rounded-2xl shadow-sm p-5">
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center gap-2">
+                      <div className="w-8 h-8 rounded-full bg-amber-100 flex items-center justify-center text-amber-600 font-bold text-sm">
+                        {review.author?.name?.charAt(0)?.toUpperCase() || "?"}
+                      </div>
+                      <span className="text-sm font-semibold text-slate-900">{review.author?.name || "Anonymous"}</span>
+                    </div>
+                    <span className="text-xs text-slate-400">{new Date(review.createdAt).toLocaleDateString()}</span>
+                  </div>
+                  <div className="flex gap-0.5 mb-2">
+                    {[1, 2, 3, 4, 5].map((n) => (
+                      <span key={n} className={`material-symbols-outlined text-base ${review.rating >= n ? "text-amber-500 filled-icon" : "text-slate-200"}`}>star</span>
+                    ))}
+                  </div>
+                  {review.comment && <p className="text-sm text-slate-600 leading-relaxed">{review.comment}</p>}
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
 
         {/* Menu Section */}
         <section className="pb-24 md:pb-8">

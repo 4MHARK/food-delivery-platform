@@ -56,6 +56,8 @@ model User {
   restaurants Restaurant[]
   orders      Order[]
   rider       Rider?
+  restaurantReviews RestaurantReview[]
+  riderReviews      RiderReview[]
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 }
@@ -73,6 +75,7 @@ model Rider {
   user          User        @relation(fields: [userId], references: [id])
   deliveries    Delivery[]
   rejectedOrders RejectedOrder[]
+  reviews        RiderReview[]
   createdAt     DateTime    @default(now())
   updatedAt     DateTime    @updatedAt
 }
@@ -86,8 +89,9 @@ model Restaurant {
   address   String
   menuItems MenuItem[]
   orders    Order[]
+  reviews   RestaurantReview[]
   ownerId   Int
-  owner     User     @relation(fields: [ownerId], references: [id]) 
+  owner     User     @relation(fields: [ownerId], references: [id])
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
@@ -184,4 +188,32 @@ model Payment {
   gatewayResponse Json?
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
+}
+
+model RestaurantReview {
+  id           Int        @id @default(autoincrement())
+  rating       Int
+  comment      String?
+  authorId     Int
+  restaurantId Int
+  author       User       @relation(fields: [authorId], references: [id])
+  restaurant   Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  @@unique([authorId, restaurantId])
+}
+
+model RiderReview {
+  id        Int      @id @default(autoincrement())
+  rating    Int
+  comment   String?
+  authorId  Int
+  riderId   Int
+  author    User     @relation(fields: [authorId], references: [id])
+  rider     Rider    @relation(fields: [riderId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([authorId, riderId])
 }
