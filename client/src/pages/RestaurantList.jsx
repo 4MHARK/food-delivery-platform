@@ -181,9 +181,6 @@ const RestaurantList = () => {
                 <div>
                   <div className="flex items-start justify-between mb-1">
                     <h3 className="text-lg font-bold text-slate-900 group-hover:text-amber-600 transition-colors">{r.name}</h3>
-                    <span className="flex items-center gap-0.5 text-xs font-bold text-amber-500 bg-amber-50 px-2 py-1 rounded-lg ml-2 shrink-0">
-                      <span className="material-symbols-outlined text-sm">star</span>4.5
-                    </span>
                   </div>
                   <p className="text-sm text-slate-500 line-clamp-2 leading-relaxed">{r.description}</p>
                 </div>

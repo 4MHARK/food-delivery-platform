@@ -117,9 +117,6 @@ const RestaurantDetail = () => {
         <div className="absolute bottom-0 left-0 right-0 p-4 lg:p-8 max-w-5xl mx-auto">
           <h1 className="text-3xl md:text-4xl font-extrabold text-white mb-2 drop-shadow-lg">{restaurant.name}</h1>
           <div className="flex flex-wrap items-center gap-3">
-            <span className="flex items-center gap-1 bg-white/20 backdrop-blur-sm text-white text-sm font-semibold px-3 py-1 rounded-full">
-              <span className="material-symbols-outlined text-sm">star</span>4.5
-            </span>
             <span className="bg-white/20 backdrop-blur-sm text-white text-sm font-semibold px-3 py-1 rounded-full">20–30 min</span>
             <span className="bg-white/20 backdrop-blur-sm text-white text-sm font-semibold px-3 py-1 rounded-full">$$</span>
           </div>
