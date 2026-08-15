@@ -353,39 +353,54 @@ const RiderDashboard = () => {
   useEffect(() => {
     if (!rider) return;
 
-    const es = new EventSource(
-      `${import.meta.env.VITE_API_URL}/events?token=${encodeURIComponent(token)}`
-    );
+    let es = null;
 
-    es.onmessage = async () => {
-      const result = await fetchData({ silent: true });
-      if (result) {
-        const currentAvailable = result.availableOrders.length;
-        if (currentAvailable > prevAvailableRef.current) {
-          const diff = currentAvailable - prevAvailableRef.current;
-          showMsg(`🔔 ${diff} new order${diff > 1 ? "s" : ""} available!`);
-          if (Notification.permission === "granted") {
-            new Notification("New Order Available!", {
-              body: `${diff} new order${diff > 1 ? "s" : ""} ready for pickup.`,
-            });
+    async function connect() {
+      const ticketRes = await fetch(`${import.meta.env.VITE_API_URL}/sseTicket`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!ticketRes.ok) return;
+      const { ticket } = await ticketRes.json();
+
+      es = new EventSource(
+        `${import.meta.env.VITE_API_URL}/events?ticket=${encodeURIComponent(ticket)}`
+      );
+
+      es.onmessage = async () => {
+        const result = await fetchData({ silent: true });
+        if (result) {
+          const currentAvailable = result.availableOrders.length;
+          if (currentAvailable > prevAvailableRef.current) {
+            const diff = currentAvailable - prevAvailableRef.current;
+            showMsg(`🔔 ${diff} new order${diff > 1 ? "s" : ""} available!`);
+            if (Notification.permission === "granted") {
+              new Notification("New Order Available!", {
+                body: `${diff} new order${diff > 1 ? "s" : ""} ready for pickup.`,
+              });
+            }
           }
+          prevAvailableRef.current = currentAvailable;
         }
-        prevAvailableRef.current = currentAvailable;
-      }
-    };
+      };
 
-    es.onerror = () => {
-      if (!sseFailSinceRef.current) sseFailSinceRef.current = Date.now();
-      if (Date.now() - sseFailSinceRef.current > 30_000) {
-        es.close();
-      }
-    };
+      es.onerror = () => {
+        if (!sseFailSinceRef.current) sseFailSinceRef.current = Date.now();
+        if (Date.now() - sseFailSinceRef.current > 30_000) {
+          es.close();
+        }
+      };
 
-    es.onopen = () => {
-      sseFailSinceRef.current = null; // reset — connection is back
-    };
+      es.onopen = () => {
+        sseFailSinceRef.current = null; // reset — connection is back
+      };
+    }
 
-    return () => es.close();
+    connect();
+
+    return () => {
+      if (es) es.close();
+    };
   }, [rider, token]);
 
   // ── Request notification permission ──

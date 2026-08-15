@@ -2,6 +2,8 @@ import express from "express";
 import prisma from "../config/prisma.js";
 import authMiddleware from "../middleware/auth.middleware.js";
 import riderMiddleware from "../middleware/rider.middleware.js";
+import { validate } from "../middleware/validate.js";
+import { deliveryStatusSchema } from "../validation/schemas.js";
 import { notify } from "../services/events.js";
 
 const router = express.Router();
@@ -18,7 +20,7 @@ const VALID_TRANSITIONS = {
 };
 
 // Get available orders for riders (PREPARING, no delivery assigned, not rejected by this rider)
-router.get("/riders/available-orders", authMiddleware, riderMiddleware, async (req, res) => {
+router.get("/riders/available-orders", authMiddleware, riderMiddleware, async (req, res, next) => {
   try {
     const rider = await prisma.rider.findUnique({
       where: { userId: req.user.id },
@@ -53,15 +55,12 @@ router.get("/riders/available-orders", authMiddleware, riderMiddleware, async (r
       orders,
     });
   } catch (error) {
-    console.error("GET /riders/available-orders error:", error);
-    res.status(500).json({
-      message: error.message || "Server error",
-    });
+  next(error)
   }
 });
 
 // Reject an available order (rider skips it — hidden only from them)
-router.post("/riders/reject-order/:orderId", authMiddleware, riderMiddleware, async (req, res) => {
+router.post("/riders/reject-order/:orderId", authMiddleware, riderMiddleware, async (req, res, next) => {
   try {
     const rider = await prisma.rider.findUnique({
       where: { userId: req.user.id },
@@ -99,15 +98,12 @@ router.post("/riders/reject-order/:orderId", authMiddleware, riderMiddleware, as
       message: "Order skipped — it will no longer appear in your available list.",
     });
   } catch (error) {
-    console.error("POST /riders/reject-order/:orderId error:", error);
-    res.status(500).json({
-      message: error.message || "Server error",
-    });
+  next(error)
   }
 });
 
 // Accept an order (assign rider, create delivery, move order to OUT_FOR_DELIVERY)
-router.post("/deliveries/:orderId/accept", authMiddleware, riderMiddleware, async (req, res) => {
+router.post("/deliveries/:orderId/accept", authMiddleware, riderMiddleware, async (req, res, next) => {
   try {
     // Look up the rider
     const rider = await prisma.rider.findUnique({
@@ -210,23 +206,17 @@ router.post("/deliveries/:orderId/accept", authMiddleware, riderMiddleware, asyn
   } catch (error) {
     // Handle structured throws from the transaction
     if (error.status) {
-      return res.status(error.status).json({ message: error.message });
+      
+     next(error)
     }
-    console.error("POST /deliveries/:orderId/accept error:", error);
-    res.status(500).json({
-      message: error.message || "Server error",
-    });
+   next(error)
   }
 });
 
 // Update delivery status
-router.put("/deliveries/:id/status", authMiddleware, riderMiddleware, async (req, res) => {
+router.put("/deliveries/:id/status", authMiddleware, riderMiddleware, validate(deliveryStatusSchema), async (req, res, next) => {
   try {
     const { status, reason } = req.body;
-
-    if (!status) {
-      return res.status(400).json({ message: "Status is required" });
-    }
 
     const deliveryId = Number(req.params.id);
     const userId = req.user.id;
@@ -342,17 +332,14 @@ router.put("/deliveries/:id/status", authMiddleware, riderMiddleware, async (req
   } catch (error) {
     // Handle structured throws from the transaction
     if (error.status) {
-      return res.status(error.status).json({ message: error.message });
+      return next(error)
     }
-    console.error("PUT /deliveries/:id/status error:", error);
-    res.status(500).json({
-      message: error.message || "Server error",
-    });
+   next(error)
   }
 });
 
 // Get rider's own deliveries
-router.get("/riders/my-deliveries", authMiddleware, riderMiddleware, async (req, res) => {
+router.get("/riders/my-deliveries", authMiddleware, riderMiddleware, async (req, res, next) => {
   try {
     const rider = await prisma.rider.findUnique({
       where: { userId: req.user.id },
@@ -383,15 +370,12 @@ router.get("/riders/my-deliveries", authMiddleware, riderMiddleware, async (req,
       deliveries,
     });
   } catch (error) {
-    console.error("GET /riders/my-deliveries error:", error);
-    res.status(500).json({
-      message: error.message || "Server error",
-    });
+   next(error)
   }
 });
 
 // Get rider stats (earnings, completed deliveries)
-router.get("/riders/stats", authMiddleware, riderMiddleware, async (req, res) => {
+router.get("/riders/stats", authMiddleware, riderMiddleware, async (req, res, next) => {
   try {
     const rider = await prisma.rider.findUnique({
       where: { userId: req.user.id },
@@ -437,8 +421,7 @@ router.get("/riders/stats", authMiddleware, riderMiddleware, async (req, res) =>
       },
     });
   } catch (error) {
-    console.error("GET /riders/stats error:", error);
-    res.status(500).json({ message: error.message || "Server error" });
+   next(error)
   }
 });
 

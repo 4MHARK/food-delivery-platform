@@ -3,12 +3,15 @@ import prisma from "../config/prisma.js";
 import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken"
 import authMiddleware from "../middleware/auth.middleware.js";
+import { loginLimiter, registerLimiter } from "../middleware/rate-limiter.js";
+import { validate } from "../middleware/validate.js";
+import { signupSchema, loginSchema } from "../validation/schemas.js";
 
 
 // Create a express app that only handles Routes
 const router = express.Router();
 
-router.get("/users", authMiddleware, async (req, res) => {
+router.get("/users", authMiddleware, async (req, res, next) => {
   try {
     const users = await prisma.user.findMany({
       select: {
@@ -26,28 +29,13 @@ router.get("/users", authMiddleware, async (req, res) => {
       users,
     });
   } catch (error) {
-    res.status(500).json({
-      message: "Failed to fetch users",
-      error: error.message,
-    });
+   next(error)
   }
 });
 
-router.post("/users", async (req, res) => {
+router.post("/users", registerLimiter, validate(signupSchema), async (req, res, next) => {
   try {
     const { name, email, password, role, phone } = req.body;
-
-    if (!name || !email || !password) {
-      return res.status(400).json({
-        message: "Name, email, and password are required",
-      });
-    }
-
-    if(role!== "OWNER" && role !== "CUSTOMER" && role !== "RIDER"){
-      return res.status(400).json({
-        message: "invalid role"
-      })
-    }
 
     const existingUser = await prisma.user.findUnique({
       where: {
@@ -92,22 +80,13 @@ router.post("/users", async (req, res) => {
       },
     });
   } catch (error) {
-    res.status(500).json({
-      message: "Failed to create user",
-      error: error.message,
-    });
+   next(error)
   }
 });
 
-router.post("/users/login", async (req, res) => {
+router.post("/users/login", loginLimiter, validate(loginSchema), async (req, res, next) => {
   try {
     const { email, password } = req.body;
-
-    if (!email || !password) {
-      return res.status(400).json({
-        message: "Email and password are required",
-      });
-    }
 
     const user = await prisma.user.findUnique({
       where: {
@@ -154,14 +133,11 @@ router.post("/users/login", async (req, res) => {
     });
 
   } catch (error) {
-    res.status(500).json({
-      message: "Failed to login user",
-      error: error.message,
-    });
+  next(error)
   }
 });
 
-router.get("/users/profile", authMiddleware, async (req, res) => {
+router.get("/users/profile", authMiddleware, async (req, res, next) => {
   try {
     const user = await prisma.user.findUnique({
       where: {
@@ -189,14 +165,11 @@ router.get("/users/profile", authMiddleware, async (req, res) => {
       user,
     });
   } catch (error) {
-    return res.status(500).json({
-      message: "Failed to fetch profile",
-      error: error.message,
-    });
+  next(error)
   }
 });
 
-router.put("/users/profile", authMiddleware, async (req, res) => {
+router.put("/users/profile", authMiddleware, async (req, res, next) => {
   try {
     const { name, email, phone } = req.body;
 
@@ -240,10 +213,7 @@ router.put("/users/profile", authMiddleware, async (req, res) => {
       user: updatedUser,
     });
   } catch (error) {
-    res.status(500).json({
-      message: "Failed to update profile",
-      error: error.message,
-    });
+   next(error)
   }
 });
 export default router;

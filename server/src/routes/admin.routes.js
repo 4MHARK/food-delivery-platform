@@ -4,17 +4,15 @@ import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
 import authMiddleware from "../middleware/auth.middleware.js";
 import adminMiddleware from "../middleware/admin.middleware.js";
+import { validate } from "../middleware/validate.js";
+import { adminRegisterSchema } from "../validation/schemas.js";
 
 const router = express.Router();
 
 // ── Admin registration (public — requires invite code) ──
-router.post("/admin/register", async (req, res) => {
+router.post("/admin/register", validate(adminRegisterSchema), async (req, res, next) => {
   try {
     const { name, email, password, inviteCode } = req.body;
-
-    if (!name || !email || !password || !inviteCode) {
-      return res.status(400).json({ message: "All fields are required." });
-    }
 
     if (inviteCode !== process.env.ADMIN_INVITE_CODE) {
       return res.status(403).json({ message: "Invalid invite code." });
@@ -54,8 +52,7 @@ router.post("/admin/register", async (req, res) => {
       },
     });
   } catch (error) {
-    console.error("POST /admin/register error:", error);
-    res.status(500).json({ message: error.message || "Server error" });
+    next(error)
   }
 });
 
@@ -63,7 +60,7 @@ router.post("/admin/register", async (req, res) => {
 router.use(authMiddleware, adminMiddleware);
 
 // ── Riders: list all ──
-router.get("/admin/riders", async (req, res) => {
+router.get("/admin/riders", async (req, res, next) => {
   try {
     const riders = await prisma.rider.findMany({
       include: {
@@ -100,13 +97,12 @@ router.get("/admin/riders", async (req, res) => {
       riders: formatted,
     });
   } catch (error) {
-    console.error("GET /admin/riders error:", error);
-    res.status(500).json({ message: error.message || "Server error" });
+   next(error)
   }
 });
 
 // ── Riders: toggle verification ──
-router.put("/admin/riders/:id/verify", async (req, res) => {
+router.put("/admin/riders/:id/verify", async (req, res, next) => {
   try {
     const riderId = Number(req.params.id);
 
@@ -138,13 +134,12 @@ router.put("/admin/riders/:id/verify", async (req, res) => {
       },
     });
   } catch (error) {
-    console.error("PUT /admin/riders/:id/verify error:", error);
-    res.status(500).json({ message: error.message || "Server error" });
+    next(error)
   }
 });
 
 // ── Platform overview (stats for admin dashboard) ──
-router.get("/admin/overview", async (req, res) => {
+router.get("/admin/overview", async (req, res, next) => {
   try {
     const [totalUsers, totalOrders, totalRiders, totalRestaurants, recentOrders] =
       await Promise.all([
@@ -179,8 +174,7 @@ router.get("/admin/overview", async (req, res) => {
       },
     });
   } catch (error) {
-    console.error("GET /admin/overview error:", error);
-    res.status(500).json({ message: error.message || "Server error" });
+    next(error)
   }
 });
 

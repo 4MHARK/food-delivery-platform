@@ -2,9 +2,11 @@ import express from "express";
 import prisma from "../config/prisma.js";
 import authMiddleware from "../middleware/auth.middleware.js";
 import ownerMiddleware from "../middleware/owner.middleware.js";
+import { validate } from "../middleware/validate.js";
+import { menuItemSchema } from "../validation/schemas.js";
 
 const router = express.Router();
-router.post("/restaurants/:id/menu-items", authMiddleware, ownerMiddleware, async (req, res) => {
+router.post("/restaurants/:id/menu-items", authMiddleware, ownerMiddleware, validate(menuItemSchema), async (req, res, next) => {
   try {
     const { name, description, imageUrl, price, category } = req.body;
     const restaurant = await prisma.restaurant.findUnique({
@@ -44,14 +46,11 @@ router.post("/restaurants/:id/menu-items", authMiddleware, ownerMiddleware, asyn
       menu: newMenu,
     });
   } catch (error) {
-    res.status(500).json({
-      message: " Server error",
-      error: error.message,
-    });
+   next(error)
   }
 });
 
-router.get("/restaurants/:id/menu-items", async (req, res) => {
+router.get("/restaurants/:id/menu-items", async (req, res, next) => {
   try {
     const restaurant = await prisma.restaurant.findUnique({
       where: { id: Number(req.params.id) },
@@ -72,14 +71,11 @@ router.get("/restaurants/:id/menu-items", async (req, res) => {
       menuItems,
     });
   } catch (error) {
-    res.status(500).json({
-      message: "Does not exist",
-      error: error.message,
-    });
+  next(error)
   }
 });
 
-router.put("/menu-items/:id", authMiddleware, ownerMiddleware, async (req, res) => {
+router.put("/menu-items/:id", authMiddleware, ownerMiddleware, validate(menuItemSchema), async (req, res, next) => {
   try {
     const { name, description, price, imageUrl, category } = req.body;
     const menuItem = await prisma.menuItem.findUnique({
@@ -114,14 +110,11 @@ router.put("/menu-items/:id", authMiddleware, ownerMiddleware, async (req, res) 
       update,
     });
   } catch (error) {
-    res.status(500).json({
-      message: "Server error",
-      error: error.message,
-    });
+   next(error)
   }
 });
 
-router.delete("/menu-items/:id", authMiddleware,ownerMiddleware ,async (req, res) =>{
+router.delete("/menu-items/:id", authMiddleware,ownerMiddleware ,async (req, res, next) =>{
     try{
           const menuItem = await prisma.menuItem.findUnique({
         where:{ id: Number(req.params.id)},
@@ -161,10 +154,7 @@ router.delete("/menu-items/:id", authMiddleware,ownerMiddleware ,async (req, res
       deleteMenuItem,
     });
     }catch(error){
-        res.status(500).json({
-            message: "Server error",
-            error: error.message
-        })
+     next(error)
     }
 })
 export default router;

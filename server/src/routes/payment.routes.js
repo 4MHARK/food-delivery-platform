@@ -5,7 +5,7 @@ import { verifyPayment } from "../services/paystack.js";
 
 const router = express.Router();
 
-router.post("/payments/verify", authMiddleware, async (req, res) => {
+router.post("/payments/verify", authMiddleware, async (req, res, next) => {
   try {
     const { reference } = req.body;
 
@@ -91,10 +91,7 @@ router.post("/payments/verify", authMiddleware, async (req, res) => {
       order: updatedOrder,
     });
   } catch (error) {
-    console.error("POST /payments/verify error:", error);
-    res.status(500).json({
-      message: error.message || "Server error",
-    });
+   next(error)
   }
 });
 

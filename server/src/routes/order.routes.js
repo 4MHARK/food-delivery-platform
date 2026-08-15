@@ -2,27 +2,21 @@ import express from "express";
 import prisma from "../config/prisma.js";
 import authMiddleware from "../middleware/auth.middleware.js";
 import ownerMiddleware from "../middleware/owner.middleware.js";
+import { validate } from "../middleware/validate.js";
+import { checkoutSchema } from "../validation/schemas.js";
 import { calculateFees } from "../services/feecalculator.js";
 import { notify } from "../services/events.js";
 import crypto from "crypto";
+import { checkoutLimiter } from "../middleware/rate-limiter.js";
 
 const router = express.Router();
 
 // ── Checkout: create order + payment ──
-router.post("/orders/checkout", authMiddleware, async (req, res) => {
+router.post("/orders/checkout", checkoutLimiter, authMiddleware, validate(checkoutSchema), async (req, res, next) => {
   try {
-    const { restaurantId, deliveryAddress, items } = req.body;
+    const { restaurantId, deliveryAddress, items, idempotencyKey } = req.body;
 
-    // 1. Validate input
-    if (!items || items.length === 0) {
-      return res.status(400).json({ message: "Order must have at least one item" });
-    }
-    if (!restaurantId) {
-      return res.status(400).json({ message: "Restaurant id is required" });
-    }
-    if (!deliveryAddress) {
-      return res.status(400).json({ message: "Delivery address is required" });
-    }
+    // 1. Input validated by validate(checkoutSchema) middleware (zod)
 
     // 2. Check restaurant exists
     const restaurant = await prisma.restaurant.findUnique({
@@ -61,32 +55,60 @@ router.post("/orders/checkout", authMiddleware, async (req, res) => {
     // 4. Calculate fees on the backend (never trust frontend totals)
     const fees = calculateFees(validatedItems);
 
-    // 5. Create the order
-    const order = await prisma.order.create({
-      data: {
-        customerId: req.user.id,
-        restaurantId: Number(restaurantId),
-        deliveryAddress,
-        status: "PENDING_PAYMENT",
-        subtotal: fees.subtotal,
-        deliveryFee: fees.deliveryFee,
-        serviceFee: fees.serviceFee,
-        tax: fees.tax,
-        totalAmount: fees.totalAmount,
-        orderItems: {
-          create: validatedItems.map((item) => ({
-            quantity: item.quantity,
-            unitPrice: item.unitPrice,
-            totalPrice: item.unitPrice * item.quantity,
-            menuItemId: item.menuItemId,
-          })),
+    // 5. Create the order — idempotent: a duplicate (customerId, idempotencyKey) returns the existing order
+    let order;
+    try {
+      order = await prisma.order.create({
+        data: {
+          customerId: req.user.id,
+          restaurantId: Number(restaurantId),
+          deliveryAddress,
+          idempotencyKey,
+          status: "PENDING_PAYMENT",
+          subtotal: fees.subtotal,
+          deliveryFee: fees.deliveryFee,
+          serviceFee: fees.serviceFee,
+          tax: fees.tax,
+          totalAmount: fees.totalAmount,
+          orderItems: {
+            create: validatedItems.map((item) => ({
+              quantity: item.quantity,
+              unitPrice: item.unitPrice,
+              totalPrice: item.unitPrice * item.quantity,
+              menuItemId: item.menuItemId,
+            })),
+          },
         },
-      },
-      include: {
-        orderItems: { include: { menuItem: true } },
-        restaurant: true,
-      },
-    });
+        include: {
+          orderItems: { include: { menuItem: true } },
+          restaurant: true,
+        },
+      });
+    } catch (error) {
+      if (error.code === "P2002") {
+        // This customer already has an order with this key → return it instead of creating a duplicate
+        const existing = await prisma.order.findUnique({
+          where: {
+            customerId_idempotencyKey: {
+              customerId: req.user.id,
+              idempotencyKey,
+            },
+          },
+          include: {
+            orderItems: { include: { menuItem: true } },
+            restaurant: true,
+            payment: true,
+          },
+        });
+
+        return res.status(200).json({
+          message: "Order already exists",
+          order: existing,
+          payment: existing.payment,
+        });
+      }
+      throw error;
+    }
 
     // 6. Create payment record
     const reference = `CHOW-${Date.now()}-${crypto.randomBytes(4).toString("hex")}`;
@@ -107,14 +129,11 @@ router.post("/orders/checkout", authMiddleware, async (req, res) => {
       fees,
     });
   } catch (error) {
-    console.error("POST /orders/checkout error:", error);
-    res.status(500).json({
-      message: error.message || "Server error",
-    });
+    next(error)
   }
 });
 
-router.get("/orders", authMiddleware, async (req, res) => {
+router.get("/orders", authMiddleware, async (req, res, next) => {
   try {
     const orders = await prisma.order.findMany({
       where: { customerId: req.user.id },
@@ -135,15 +154,12 @@ router.get("/orders", authMiddleware, async (req, res) => {
       orders,
     });
   } catch (error) {
-    console.error("GET /orders error:", error);
-    res.status(500).json({
-      message: error.message || "Server error",
-    });
+    next(error)
   }
 });
 
 // Fetch all orders for a restaurant (owner only)
-router.get("/restaurants/:id/orders", authMiddleware, async (req, res) => {
+router.get("/restaurants/:id/orders", authMiddleware, async (req, res, next) => {
   try {
     const restaurantId = Number(req.params.id);
 
@@ -179,14 +195,11 @@ router.get("/restaurants/:id/orders", authMiddleware, async (req, res) => {
       orders,
     });
   } catch (error) {
-    console.error("GET /restaurants/:id/orders error:", error);
-    res.status(500).json({
-      message: error.message || "Server error",
-    });
+   next(error)
   }
 });
 
-router.get("/orders/:id", authMiddleware, async (req, res) => {
+router.get("/orders/:id", authMiddleware, async (req, res, next) => {
   try {
     const order = await prisma.order.findUnique({
       where: {
@@ -237,14 +250,11 @@ router.get("/orders/:id", authMiddleware, async (req, res) => {
       order,
     });
   } catch (error) {
-    console.error("GET /orders/:id error:", error);
-    res.status(500).json({
-      message: error.message || "Server error",
-    });
+   next(error)
   }
 });
 
-router.put("/orders/:id/status", authMiddleware, ownerMiddleware, async (req, res) => {
+router.put("/orders/:id/status", authMiddleware, ownerMiddleware, async (req, res, next) => {
   try {
     const { status } = req.body;
 
@@ -292,10 +302,7 @@ router.put("/orders/:id/status", authMiddleware, ownerMiddleware, async (req, re
       order: updated,
     });
   } catch (error) {
-    console.error("PUT /orders/:id/status error:", error);
-    res.status(500).json({
-      message: error.message || "Server error",
-    });
+  next(error)
   }
 });
 

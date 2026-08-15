@@ -1,9 +1,10 @@
 // Run The application
 import "dotenv/config"
 import app from "./app.js"
+import logger from "./utils/logger.js"
 
 const PORT = process.env.PORT || 5000
 
 app.listen(PORT, () =>{
-    console.log(`Server is Running on Port ${PORT}`);
+    logger.info(`Server is Running on Port ${PORT}`);
 })

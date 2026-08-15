@@ -118,6 +118,7 @@ model Order {
   totalAmount           Decimal @default(0) @db.Decimal(10,2)
   paidAt DateTime?
   paymentReference String?
+  idempotencyKey String?
   payment Payment?
   delivery Delivery?
   deliveryAddress String
@@ -129,6 +130,7 @@ model Order {
   rejectedBy      RejectedOrder[]
   createdAt       DateTime    @default(now())
   updatedAt       DateTime    @updatedAt
+  @@unique([customerId, idempotencyKey])
 }
 
 model Delivery {

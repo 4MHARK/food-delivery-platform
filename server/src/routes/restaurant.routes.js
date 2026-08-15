@@ -2,10 +2,12 @@ import express from "express";
 import prisma from "../config/prisma.js";
 import authMiddleware from "../middleware/auth.middleware.js";
 import ownerMiddleware from "../middleware/owner.middleware.js";
+import { validate } from "../middleware/validate.js";
+import { restaurantSchema } from "../validation/schemas.js";
 
 const router = express.Router();
 //Fetch all restaurants
-router.get("/restaurants", async (req, res) => {
+router.get("/restaurants", async (req, res, next) => {
   try {
     const restaurants = await prisma.restaurant.findMany({
       include: {
@@ -19,15 +21,12 @@ router.get("/restaurants", async (req, res) => {
       restaurants,
     });
   } catch (error) {
-    res.status(500).json({
-      message: "Failed to fetch restaurants",
-      error: error.message,
-    });
+  next(error)
   }
 });
 
 //fetched 1 restaurant with ID
-router.get("/restaurants/:id", async (req, res) => {
+router.get("/restaurants/:id", async (req, res, next) => {
   try {
     const restaurant = await prisma.restaurant.findUnique({
       where: { id: Number(req.params.id) },
@@ -49,15 +48,12 @@ router.get("/restaurants/:id", async (req, res) => {
       restaurant,
     });
   } catch (error) {
-    res.status(500).json({
-      message: "Does not exist",
-      error: error.message,
-    });
+ next(error)
   }
 });
 
 // Get the current owner's restaurant (or null)
-router.get("/my-restaurant", authMiddleware, async (req, res) => {
+router.get("/my-restaurant", authMiddleware, async (req, res, next) => {
   try {
     const restaurant = await prisma.restaurant.findFirst({
       where: { ownerId: req.user.id },
@@ -65,12 +61,12 @@ router.get("/my-restaurant", authMiddleware, async (req, res) => {
     });
     res.status(200).json({ restaurant: restaurant || null });
   } catch (error) {
-    res.status(500).json({ message: "Server error", error: error.message });
+  next(error)
   }
 });
 
 // creates a new restaurant
-router.post("/restaurants", authMiddleware, ownerMiddleware, async (req, res) => {
+router.post("/restaurants", authMiddleware, ownerMiddleware, validate(restaurantSchema), async (req, res, next) => {
   try {
     const { name, description, address, phone, imageUrl } = req.body;
 
@@ -105,15 +101,12 @@ router.post("/restaurants", authMiddleware, ownerMiddleware, async (req, res) =>
       restaurant: newRestaurant,
     });
   } catch (error) {
-    res.status(500).json({
-      message: "Server Error",
-      error: error.message,
-    });
+  next(error)
   }
 });
 
 //Updates restaurants per ID
-router.put("/restaurants/:id", authMiddleware, ownerMiddleware, async (req, res) => {
+router.put("/restaurants/:id", authMiddleware, ownerMiddleware, validate(restaurantSchema), async (req, res, next) => {
   try {
      const { name, description, address, phone, imageUrl } = req.body;
     const restaurant = await prisma.restaurant.findUnique({
@@ -148,10 +141,7 @@ router.put("/restaurants/:id", authMiddleware, ownerMiddleware, async (req, res)
     });
 
   } catch (error) {
-    res.status(500).json({
-      message: "Server error",
-      error: error.message
-    });
+  next(error)
   }
 });
 

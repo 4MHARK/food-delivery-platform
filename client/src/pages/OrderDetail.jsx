@@ -88,59 +88,74 @@ const OrderDetail = () => {
 
     const token = localStorage.getItem("token");
     let failSince = null;
-    const es = new EventSource(
-      `${import.meta.env.VITE_API_URL}/events?token=${encodeURIComponent(token)}`
-    );
+    let es = null;
 
-    es.onmessage = async () => {
-      try {
-        const res = await fetch(`${import.meta.env.VITE_API_URL}/orders/${id}`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        const data = await res.json();
-        if (!res.ok) return;
-        const fresh = data.order;
-        setOrder((prev) => {
-          if (!prev) return fresh;
+    async function connect() {
+      const ticketRes = await fetch(`${import.meta.env.VITE_API_URL}/sseTicket`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!ticketRes.ok) return;
+      const { ticket } = await ticketRes.json();
 
-          const orderStatusChanged = fresh.status !== prev.status;
-          const deliveryStatusChanged =
-            fresh.delivery?.status !== prev.delivery?.status;
+      es = new EventSource(
+        `${import.meta.env.VITE_API_URL}/events?ticket=${encodeURIComponent(ticket)}`
+      );
 
-          if (!orderStatusChanged && !deliveryStatusChanged) return prev;
+      es.onmessage = async () => {
+        try {
+          const res = await fetch(`${import.meta.env.VITE_API_URL}/orders/${id}`, {
+            headers: { Authorization: `Bearer ${token}` },
+          });
+          const data = await res.json();
+          if (!res.ok) return;
+          const fresh = data.order;
+          setOrder((prev) => {
+            if (!prev) return fresh;
 
-          if (Notification.permission === "granted") {
-            if (orderStatusChanged) {
-              const label = fresh.status.replace(/_/g, " ").toLowerCase();
-              new Notification("Order Updated", {
-                body: `Order #${fresh.id} is now ${label}`,
-                icon: "/favicon.svg",
-              });
-            } else if (deliveryStatusChanged) {
-              const step = DELIVERY_STEPS.find((s) => s.key === fresh.delivery?.status);
-              new Notification("Delivery Update", {
-                body: `Your rider: "${step?.label || "Status updated"}"`,
-                icon: "/favicon.svg",
-              });
+            const orderStatusChanged = fresh.status !== prev.status;
+            const deliveryStatusChanged =
+              fresh.delivery?.status !== prev.delivery?.status;
+
+            if (!orderStatusChanged && !deliveryStatusChanged) return prev;
+
+            if (Notification.permission === "granted") {
+              if (orderStatusChanged) {
+                const label = fresh.status.replace(/_/g, " ").toLowerCase();
+                new Notification("Order Updated", {
+                  body: `Order #${fresh.id} is now ${label}`,
+                  icon: "/favicon.svg",
+                });
+              } else if (deliveryStatusChanged) {
+                const step = DELIVERY_STEPS.find((s) => s.key === fresh.delivery?.status);
+                new Notification("Delivery Update", {
+                  body: `Your rider: "${step?.label || "Status updated"}"`,
+                  icon: "/favicon.svg",
+                });
+              }
             }
-          }
-          return fresh;
-        });
-      } catch { /* silent */ }
-    };
+            return fresh;
+          });
+        } catch { /* silent */ }
+      };
 
-    es.onerror = () => {
-      if (!failSince) failSince = Date.now();
-      if (Date.now() - failSince > 30_000) {
-        es.close();
-      }
-    };
+      es.onerror = () => {
+        if (!failSince) failSince = Date.now();
+        if (Date.now() - failSince > 30_000) {
+          es.close();
+        }
+      };
 
-    es.onopen = () => {
-      failSince = null; // reset — connection is back
-    };
+      es.onopen = () => {
+        failSince = null; // reset — connection is back
+      };
+    }
 
-    return () => es.close();
+    connect();
+
+    return () => {
+      if (es) es.close();
+    };
   }, [id]);
 
   const getStepState = (stepKey) => {
