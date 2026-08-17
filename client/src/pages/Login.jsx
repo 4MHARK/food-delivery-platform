@@ -164,12 +164,12 @@ const Login = () => {
                 >
                   Password
                 </label>
-                <a
-                  href="#"
+                <Link
+                  to="/forgot-password"
                   className="text-sm font-semibold text-amber-500 hover:text-amber-600 transition-colors"
                 >
                   Forgot Password?
-                </a>
+                </Link>
               </div>
               <input
                 type="password"

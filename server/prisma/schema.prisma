@@ -58,6 +58,8 @@ model User {
   rider       Rider?
   restaurantReviews RestaurantReview[]
   riderReviews      RiderReview[]
+  resetTokenHash      String?
+  resetTokenExpiresAt DateTime?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 }

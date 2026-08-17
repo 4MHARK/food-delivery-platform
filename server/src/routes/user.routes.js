@@ -2,10 +2,13 @@ import express from "express";
 import prisma from "../config/prisma.js";
 import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken"
+import crypto from "crypto";
 import authMiddleware from "../middleware/auth.middleware.js";
-import { loginLimiter, registerLimiter } from "../middleware/rate-limiter.js";
+import { loginLimiter, registerLimiter, resetLimiter } from "../middleware/rate-limiter.js";
 import { validate } from "../middleware/validate.js";
-import { signupSchema, loginSchema } from "../validation/schemas.js";
+import { signupSchema, loginSchema, forgotPasswordSchema, resetPasswordSchema } from "../validation/schemas.js";
+import logger from "../utils/logger.js";
+import { sendPasswordResetEmail } from "../services/mailer.js";
 
 
 // Create a express app that only handles Routes
@@ -214,6 +217,79 @@ router.put("/users/profile", authMiddleware, async (req, res, next) => {
     });
   } catch (error) {
    next(error)
+  }
+});
+router.post("/users/forgot-password", resetLimiter, validate(forgotPasswordSchema), async (req, res, next) => {
+  try {
+    const { email } = req.body;
+
+    const user = await prisma.user.findUnique({ where: { email } });
+
+    if (user) {
+      // Generate a one-time token; store only its hash + expiry (never the raw token)
+      const rawToken = crypto.randomBytes(32).toString("hex");
+      const tokenHash = crypto.createHash("sha256").update(rawToken).digest("hex");
+      const expiresAt = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
+
+      await prisma.user.update({
+        where: { id: user.id },
+        data: { resetTokenHash: tokenHash, resetTokenExpiresAt: expiresAt },
+      });
+
+      const resetUrl = `${process.env.CLIENT_URL || "http://localhost:5173"}/reset-password?token=${rawToken}`;
+      await sendPasswordResetEmail(user.email, resetUrl);
+
+      // Fallback for local testing — the raw token is only ever logged, never returned to the client
+      logger.info(`Password reset link for ${user.email}: ${resetUrl}`);
+    } else {
+      // Burn comparable time to when a user IS found, so timing doesn't reveal account existence
+      await bcrypt.hash(crypto.randomBytes(16).toString("hex"), 10);
+    }
+
+    // Always the same response — do not reveal whether the email exists
+    res.status(200).json({
+      message: "If an account exists for that email, a password reset link has been sent.",
+    });
+  } catch (error) {
+    next(error)
+  }
+});
+
+router.post("/users/reset-password", resetLimiter, validate(resetPasswordSchema), async (req, res, next) => {
+  try {
+    const { token, password } = req.body;
+
+    const tokenHash = crypto.createHash("sha256").update(token).digest("hex");
+
+    const user = await prisma.user.findFirst({
+      where: {
+        resetTokenHash: tokenHash,
+        resetTokenExpiresAt: { gt: new Date() },
+      },
+    });
+
+    if (!user) {
+      return res.status(400).json({
+        message: "This reset link is invalid or has expired. Please request a new one.",
+      });
+    }
+
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    await prisma.user.update({
+      where: { id: user.id },
+      data: {
+        password: hashedPassword,
+        resetTokenHash: null,
+        resetTokenExpiresAt: null,
+      },
+    });
+
+    res.status(200).json({
+      message: "Password reset successfully. You can now log in.",
+    });
+  } catch (error) {
+    next(error)
   }
 });
 export default router;

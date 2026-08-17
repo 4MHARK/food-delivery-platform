@@ -20,6 +20,13 @@ export const checkoutLimiter = rateLimit({
     legacyHeaders: false,
     message: {message: "Too many order attempts. Please try again later"}
 })
+export const resetLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    limit: 5,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: {message: "Too many reset requests. Please try again later"}
+})
 export const globalLimiter = rateLimit({
     windowMs: 15 * 60 * 1000,
     limit: 100,

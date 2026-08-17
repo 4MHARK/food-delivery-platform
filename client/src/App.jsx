@@ -3,6 +3,8 @@ import { AuthProvider, useAuth } from "./context/AuthContext";
 import { CartProvider } from "./context/CartContext";
 import Signup from "./pages/Signup";
 import Login from "./pages/Login";
+import ForgotPassword from "./pages/ForgotPassword";
+import ResetPassword from "./pages/ResetPassword";
 import Profile from "./pages/Profile";
 import RestaurantList from "./pages/RestaurantList";
 import Orders from "./pages/Orders";
@@ -45,6 +47,8 @@ function App() {
             <Route path="/" element={<HomeRedirect />} />
             <Route path="/signup" element={<Signup />} />
             <Route path="/login" element={<Login />} />
+            <Route path="/forgot-password" element={<ForgotPassword />} />
+            <Route path="/reset-password" element={<ResetPassword />} />
             <Route path="/admin/register" element={<AdminSignup />} />
             <Route path="/restaurants" element={<RestaurantList />} />
             <Route path="/restaurants/:id" element={<RestaurantDetail />} />
