@@ -23,8 +23,8 @@ order payments, 2 separate files
 | F03 | FRONTEND | P1 | Payment verification fetch has no `.catch()` — silent failure | 10 min |(Done)
 | F04 | FRONTEND | P1 | Hardcoded fake 4.5-star rating on all restaurant cards | 15 min |(Done)
 | F05 | FRONTEND | P1 | Hardcoded fake "20-30 min" delivery time on all restaurants | 10 min |(Done)
-| F06 | FRONTEND | P1 | Dead "Forgot Password?" link on Login page | 5 min |
-| F07 | FRONTEND | P1 | Dead Google/Apple social login buttons (Login + Signup) | 5 min |
+| F06 | FRONTEND | P1 | Dead "Forgot Password?" link on Login page | 5 min |(Done)
+| F07 | FRONTEND | P1 | Dead Google/Apple social login buttons (Login + Signup) | 5 min |(Later)
 | F08 | FRONTEND | P2 | Array index used as React `key` in 4 `.map()` calls | 10 min |
 | F09 | FRONTEND | P2 | `console.log(error)` left in Login and Signup | 2 min |
 | F10 | FRONTEND | P2 | Unused `import React` in 3 files (React 19 JSX transform) | 2 min |
