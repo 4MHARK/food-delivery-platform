@@ -174,7 +174,7 @@ const RestaurantList = () => {
                     <span className="material-symbols-outlined text-6xl text-amber-300">restaurant</span>
                   </div>
                 )}
-                <div className="absolute top-3 right-3 bg-white/90 backdrop-blur-sm text-slate-900 text-xs font-bold px-3 py-1.5 rounded-full shadow-sm">20–30 min</div>
+                <div className="absolute top-3 right-3 bg-white/90 backdrop-blur-sm text-slate-900 text-xs font-bold px-3 py-1.5 rounded-full shadow-sm">Delivery fee from ₦400</div>
               </div>
 
               <div className="p-5 flex-1 flex flex-col justify-between">
