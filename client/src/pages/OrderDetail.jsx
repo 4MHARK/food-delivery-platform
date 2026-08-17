@@ -581,8 +581,8 @@ const OrderDetail = () => {
             </h3>
           </div>
           <div className="divide-y divide-slate-50">
-            {order.orderItems.map((item, idx) => (
-              <div key={idx} className="px-5 py-4 flex items-center justify-between">
+            {order.orderItems.map((item) => (
+              <div key={item.id} className="px-5 py-4 flex items-center justify-between">
                 <div className="flex items-center gap-3">
                   <div className="w-10 h-10 rounded-lg bg-slate-100 flex items-center justify-center shrink-0">
                     {item.menuItem?.imageUrl ? (
