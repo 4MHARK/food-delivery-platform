@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
+import { api } from "../lib/api";
 
 const ResetPassword = () => {
   const [searchParams] = useSearchParams();
@@ -18,16 +19,10 @@ const ResetPassword = () => {
     if (password !== confirm) { setError("Passwords do not match."); return; }
     setLoading(true);
     try {
-      const res = await fetch(`${import.meta.env.VITE_API_URL}/users/reset-password`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ token, password }),
-      });
-      const data = await res.json();
-      if (!res.ok) { setError(data.message || "Could not reset password."); return; }
+      await api.post("/users/reset-password", { token, password }, { auth: false });
       setDone(true);
-    } catch {
-      setError("Something went wrong. Please try again.");
+    } catch (e) {
+      setError(e.message || "Something went wrong. Please try again.");
     } finally {
       setLoading(false);
     }

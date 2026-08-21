@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import AppLayout from "../components/AppLayout";
+import { api } from "../lib/api";
 
 const ADMIN_NAV = [
   { icon: "admin_panel_settings", label: "Admin", path: "/admin" },
@@ -109,12 +110,7 @@ const OverviewSection = () => {
     try {
       setLoading(true);
       setError("");
-      const token = localStorage.getItem("token");
-      const res = await fetch(`${import.meta.env.VITE_API_URL}/admin/overview`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.message);
+      const data = await api.get("/admin/overview");
       setOverview(data.overview);
     } catch (err) {
       setError(err.message || "Failed to load overview.");
@@ -214,17 +210,11 @@ const RidersSection = () => {
   const [messageType, setMessageType] = useState("success"); // "success" | "error"
   const [confirmRevokeId, setConfirmRevokeId] = useState(null);
 
-  const token = localStorage.getItem("token");
-
   const fetchRiders = async () => {
     try {
       setLoading(true);
       setError("");
-      const res = await fetch(`${import.meta.env.VITE_API_URL}/admin/riders`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.message);
+      const data = await api.get("/admin/riders");
       setRiders(data.riders);
     } catch (err) {
       setError(err.message || "Failed to load riders.");
@@ -238,12 +228,7 @@ const RidersSection = () => {
   const handleToggleVerify = async (riderId) => {
     try {
       setTogglingId(riderId);
-      const res = await fetch(`${import.meta.env.VITE_API_URL}/admin/riders/${riderId}/verify`, {
-        method: "PUT",
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.message);
+      const data = await api.put(`/admin/riders/${riderId}/verify`);
 
       setRiders((prev) =>
         prev.map((r) =>

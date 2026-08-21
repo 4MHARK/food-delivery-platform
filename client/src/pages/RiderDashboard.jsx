@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import AppLayout, { RIDER_NAV } from "../components/AppLayout";
+import { api } from "../lib/api";
 
 const ORDER_STATUS = {
   PENDING_PAYMENT:                   { label: "Pending Payment", color: "bg-amber-100 text-amber-700 border-amber-200", dot: "bg-amber-500" },
@@ -102,23 +103,16 @@ const RiderDashboard = () => {
     messageTimer.current = setTimeout(() => setMessage(""), 8000);
   };
 
-  const token = localStorage.getItem("token");
-
   // ── Fetch rider profile ──
   const fetchRider = async () => {
     try {
-      const res = await fetch(`${import.meta.env.VITE_API_URL}/riders/me`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (res.status === 404) {
+      const data = await api.get("/riders/me");
+      setRider(data.rider);
+    } catch (e) {
+      if (e?.status === 404) {
         setRider(null);
         return;
       }
-      const data = await res.json();
-      if (res.ok) {
-        setRider(data.rider);
-      }
-    } catch {
       setError("Failed to load rider profile.");
     }
   };
@@ -133,30 +127,21 @@ const RiderDashboard = () => {
       }
 
       const [ordersRes, deliveriesRes, statsRes] = await Promise.all([
-        fetch(`${import.meta.env.VITE_API_URL}/riders/available-orders`, {
-          headers: { Authorization: `Bearer ${token}` },
-        }),
-        fetch(`${import.meta.env.VITE_API_URL}/riders/my-deliveries`, {
-          headers: { Authorization: `Bearer ${token}` },
-        }),
-        fetch(`${import.meta.env.VITE_API_URL}/riders/stats`, {
-          headers: { Authorization: `Bearer ${token}` },
-        }),
+        api.get("/riders/available-orders").catch(() => null),
+        api.get("/riders/my-deliveries").catch(() => null),
+        api.get("/riders/stats").catch(() => null),
       ]);
 
       let availableOrders = [];
-      if (ordersRes.ok) {
-        const ordersData = await ordersRes.json();
-        availableOrders = ordersData.orders || [];
+      if (ordersRes) {
+        availableOrders = ordersRes.orders || [];
         setAvailableOrders(availableOrders);
       }
-      if (deliveriesRes.ok) {
-        const deliveriesData = await deliveriesRes.json();
-        setMyDeliveries(deliveriesData.deliveries || []);
+      if (deliveriesRes) {
+        setMyDeliveries(deliveriesRes.deliveries || []);
       }
-      if (statsRes.ok) {
-        const statsData = await statsRes.json();
-        setStats(statsData.stats);
+      if (statsRes) {
+        setStats(statsRes.stats);
       }
 
       setLastUpdated(new Date());
@@ -197,23 +182,11 @@ const RiderDashboard = () => {
         body.matricNumber = riderForm.matricNumber;
       }
 
-      const res = await fetch(`${import.meta.env.VITE_API_URL}/riders/register`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify(body),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        showMsg(data.message || "Registration failed.");
-        return;
-      }
+      const data = await api.post("/riders/register", body);
       setRider(data.rider);
       showMsg("Rider profile created! 🎉");
-    } catch {
-      showMsg("Something went wrong. Please try again.");
+    } catch (e) {
+      showMsg(e.message || "Something went wrong. Please try again.");
     } finally {
       setRegistering(false);
     }
@@ -223,23 +196,12 @@ const RiderDashboard = () => {
   const handleAccept = async (orderId) => {
     try {
       setAcceptingOrderId(orderId);
-      const res = await fetch(`${import.meta.env.VITE_API_URL}/deliveries/${orderId}/accept`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        showMsg(data.message || "Failed to accept order.");
-        return;
-      }
+      await api.post(`/deliveries/${orderId}/accept`);
       showMsg(`Order #${orderId} accepted!`);
       // Refresh data
       await fetchData();
-    } catch {
-      showMsg("Something went wrong. Please try again.");
+    } catch (e) {
+      showMsg(e.message || "Something went wrong. Please try again.");
     } finally {
       setAcceptingOrderId(null);
     }
@@ -251,17 +213,11 @@ const RiderDashboard = () => {
     setAvailableOrders((prev) => prev.filter((o) => o.id !== orderId));
     try {
       setRejectingOrderId(orderId);
-      const res = await fetch(`${import.meta.env.VITE_API_URL}/riders/reject-order/${orderId}`, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (!res.ok) {
-        // Rollback — refetch to restore correct state
-        showMsg("Could not skip order. It may reappear on refresh.");
-        await fetchData();
-      }
+      await api.post(`/riders/reject-order/${orderId}`);
     } catch {
-      showMsg("Something went wrong. The order may reappear on refresh.");
+      // Rollback — refetch to restore correct state
+      showMsg("Could not skip order. It may reappear on refresh.");
+      await fetchData();
     } finally {
       setRejectingOrderId(null);
     }
@@ -272,24 +228,12 @@ const RiderDashboard = () => {
     try {
       setUpdatingDeliveryId(deliveryId);
       const body = { status: newStatus, ...extra };
-      const res = await fetch(`${import.meta.env.VITE_API_URL}/deliveries/${deliveryId}/status`, {
-        method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify(body),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        showMsg(data.message || "Failed to update status.");
-        return;
-      }
+      await api.put(`/deliveries/${deliveryId}/status`, body);
       const label = DELIVERY_STATUS[newStatus]?.label || newStatus;
       showMsg(`Delivery status updated to "${label}"`);
       await fetchData();
-    } catch {
-      showMsg("Something went wrong. Please try again.");
+    } catch (e) {
+      showMsg(e.message || "Something went wrong. Please try again.");
     } finally {
       setUpdatingDeliveryId(null);
     }
@@ -310,23 +254,11 @@ const RiderDashboard = () => {
     try {
       setTogglingAvailability(true);
       const newVal = !rider.isAvailable;
-      const res = await fetch(`${import.meta.env.VITE_API_URL}/riders/me`, {
-        method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({ isAvailable: newVal }),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        showMsg(data.message || "Failed to update availability.");
-        return;
-      }
+      const data = await api.put("/riders/me", { isAvailable: newVal });
       setRider((prev) => ({ ...prev, ...data.rider }));
       showMsg(newVal ? "You are now available for deliveries 🟢" : "You are now unavailable ⚫");
-    } catch {
-      showMsg("Something went wrong. Please try again.");
+    } catch (e) {
+      showMsg(e.message || "Something went wrong. Please try again.");
     } finally {
       setTogglingAvailability(false);
     }
@@ -356,12 +288,13 @@ const RiderDashboard = () => {
     let es = null;
 
     async function connect() {
-      const ticketRes = await fetch(`${import.meta.env.VITE_API_URL}/sseTicket`, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (!ticketRes.ok) return;
-      const { ticket } = await ticketRes.json();
+      let ticket;
+      try {
+        const data = await api.post("/sseTicket");
+        ticket = data.ticket;
+      } catch {
+        return;
+      }
 
       es = new EventSource(
         `${import.meta.env.VITE_API_URL}/events?ticket=${encodeURIComponent(ticket)}`
@@ -401,7 +334,7 @@ const RiderDashboard = () => {
     return () => {
       if (es) es.close();
     };
-  }, [rider, token]);
+  }, [rider]);
 
   // ── Request notification permission ──
   useEffect(() => {

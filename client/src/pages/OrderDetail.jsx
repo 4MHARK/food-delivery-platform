@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import AppLayout from "../components/AppLayout";
+import { api } from "../lib/api";
 
 const STATUS_FLOW = [
   { key: "PENDING_PAYMENT", label: "Placed", icon: "receipt" },
@@ -66,19 +67,12 @@ function RateRider({ riderId, riderName }) {
     setSubmitting(true);
     setMsg(null);
     try {
-      const token = localStorage.getItem("token");
-      const res = await fetch(`${import.meta.env.VITE_API_URL}/riders/${riderId}/reviews`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ rating, comment: comment.trim() || undefined }),
-      });
-      const data = await res.json();
-      if (!res.ok) { setMsg({ type: "error", text: data.message || "Could not submit review." }); return; }
+      await api.post(`/riders/${riderId}/reviews`, { rating, comment: comment.trim() || undefined });
       setMsg({ type: "success", text: `Thanks for rating ${riderName}!` });
       setRating(0);
       setComment("");
-    } catch {
-      setMsg({ type: "error", text: "Something went wrong. Please try again." });
+    } catch (e) {
+      setMsg({ type: "error", text: e.message || "Could not submit review." });
     } finally {
       setSubmitting(false);
     }
@@ -138,15 +132,10 @@ const OrderDetail = () => {
   useEffect(() => {
     const fetchOrder = async () => {
       try {
-        const token = localStorage.getItem("token");
-        const res = await fetch(`${import.meta.env.VITE_API_URL}/orders/${id}`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        const data = await res.json();
-        if (!res.ok) { setError(data.message || "Order not found"); return; }
+        const data = await api.get(`/orders/${id}`);
         setOrder(data.order);
-      } catch {
-        setError("Something went wrong. Please try again.");
+      } catch (e) {
+        setError(e.message || "Order not found");
       } finally {
         setLoading(false);
       }
@@ -160,17 +149,17 @@ const OrderDetail = () => {
       Notification.requestPermission();
     }
 
-    const token = localStorage.getItem("token");
     let failSince = null;
     let es = null;
 
     async function connect() {
-      const ticketRes = await fetch(`${import.meta.env.VITE_API_URL}/sseTicket`, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (!ticketRes.ok) return;
-      const { ticket } = await ticketRes.json();
+      let ticket;
+      try {
+        const data = await api.post("/sseTicket");
+        ticket = data.ticket;
+      } catch {
+        return;
+      }
 
       es = new EventSource(
         `${import.meta.env.VITE_API_URL}/events?ticket=${encodeURIComponent(ticket)}`
@@ -178,11 +167,7 @@ const OrderDetail = () => {
 
       es.onmessage = async () => {
         try {
-          const res = await fetch(`${import.meta.env.VITE_API_URL}/orders/${id}`, {
-            headers: { Authorization: `Bearer ${token}` },
-          });
-          const data = await res.json();
-          if (!res.ok) return;
+          const data = await api.get(`/orders/${id}`);
           const fresh = data.order;
           setOrder((prev) => {
             if (!prev) return fresh;

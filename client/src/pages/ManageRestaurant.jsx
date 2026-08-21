@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import AppLayout, { OWNER_NAV } from "../components/AppLayout";
+import { api } from "../lib/api";
 
 const ORDER_STATUS = {
   PENDING_PAYMENT:                   { label: "Pending Payment", color: "bg-amber-100 text-amber-700 border-amber-200", dot: "bg-amber-500" },
@@ -51,19 +52,12 @@ const Dashboard = () => {
   const [updatingOrderId, setUpdatingOrderId] = useState(null);
   const [lastUpdated, setLastUpdated] = useState(null);
 
-  const token = localStorage.getItem("token");
-  const authHeaders = { "Content-Type": "application/json", Authorization: `Bearer ${token}` };
-
   const showMsg = (msg) => { setMessage(msg); setTimeout(() => setMessage(""), 10000); };
 
   // ── Fetch restaurant ──
   const fetchRestaurant = useCallback(async () => {
     try {
-      const res = await fetch(`${import.meta.env.VITE_API_URL}/my-restaurant`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.message);
+      const data = await api.get("/my-restaurant");
       const r = data.restaurant;
       setRestaurant(r);
       if (r) {
@@ -74,14 +68,13 @@ const Dashboard = () => {
       setError(err.message || "Failed to load");
       return null;
     }
-  }, [token]);
+  }, []);
 
   // ── Fetch menu ──
   const fetchMenu = useCallback(async (restaurantId) => {
     try {
-      const res = await fetch(`${import.meta.env.VITE_API_URL}/restaurants/${restaurantId}/menu-items`);
-      const data = await res.json();
-      if (res.ok) setMenuItems(data.menuItems || []);
+      const data = await api.get(`/restaurants/${restaurantId}/menu-items`);
+      setMenuItems(data.menuItems || []);
     } catch { /* silent */ }
   }, []);
 
@@ -90,19 +83,15 @@ const Dashboard = () => {
     try {
       setOrdersLoading(true);
       setOrdersError("");
-      const res = await fetch(`${import.meta.env.VITE_API_URL}/restaurants/${restaurantId}/orders`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      const data = await res.json();
-      if (!res.ok) { setOrdersError(data.message || "Failed to load orders"); return; }
+      const data = await api.get(`/restaurants/${restaurantId}/orders`);
       setOrders(data.orders || []);
       setLastUpdated(new Date());
-    } catch {
-      setOrdersError("Something went wrong. Please try again.");
+    } catch (e) {
+      setOrdersError(e.message || "Failed to load orders");
     } finally {
       setOrdersLoading(false);
     }
-  }, [token]);
+  }, []);
 
   // ── Initial load ──
   useEffect(() => {
@@ -129,11 +118,7 @@ const Dashboard = () => {
       prevPendingRef.current = orders.filter((o) => o.status === "PENDING_RESTAURANT_CONFIRMATION").length;
       pollRef.current = setInterval(async () => {
         try {
-          const res = await fetch(`${import.meta.env.VITE_API_URL}/restaurants/${restaurant.id}/orders`, {
-            headers: { Authorization: `Bearer ${token}` },
-          });
-          const data = await res.json();
-          if (!res.ok) return;
+          const data = await api.get(`/restaurants/${restaurant.id}/orders`);
           const currentPending = (data.orders || []).filter(
             (o) => o.status === "PENDING_RESTAURANT_CONFIRMATION"
           ).length;
@@ -155,21 +140,17 @@ const Dashboard = () => {
       }, 30000);
     }
     return () => { if (pollRef.current) clearInterval(pollRef.current); };
-  }, [restaurant, token]);
+  }, [restaurant]);
 
   // ── Order actions ──
   const handleAcceptOrder = async (orderId) => {
     try {
       setUpdatingOrderId(orderId);
-      const res = await fetch(`${import.meta.env.VITE_API_URL}/orders/${orderId}/status`, {
-        method: "PUT", headers: authHeaders, body: JSON.stringify({ status: "PREPARING" }),
-      });
-      const data = await res.json();
-      if (!res.ok) { showMsg(data.message || "Failed"); return; }
+      await api.put(`/orders/${orderId}/status`, { status: "PREPARING" });
       setOrders((prev) => prev.map((o) => (o.id === orderId ? { ...o, status: "PREPARING" } : o)));
       showMsg(`Order #${orderId} accepted`);
-    } catch {
-      showMsg("Failed to accept order");
+    } catch (e) {
+      showMsg(e.message || "Failed to accept order");
     } finally {
       setUpdatingOrderId(null);
     }
@@ -179,15 +160,11 @@ const Dashboard = () => {
     if (!window.confirm("Cancel this order? The customer will be notified.")) return;
     try {
       setUpdatingOrderId(orderId);
-      const res = await fetch(`${import.meta.env.VITE_API_URL}/orders/${orderId}/status`, {
-        method: "PUT", headers: authHeaders, body: JSON.stringify({ status: "CANCELLED" }),
-      });
-      const data = await res.json();
-      if (!res.ok) { showMsg(data.message || "Failed"); return; }
+      await api.put(`/orders/${orderId}/status`, { status: "CANCELLED" });
       setOrders((prev) => prev.map((o) => (o.id === orderId ? { ...o, status: "CANCELLED" } : o)));
       showMsg(`Order #${orderId} cancelled`);
-    } catch {
-      showMsg("Failed to cancel order");
+    } catch (e) {
+      showMsg(e.message || "Failed to cancel order");
     } finally {
       setUpdatingOrderId(null);
     }
@@ -198,15 +175,11 @@ const Dashboard = () => {
     if (!current || current.status === newStatus) return;
     try {
       setUpdatingOrderId(orderId);
-      const res = await fetch(`${import.meta.env.VITE_API_URL}/orders/${orderId}/status`, {
-        method: "PUT", headers: authHeaders, body: JSON.stringify({ status: newStatus }),
-      });
-      const data = await res.json();
-      if (!res.ok) { showMsg(data.message || "Failed to update status"); return; }
+      await api.put(`/orders/${orderId}/status`, { status: newStatus });
       setOrders((prev) => prev.map((o) => (o.id === orderId ? { ...o, status: newStatus } : o)));
       showMsg(`Order #${orderId} → ${ORDER_STATUS[newStatus].label}`);
-    } catch {
-      showMsg("Failed to update order status");
+    } catch (e) {
+      showMsg(e.message || "Failed to update order status");
     } finally {
       setUpdatingOrderId(null);
     }
@@ -222,19 +195,15 @@ const Dashboard = () => {
     try {
       setCreating(true);
       setError("");
-      const res = await fetch(`${import.meta.env.VITE_API_URL}/restaurants`, {
-        method: "POST", headers: authHeaders, body: JSON.stringify(restForm),
-      });
-      const data = await res.json();
-      if (!res.ok) { setError(data.message); return; }
+      const data = await api.post("/restaurants", restForm);
       setRestaurant(data.restaurant);
       setRestForm({ name: data.restaurant.name || "", description: data.restaurant.description || "", address: data.restaurant.address || "", phone: data.restaurant.phone || "", imageUrl: data.restaurant.imageUrl || "" });
       setShowCreate(false);
       showMsg("Restaurant created! Start building your menu.");
       fetchMenu(data.restaurant.id);
       fetchOrders(data.restaurant.id);
-    } catch {
-      setError("Failed to create restaurant");
+    } catch (e) {
+      setError(e.message || "Failed to create restaurant");
     } finally {
       setCreating(false);
     }
@@ -245,15 +214,11 @@ const Dashboard = () => {
     e.preventDefault();
     try {
       setSavingRest(true);
-      const res = await fetch(`${import.meta.env.VITE_API_URL}/restaurants/${restaurant.id}`, {
-        method: "PUT", headers: authHeaders, body: JSON.stringify(restForm),
-      });
-      const data = await res.json();
-      if (!res.ok) { setError(data.message); return; }
+      await api.put(`/restaurants/${restaurant.id}`, restForm);
       setRestaurant((prev) => ({ ...prev, ...restForm }));
       showMsg("Restaurant updated");
-    } catch {
-      setError("Failed to update restaurant");
+    } catch (e) {
+      setError(e.message || "Failed to update restaurant");
     } finally {
       setSavingRest(false);
     }
@@ -268,17 +233,13 @@ const Dashboard = () => {
     }
     try {
       setSavingMenu(true);
-      const res = await fetch(`${import.meta.env.VITE_API_URL}/restaurants/${restaurant.id}/menu-items`, {
-        method: "POST", headers: authHeaders, body: JSON.stringify({ ...menuForm, price: Number(menuForm.price) }),
-      });
-      const data = await res.json();
-      if (!res.ok) { setError(data.message); return; }
+      await api.post(`/restaurants/${restaurant.id}/menu-items`, { ...menuForm, price: Number(menuForm.price) });
       await fetchMenu(restaurant.id);
       setMenuForm(initialMenuForm);
       setShowAddMenu(false);
       showMsg("Menu item added");
-    } catch {
-      setError("Failed to add menu item");
+    } catch (e) {
+      setError(e.message || "Failed to add menu item");
     } finally {
       setSavingMenu(false);
     }
@@ -288,21 +249,16 @@ const Dashboard = () => {
     e.preventDefault();
     try {
       setSavingMenu(true);
-      const res = await fetch(`${import.meta.env.VITE_API_URL}/menu-items/${editingItem.id}`, {
-        method: "PUT", headers: authHeaders,
-        body: JSON.stringify({
-          name: editingItem.name, description: editingItem.description,
-          price: Number(editingItem.price), category: editingItem.category,
-          imageUrl: editingItem.imageUrl || "",
-        }),
+      await api.put(`/menu-items/${editingItem.id}`, {
+        name: editingItem.name, description: editingItem.description,
+        price: Number(editingItem.price), category: editingItem.category,
+        imageUrl: editingItem.imageUrl || "",
       });
-      const data = await res.json();
-      if (!res.ok) { setError(data.message); return; }
       await fetchMenu(restaurant.id);
       setEditingItem(null);
       showMsg("Menu item updated");
-    } catch {
-      setError("Failed to update menu item");
+    } catch (e) {
+      setError(e.message || "Failed to update menu item");
     } finally {
       setSavingMenu(false);
     }
@@ -312,14 +268,11 @@ const Dashboard = () => {
     if (!window.confirm("Delete this item?")) return;
     try {
       setDeletingId(itemId);
-      const res = await fetch(`${import.meta.env.VITE_API_URL}/menu-items/${itemId}`, {
-        method: "DELETE", headers: authHeaders,
-      });
-      if (!res.ok) { const d = await res.json(); setError(d.message); return; }
+      await api.del(`/menu-items/${itemId}`);
       await fetchMenu(restaurant.id);
       showMsg("Menu item deleted");
-    } catch {
-      setError("Failed to delete");
+    } catch (e) {
+      setError(e.message || "Failed to delete");
     } finally {
       setDeletingId(null);
     }

@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
+import { api, ApiError } from "../lib/api";
 
 const AdminSignup = () => {
   const navigate = useNavigate();
@@ -48,27 +49,21 @@ const AdminSignup = () => {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 15000);
 
-      const res = await fetch(`${import.meta.env.VITE_API_URL}/admin/register`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, email, password, inviteCode }),
-        signal: controller.signal,
-      });
+      const data = await api.post(
+        "/admin/register",
+        { name, email, password, inviteCode },
+        { auth: false, signal: controller.signal }
+      );
 
       clearTimeout(timeoutId);
-
-      const data = await res.json();
-
-      if (!res.ok) {
-        setError(data.message || "Registration failed.");
-        return;
-      }
 
       login(data.token, data.user);
       navigate("/admin");
     } catch (err) {
       if (err.name === "AbortError") {
         setError("Server is taking too long to respond. Please try again.");
+      } else if (err instanceof ApiError) {
+        setError(err.message || "Registration failed.");
       } else {
         setError("Something went wrong. Please try again.");
       }

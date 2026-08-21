@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
+import { api, ApiError } from "../lib/api";
 import auth from "../assets/auth-bg.jpg";
 
 const Signup = () => {
@@ -21,7 +22,7 @@ const Signup = () => {
 
   // Wake up the Render server on page load (cold start workaround)
   useEffect(() => {
-    fetch(`${import.meta.env.VITE_API_URL}/`).catch(() => {});
+    api.get("/", { auth: false }).catch(() => {});
   }, []);
 
   const handleChange = (e) => {
@@ -57,29 +58,19 @@ const Signup = () => {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 15000);
 
-      const response = await fetch(`${import.meta.env.VITE_API_URL}/users`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
+      const data = await api.post(
+        "/users",
+        {
           name: formData.name,
           email: formData.email,
           password: formData.password,
           role: formData.role,
           ...(formData.phone && { phone: formData.phone }),
-        }),
-        signal: controller.signal,
-      });
+        },
+        { auth: false, signal: controller.signal }
+      );
 
       clearTimeout(timeoutId);
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        setError(data.message || "Signup failed");
-        return;
-      }
 
       login(data.token, data.user);
 
@@ -94,6 +85,8 @@ const Signup = () => {
       console.error(error);
       if (error.name === "AbortError") {
         setError("Server is taking too long to respond. Please try again.");
+      } else if (error instanceof ApiError) {
+        setError(error.message || "Signup failed");
       } else {
         setError("Something went wrong. Please try again.");
       }

@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import OrderCard from "../components/OrderCard";
+import { api } from "../lib/api";
 
 // Order statuses considered "past" (terminal). Everything else is a live order.
 const PAST_STATUSES = ["DELIVERED", "CANCELLED"];
@@ -42,27 +43,11 @@ const Profile = () => {
     // Fetch the user's profile from the backend
     const fetchProfile = async () => {
       try {
-        const response = await fetch(
-          `${import.meta.env.VITE_API_URL}/users/profile`,
-          {
-            // This is a GET request — no body needed
-            // The token proves who we are
-            headers: {
-              Authorization: `Bearer ${token}`,
-            },
-          },
-        );
-
-        const data = await response.json();
-
-        if (!response.ok) {
-          setError(data.message || "Failed to load profile");
-          return;
-        }
+        const data = await api.get("/users/profile");
 
         setUser(data.user);
-      } catch {
-        setError("Something went wrong. Please try again.");
+      } catch (e) {
+        setError(e.message);
       } finally {
         setLoading(false); // always stop loading, whether success or failure
       }
@@ -77,11 +62,8 @@ const Profile = () => {
 
     const fetchOrders = async () => {
       try {
-        const res = await fetch(`${import.meta.env.VITE_API_URL}/orders`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        const data = await res.json();
-        if (res.ok) setOrders(data.orders || []);
+        const data = await api.get("/orders");
+        setOrders(data.orders || []);
       } catch {
         // non-fatal — the orders tabs just show their empty state
       } finally {
@@ -113,36 +95,19 @@ const Profile = () => {
     const fullName = `${formData.firstName} ${formData.lastName}`.trim();
 
     try {
-      const response = await fetch(
-        `${import.meta.env.VITE_API_URL}/users/profile`,
-        {
-          method: "PUT",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify({
-            name: fullName,
-            email: formData.email,
-            phone: formData.phone || null,
-          }),
-        }
-      );
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        setSaveMessage(data.message || "Failed to save changes");
-        return;
-      }
+      const data = await api.put("/users/profile", {
+        name: fullName,
+        email: formData.email,
+        phone: formData.phone || null,
+      });
 
       // Update the displayed user data in context + localStorage
       updateUser(data.user);
       setUser(data.user);
       setIsEditing(false);
       setSaveMessage("Profile updated!");
-    } catch {
-      setSaveMessage("Something went wrong. Please try again.");
+    } catch (e) {
+      setSaveMessage(e.message);
     } finally {
       setSaving(false);
     }

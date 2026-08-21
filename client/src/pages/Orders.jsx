@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import AppLayout from "../components/AppLayout";
 import OrderCard, { STATUS } from "../components/OrderCard";
+import { api } from "../lib/api";
 
 const Orders = () => {
   const navigate = useNavigate();
@@ -15,15 +16,10 @@ const Orders = () => {
   useEffect(() => {
     const fetchOrders = async () => {
       try {
-        const token = localStorage.getItem("token");
-        const res = await fetch(`${import.meta.env.VITE_API_URL}/orders`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        const data = await res.json();
-        if (!res.ok) { setError(data.message || "Failed to load orders"); return; }
+        const data = await api.get("/orders");
         setOrders(data.orders);
-      } catch {
-        setError("Something went wrong. Please try again.");
+      } catch (e) {
+        setError(e.message);
       } finally {
         setLoading(false);
       }
@@ -39,17 +35,17 @@ const Orders = () => {
       Notification.requestPermission();
     }
 
-    const token = localStorage.getItem("token");
     let failSince = null;
     let es = null;
 
     async function connect() {
-      const ticketRes = await fetch(`${import.meta.env.VITE_API_URL}/sseTicket`, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (!ticketRes.ok) return;
-      const { ticket } = await ticketRes.json();
+      let ticket;
+      try {
+        const data = await api.post("/sseTicket");
+        ticket = data.ticket;
+      } catch {
+        return;
+      }
 
       es = new EventSource(
         `${import.meta.env.VITE_API_URL}/events?ticket=${encodeURIComponent(ticket)}`
@@ -57,11 +53,7 @@ const Orders = () => {
 
       es.onmessage = async () => {
         try {
-          const res = await fetch(`${import.meta.env.VITE_API_URL}/orders`, {
-            headers: { Authorization: `Bearer ${token}` },
-          });
-          const data = await res.json();
-          if (!res.ok) return;
+          const data = await api.get("/orders");
           const freshOrders = data.orders || [];
           setOrders((prev) => {
             const changed = freshOrders.filter((fresh) => {

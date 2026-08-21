@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { useCart } from "../context/CartContext";
 import AppLayout from "../components/AppLayout";
+import { api } from "../lib/api";
 
 const Cart = () => {
   const navigate = useNavigate();
@@ -40,27 +41,17 @@ const Cart = () => {
     try {
       setPlacing(true);
       setError("");
-      const token = localStorage.getItem("token");
 
       // Step 1: Create the order on the backend
-      const res = await fetch(`${import.meta.env.VITE_API_URL}/orders/checkout`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          restaurantId,
-          deliveryAddress: deliveryAddress.trim(),
-          idempotencyKey: idempotencyKeyRef.current,
-          items: restaurantItems.map((item) => ({
-            menuItemId: item.menuItemId,
-            quantity: item.quantity,
-          })),
-        }),
+      const data = await api.post("/orders/checkout", {
+        restaurantId,
+        deliveryAddress: deliveryAddress.trim(),
+        idempotencyKey: idempotencyKeyRef.current,
+        items: restaurantItems.map((item) => ({
+          menuItemId: item.menuItemId,
+          quantity: item.quantity,
+        })),
       });
-      const data = await res.json();
-      if (!res.ok) { setError(data.message || "Failed to place order"); setPlacing(false); return; }
 
       const { order, payment } = data;
 
@@ -90,17 +81,7 @@ const Cart = () => {
         onSuccess: async () => {
           // Step 4: Verify payment on the backend
           try {
-            const verifyRes = await fetch(`${import.meta.env.VITE_API_URL}/payments/verify`, {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-                Authorization: `Bearer ${token}`,
-              },
-              body: JSON.stringify({ reference: payment.reference }),
-            });
-            if (!verifyRes.ok) {
-              throw new Error("Payment verification failed");
-            }
+            await api.post("/payments/verify", { reference: payment.reference });
             navigate(`/orders/${order.id}`);
           } catch {
             // Surface the failure instead of silently swallowing it
@@ -115,8 +96,8 @@ const Cart = () => {
         },
       });
       handler.openIframe();
-    } catch {
-      setError("Something went wrong. Please try again.");
+    } catch (e) {
+      setError(e?.message || "Something went wrong. Please try again.");
       setPlacing(false);
     }
   };
