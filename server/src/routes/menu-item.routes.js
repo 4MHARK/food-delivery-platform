@@ -6,6 +6,24 @@ import { validate } from "../middleware/validate.js";
 import { menuItemSchema } from "../validation/schemas.js";
 
 const router = express.Router();
+
+// Fetch all distinct menu-item categories (powers the browse filter pills)
+router.get("/categories", async (req, res, next) => {
+  try {
+    const categories = await prisma.menuItem.findMany({
+      distinct: ["category"],
+      select: { category: true },
+      orderBy: { category: "asc" },
+    });
+    res.status(200).json({
+      message: "Categories fetched successfully",
+      categories: categories.map((c) => c.category),
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
 router.post("/restaurants/:id/menu-items", authMiddleware, ownerMiddleware, validate(menuItemSchema), async (req, res, next) => {
   try {
     const { name, description, imageUrl, price, category } = req.body;

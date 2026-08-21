@@ -58,6 +58,7 @@ model User {
   rider       Rider?
   restaurantReviews RestaurantReview[]
   riderReviews      RiderReview[]
+  favorites         CustomerFavorite[]
   resetTokenHash      String?
   resetTokenExpiresAt DateTime?
   createdAt   DateTime @default(now())
@@ -92,10 +93,22 @@ model Restaurant {
   menuItems MenuItem[]
   orders    Order[]
   reviews   RestaurantReview[]
+  favoritedBy CustomerFavorite[]
   ownerId   Int
   owner     User     @relation(fields: [ownerId], references: [id])
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+model CustomerFavorite {
+  id           Int        @id @default(autoincrement())
+  userId       Int
+  restaurantId Int
+  user         User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  restaurant   Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  createdAt    DateTime   @default(now())
+
+  @@unique([userId, restaurantId])
 }
 
 model MenuItem {

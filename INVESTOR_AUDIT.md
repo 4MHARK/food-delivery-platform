@@ -25,12 +25,12 @@ order payments, 2 separate files
 | F05 | FRONTEND | P1 | Hardcoded fake "20-30 min" delivery time on all restaurants | 10 min |(Done)
 | F06 | FRONTEND | P1 | Dead "Forgot Password?" link on Login page | 5 min |(Done)
 | F07 | FRONTEND | P1 | Dead Google/Apple social login buttons (Login + Signup) | 5 min |(Later)
-| F08 | FRONTEND | P2 | Array index used as React `key` in 4 `.map()` calls | 10 min |
-| F09 | FRONTEND | P2 | `console.log(error)` left in Login and Signup | 2 min |
-| F10 | FRONTEND | P2 | Unused `import React` in 3 files (React 19 JSX transform) | 2 min |
-| F11 | FRONTEND | P2 | `App.css` — 100% unused Vite boilerplate (never imported) | 2 min |
-| F12 | FRONTEND | P2 | `hero.png` — unused asset, never referenced | 2 min |
-| F13 | FRONTEND | P2 | Hardcoded filter categories not derived from DB data | 30 min |
+| F08 | FRONTEND | P2 | Array index used as React `key` in 4 `.map()` calls | 10 min |(Done)
+| F09 | FRONTEND | P2 | `console.log(error)` left in Login and Signup | 2 min |(Done)
+| F10 | FRONTEND | P2 | Unused `import React` in 3 files (React 19 JSX transform) | 2 min |(Done)
+| F11 | FRONTEND | P2 | `App.css` — 100% unused Vite boilerplate (never imported) | 2 min |(Done)
+| F12 | FRONTEND | P2 | `hero.png` — unused asset, never referenced | 2 min |(Done)
+| F13 | FRONTEND | P2 | Hardcoded filter categories not derived from DB data | 30 min |(Done)
 | F14 | FRONTEND | P3 | Favorites page is a dead stub (static empty state) | 1 hr |
 | F15 | FRONTEND | P3 | Profile page: 3 of 4 tabs are "coming soon" placeholders | 2+ hr |
 | F16 | FRONTEND | P3 | Admin dashboard: 4 of 6 sections are "coming soon" | 2+ hr |

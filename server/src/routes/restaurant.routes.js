@@ -30,7 +30,10 @@ async function attachRatings(restaurants) {
 //Fetch all restaurants
 router.get("/restaurants", async (req, res, next) => {
   try {
+    const { category } = req.query;
+    const where = category ? { menuItems: { some: { category } } } : {};
     const restaurants = await prisma.restaurant.findMany({
+      where,
       include: {
         owner: {
           select: { id: true, name: true, email: true },
