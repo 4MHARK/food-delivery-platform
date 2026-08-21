@@ -174,16 +174,20 @@ const RestaurantList = () => {
                     <span className="material-symbols-outlined text-6xl text-amber-300">restaurant</span>
                   </div>
                 )}
-                <div className="absolute top-3 right-3 bg-white/90 backdrop-blur-sm text-slate-900 text-xs font-bold px-3 py-1.5 rounded-full shadow-sm">20–30 min</div>
+                <div className="absolute top-3 right-3 bg-white/90 backdrop-blur-sm text-slate-900 text-xs font-bold px-3 py-1.5 rounded-full shadow-sm">Delivery fee from ₦400</div>
               </div>
 
               <div className="p-5 flex-1 flex flex-col justify-between">
                 <div>
-                  <div className="flex items-start justify-between mb-1">
+                  <div className="flex items-start justify-between gap-2 mb-1">
                     <h3 className="text-lg font-bold text-slate-900 group-hover:text-amber-600 transition-colors">{r.name}</h3>
-                    <span className="flex items-center gap-0.5 text-xs font-bold text-amber-500 bg-amber-50 px-2 py-1 rounded-lg ml-2 shrink-0">
-                      <span className="material-symbols-outlined text-sm">star</span>4.5
-                    </span>
+                    {r.reviewCount > 0 && (
+                      <span className="flex items-center gap-1 shrink-0 text-xs font-bold text-slate-700 bg-amber-50 px-2 py-1 rounded-full">
+                        <span className="material-symbols-outlined filled-icon text-amber-500 text-sm">star</span>
+                        {r.avgRating ?? "–"}
+                        <span className="text-slate-400 font-medium">({r.reviewCount})</span>
+                      </span>
+                    )}
                   </div>
                   <p className="text-sm text-slate-500 line-clamp-2 leading-relaxed">{r.description}</p>
                 </div>

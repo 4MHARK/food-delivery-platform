@@ -53,6 +53,80 @@ function estimateCustomerETA(deliveryStatus) {
   ];
 }
 
+function RateRider({ riderId, riderName }) {
+  const [rating, setRating] = useState(0);
+  const [hover, setHover] = useState(0);
+  const [comment, setComment] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [msg, setMsg] = useState(null);
+
+  const submit = async (e) => {
+    e.preventDefault();
+    if (!rating) { setMsg({ type: "error", text: "Please choose a star rating." }); return; }
+    setSubmitting(true);
+    setMsg(null);
+    try {
+      const token = localStorage.getItem("token");
+      const res = await fetch(`${import.meta.env.VITE_API_URL}/riders/${riderId}/reviews`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ rating, comment: comment.trim() || undefined }),
+      });
+      const data = await res.json();
+      if (!res.ok) { setMsg({ type: "error", text: data.message || "Could not submit review." }); return; }
+      setMsg({ type: "success", text: `Thanks for rating ${riderName}!` });
+      setRating(0);
+      setComment("");
+    } catch {
+      setMsg({ type: "error", text: "Something went wrong. Please try again." });
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <div className="bg-white rounded-2xl shadow-sm p-6 mb-6">
+      <h3 className="text-sm font-bold text-slate-900 mb-1">Rate your rider</h3>
+      <p className="text-xs text-slate-500 mb-4">How was your delivery with {riderName}?</p>
+      <form onSubmit={submit}>
+        <div className="flex items-center gap-2 mb-4">
+          {[1, 2, 3, 4, 5].map((n) => (
+            <button
+              key={n}
+              type="button"
+              onClick={() => setRating(n)}
+              onMouseEnter={() => setHover(n)}
+              onMouseLeave={() => setHover(0)}
+              aria-label={`${n} star${n > 1 ? "s" : ""}`}
+              className="transition active:scale-90"
+            >
+              <span className={`material-symbols-outlined text-2xl ${(hover || rating) >= n ? "text-amber-500 filled-icon" : "text-slate-300"}`}>star</span>
+            </button>
+          ))}
+        </div>
+        <textarea
+          value={comment}
+          onChange={(e) => setComment(e.target.value)}
+          placeholder="Tell us how it went (optional)"
+          rows={2}
+          maxLength={500}
+          className="w-full px-4 py-3 rounded-xl border-2 border-slate-200 focus:border-amber-500 focus:ring-1 focus:ring-amber-500 outline-none transition text-sm resize-none mb-4"
+        />
+        {msg && (
+          <p className={`mb-4 text-sm font-medium ${msg.type === "error" ? "text-red-600" : "text-green-600"}`}>{msg.text}</p>
+        )}
+        <button
+          type="submit"
+          disabled={submitting}
+          className="bg-amber-500 hover:bg-amber-600 disabled:bg-amber-300 text-white text-sm font-bold px-6 py-2.5 rounded-full transition active:scale-95"
+        >
+          {submitting ? "Submitting..." : "Submit Rating"}
+        </button>
+      </form>
+    </div>
+  );
+}
+
 const OrderDetail = () => {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -477,6 +551,11 @@ const OrderDetail = () => {
           </div>
         )}
 
+        {/* Rate your rider */}
+        {order.delivery && order.status === "DELIVERED" && order.delivery.rider && (
+          <RateRider riderId={order.delivery.rider.id} riderName={order.delivery.rider.user?.name || "your rider"} />
+        )}
+
         {/* Restaurant Card */}
         <div className="bg-white rounded-2xl shadow-sm p-5 mb-4">
           <button
@@ -502,8 +581,8 @@ const OrderDetail = () => {
             </h3>
           </div>
           <div className="divide-y divide-slate-50">
-            {order.orderItems.map((item, idx) => (
-              <div key={idx} className="px-5 py-4 flex items-center justify-between">
+            {order.orderItems.map((item) => (
+              <div key={item.id} className="px-5 py-4 flex items-center justify-between">
                 <div className="flex items-center gap-3">
                   <div className="w-10 h-10 rounded-lg bg-slate-100 flex items-center justify-center shrink-0">
                     {item.menuItem?.imageUrl ? (

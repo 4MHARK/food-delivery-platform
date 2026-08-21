@@ -323,7 +323,7 @@ const RiderDashboard = () => {
         showMsg(data.message || "Failed to update availability.");
         return;
       }
-      setRider(data.rider);
+      setRider((prev) => ({ ...prev, ...data.rider }));
       showMsg(newVal ? "You are now available for deliveries 🟢" : "You are now unavailable ⚫");
     } catch {
       showMsg("Something went wrong. Please try again.");
@@ -587,6 +587,15 @@ const RiderDashboard = () => {
               {rider?.licensePlate ? ` • ${rider.licensePlate}` : ""}
               {rider?.matricNumber ? ` • ${rider.matricNumber}` : ""}
             </p>
+            {rider?.reviewCount > 0 ? (
+              <p className="flex items-center gap-1 text-xs text-slate-500 mt-1">
+                <span className="material-symbols-outlined filled-icon text-amber-500 text-sm">star</span>
+                <span className="font-semibold text-slate-700">{rider.avgRating}</span>
+                <span className="text-slate-400">({rider.reviewCount} {rider.reviewCount === 1 ? "review" : "reviews"})</span>
+              </p>
+            ) : (
+              <p className="text-xs text-slate-400 mt-1">No reviews yet</p>
+            )}
           </div>
           <div className="flex items-center gap-3">
             {/* Availability toggle */}

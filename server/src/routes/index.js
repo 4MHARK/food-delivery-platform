@@ -8,6 +8,7 @@ import riderRoutes from "./rider.routes.js"
 import deliveryRoutes from "./delivery.routes.js"
 import sseRoutes from "./sse.routes.js"
 import adminRoutes from "./admin.routes.js"
+import reviewRoutes from "./review.routes.js"
 const router = express.Router();
 router.get("/health", (req, res) =>{
     res.status(200).json({
@@ -23,4 +24,5 @@ router.use(riderRoutes);
 router.use(deliveryRoutes);
 router.use(sseRoutes);
 router.use(adminRoutes);
+router.use(reviewRoutes);
 export default router;

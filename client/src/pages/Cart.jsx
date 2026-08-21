@@ -63,6 +63,15 @@ const Cart = () => {
       if (!res.ok) { setError(data.message || "Failed to place order"); setPlacing(false); return; }
 
       const { order, payment } = data;
+
+      // Guard: the Paystack script may have failed to load (ad blocker, CDN down).
+      // Check before committing cart state so the user can retry cleanly.
+      if (typeof window.PaystackPop === "undefined") {
+        setError("Payment system is unavailable. Please try again.");
+        setPlacing(false);
+        return;
+      }
+
       setPlacing(false);
 
       // Order created — reset the key so the next order gets a fresh one
@@ -80,15 +89,23 @@ const Cart = () => {
         ref: payment.reference,
         onSuccess: async () => {
           // Step 4: Verify payment on the backend
-          await fetch(`${import.meta.env.VITE_API_URL}/payments/verify`, {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              Authorization: `Bearer ${token}`,
-            },
-            body: JSON.stringify({ reference: payment.reference }),
-          });
-          navigate(`/orders/${order.id}`);
+          try {
+            const verifyRes = await fetch(`${import.meta.env.VITE_API_URL}/payments/verify`, {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${token}`,
+              },
+              body: JSON.stringify({ reference: payment.reference }),
+            });
+            if (!verifyRes.ok) {
+              throw new Error("Payment verification failed");
+            }
+            navigate(`/orders/${order.id}`);
+          } catch {
+            // Surface the failure instead of silently swallowing it
+            setError("Payment received, but we couldn't confirm it with our servers. Please check your Orders page or contact support.");
+          }
         },
         onCancel: () => {
           navigate(`/orders/${order.id}`);
@@ -112,6 +129,10 @@ const Cart = () => {
           {itemCount} {itemCount === 1 ? "item" : "items"}
         </p>
 
+        {error && (
+          <p className="mb-4 rounded-xl bg-red-50 px-4 py-3 text-sm text-red-600 font-medium">{error}</p>
+        )}
+
         {/* Empty cart */}
         {items.length === 0 && (
           <div className="text-center py-16">
@@ -132,10 +153,6 @@ const Cart = () => {
         {/* Cart items grouped by restaurant */}
         {items.length > 0 && (
           <div className="space-y-8">
-            {error && (
-              <p className="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-600 font-medium">{error}</p>
-            )}
-
             {/* Delivery address */}
             <div>
               <label htmlFor="address" className="block text-sm font-semibold text-slate-700 mb-2">Delivery Address</label>
@@ -150,7 +167,7 @@ const Cart = () => {
               const groupTotal = group.items.reduce((sum, i) => sum + i.price * i.quantity, 0);
               const estDelivery = 400;
               const estService = 200;
-              const estTax = Math.round(groupTotal * 0.015);
+              const estTax = Math.round(groupTotal * 0.075);
               const estTotal = groupTotal + estDelivery + estService + estTax;
               return (
                 <div key={group.restaurantId} className="bg-white rounded-2xl shadow-sm overflow-hidden">

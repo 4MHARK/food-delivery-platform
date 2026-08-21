@@ -88,6 +88,7 @@ router.get("/riders/me", authMiddleware, riderMiddleware, async (req, res, next)
         user: {
           select: { id: true, name: true, email: true },
         },
+        _count: { select: { reviews: true } },
       },
     });
 
@@ -97,9 +98,18 @@ router.get("/riders/me", authMiddleware, riderMiddleware, async (req, res, next)
       });
     }
 
+    const agg = await prisma.riderReview.aggregate({
+      where: { riderId: rider.id },
+      _avg: { rating: true },
+    });
+
     res.status(200).json({
       message: "Rider profile fetched successfully",
-      rider,
+      rider: {
+        ...rider,
+        reviewCount: rider._count.reviews,
+        avgRating: agg._avg.rating != null ? Math.round(agg._avg.rating * 10) / 10 : null,
+      },
     });
   } catch (error) {
    next(error)

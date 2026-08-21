@@ -209,8 +209,8 @@ const Orders = () => {
               </div>
 
               <div className="border-t border-slate-50 px-5 py-3 space-y-1.5">
-                {order.orderItems?.map((item, idx) => (
-                  <div key={idx} className="flex items-center justify-between text-sm">
+                {order.orderItems?.map((item) => (
+                  <div key={item.id} className="flex items-center justify-between text-sm">
                     <span className="text-slate-600">
                       {item.quantity}× {item.menuItem?.name || `Item #${item.menuItemId}`}
                     </span>

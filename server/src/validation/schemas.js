@@ -118,6 +118,24 @@ export const deliveryStatusSchema = z.object({
   reason: z.string().trim().max(500, "Reason must be 500 characters or less").optional(),
 });
 
+// ── Password reset ──
+
+export const forgotPasswordSchema = z.object({
+  email: z.string().trim().email("A valid email is required"),
+});
+
+export const resetPasswordSchema = z.object({
+  token: z.string().min(1, "Reset token is required"),
+  password: z.string().min(8, "Password must be at least 8 characters").max(72, "Password must be 72 characters or less"),
+});
+
+// ── Reviews ──
+
+export const reviewSchema = z.object({
+  rating: z.coerce.number().int("Rating must be a whole number").min(1, "Rating must be at least 1").max(5, "Rating must be at most 5"),
+  comment: z.string().trim().max(500, "Comment must be 500 characters or less").optional(),
+});
+
 // ── Admin ──
 
 export const adminRegisterSchema = z.object({

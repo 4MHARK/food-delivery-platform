@@ -6,6 +6,27 @@ import { validate } from "../middleware/validate.js";
 import { restaurantSchema } from "../validation/schemas.js";
 
 const router = express.Router();
+
+// Attach avgRating / reviewCount to restaurant records (single groupBy — no N+1)
+async function attachRatings(restaurants) {
+  const ids = restaurants.map((r) => r.id);
+  const agg = await prisma.restaurantReview.groupBy({
+    by: ["restaurantId"],
+    where: { restaurantId: { in: ids } },
+    _avg: { rating: true },
+    _count: { _all: true },
+  });
+  const map = new Map(agg.map((a) => [a.restaurantId, a]));
+  return restaurants.map((r) => {
+    const a = map.get(r.id);
+    return {
+      ...r,
+      avgRating: a?._avg.rating != null ? Math.round(a._avg.rating * 10) / 10 : null,
+      reviewCount: a ? a._count._all : 0,
+    };
+  });
+}
+
 //Fetch all restaurants
 router.get("/restaurants", async (req, res, next) => {
   try {
@@ -18,7 +39,7 @@ router.get("/restaurants", async (req, res, next) => {
     });
     res.status(200).json({
       message: "Restaurants fetched successfully",
-      restaurants,
+      restaurants: await attachRatings(restaurants),
     });
   } catch (error) {
   next(error)
@@ -45,7 +66,7 @@ router.get("/restaurants/:id", async (req, res, next) => {
 
     res.status(200).json({
       message: "Restaurants fetched successfully",
-      restaurant,
+      restaurant: (await attachRatings([restaurant]))[0],
     });
   } catch (error) {
  next(error)
