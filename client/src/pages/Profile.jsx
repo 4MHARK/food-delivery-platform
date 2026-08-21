@@ -1,6 +1,10 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
+import OrderCard from "../components/OrderCard";
+
+// Order statuses considered "past" (terminal). Everything else is a live order.
+const PAST_STATUSES = ["DELIVERED", "CANCELLED"];
 
 const Profile = () => {
   const navigate = useNavigate();
@@ -14,6 +18,10 @@ const Profile = () => {
   const [isEditing, setIsEditing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saveMessage, setSaveMessage] = useState("");
+
+  // Orders data — shared by the "Live orders" and "Order history" tabs
+  const [orders, setOrders] = useState([]);
+  const [ordersLoading, setOrdersLoading] = useState(true);
 
   // Edit form state
   const [formData, setFormData] = useState({
@@ -62,6 +70,27 @@ const Profile = () => {
 
     fetchProfile();
   }, []); // ← empty array = "run once when the component mounts"
+
+  // Fetch the user's orders — used by "Live orders" and "Order history" tabs
+  useEffect(() => {
+    if (!token) return;
+
+    const fetchOrders = async () => {
+      try {
+        const res = await fetch(`${import.meta.env.VITE_API_URL}/orders`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const data = await res.json();
+        if (res.ok) setOrders(data.orders || []);
+      } catch {
+        // non-fatal — the orders tabs just show their empty state
+      } finally {
+        setOrdersLoading(false);
+      }
+    };
+
+    fetchOrders();
+  }, [token]);
 
   // Populate form fields when user data loads
   useEffect(() => {
@@ -125,6 +154,50 @@ const Profile = () => {
     navigate("/login");
   };
 
+  // Split orders into live (in flight) vs past (terminal)
+  const liveOrders = orders.filter((o) => !PAST_STATUSES.includes(o.status));
+  const pastOrders = orders.filter((o) => PAST_STATUSES.includes(o.status));
+
+  // Shared renderer for the two orders tabs (loading / empty / list)
+  const renderOrdersTab = (list, emptyTitle, emptyText) => {
+    if (ordersLoading) {
+      return (
+        <div className="space-y-4">
+          {[1, 2, 3].map((i) => (
+            <div key={i} className="bg-white rounded-2xl shadow-sm p-5 space-y-3 animate-pulse">
+              <div className="flex justify-between">
+                <div className="w-32 h-5 bg-slate-200 rounded" />
+                <div className="w-20 h-5 bg-slate-200 rounded-full" />
+              </div>
+              <div className="w-full h-4 bg-slate-200 rounded" />
+              <div className="w-1/2 h-4 bg-slate-200 rounded" />
+            </div>
+          ))}
+        </div>
+      );
+    }
+
+    if (list.length === 0) {
+      return (
+        <div className="text-center py-16">
+          <div className="w-24 h-24 rounded-full bg-slate-100 flex items-center justify-center mx-auto mb-6">
+            <span className="material-symbols-outlined text-4xl text-slate-300">receipt_long</span>
+          </div>
+          <h3 className="text-lg font-bold text-slate-900 mb-2">{emptyTitle}</h3>
+          <p className="text-slate-500">{emptyText}</p>
+        </div>
+      );
+    }
+
+    return (
+      <div className="space-y-4">
+        {list.map((order) => (
+          <OrderCard key={order.id} order={order} />
+        ))}
+      </div>
+    );
+  };
+
   // --- RENDER ---
 
   // State 1: Loading
@@ -168,21 +241,36 @@ const Profile = () => {
           </p>
           {[
             { label: "Personal info", tab: "profile", icon: "person" },
-            { label: "Order history", tab: "order", icon: "receipt_long" },
-            {label: "payment method", tab: "payment", icon: "money"},
-            { label: "Favorites", tab: "favorites", icon: "favorite" },
+            { label: "Live orders", tab: "liveOrders", icon: "receipt_long" },
+            { label: "Order history", tab: "orderHistory", icon: "history" },
+            { label: "Payment method", tab: "payment", icon: "money", disabled: true },
+            { label: "Favorites", tab: "favorites", icon: "favorite", href: "/favorites" },
           ].map((item) => (
             <button
               key={item.tab}
-              onClick={() => setActiveTab(item.tab)}
+              disabled={item.disabled}
+              onClick={() => {
+                if (item.href) { navigate(item.href); return; }
+                setActiveTab(item.tab);
+              }}
               className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl font-semibold text-sm transition-colors ${
-                activeTab === item.tab
-                  ? "bg-amber-500/10 text-amber-500"
-                  : "text-slate-400 hover:text-white hover:bg-slate-800"
+                item.disabled
+                  ? "text-slate-600 opacity-50 cursor-not-allowed"
+                  : activeTab === item.tab
+                    ? "bg-amber-500/10 text-amber-500"
+                    : "text-slate-400 hover:text-white hover:bg-slate-800"
               }`}
             >
               <span className="material-symbols-outlined text-xl">{item.icon}</span>
               {item.label}
+              {item.disabled && (
+                <span
+                  title="Coming soon"
+                  className="ml-auto text-[9px] font-bold uppercase tracking-wide bg-slate-800 text-slate-400 px-2 py-0.5 rounded-full whitespace-nowrap"
+                >
+                  Soon
+                </span>
+              )}
             </button>
           ))}
         </nav>
@@ -384,34 +472,18 @@ const Profile = () => {
             </>
           )}
 
-          {activeTab === "order" && (
-            <div className="text-center py-20">
-              <span className="material-symbols-outlined text-6xl text-slate-300 mb-4 block">
-                receipt_long
-              </span>
-              <h2 className="text-2xl font-bold text-slate-900 mb-2">Order History</h2>
-              <p className="text-slate-500">Your order history will appear here.</p>
-            </div>
+          {activeTab === "liveOrders" && (
+            <section>
+              <h2 className="text-2xl font-bold text-slate-900 mb-6">Live orders</h2>
+              {renderOrdersTab(liveOrders, "No live orders", "You have no orders in progress right now.")}
+            </section>
           )}
 
-          {activeTab === "payment" && (
-            <div className="text-center py-20">
-              <span className="material-symbols-outlined text-6xl text-slate-300 mb-4 block">
-                payments
-              </span>
-              <h2 className="text-2xl font-bold text-slate-900 mb-2">Payment Methods</h2>
-              <p className="text-slate-500">Your saved payment methods will appear here.</p>
-            </div>
-          )}
-
-          {activeTab === "favorites" && (
-            <div className="text-center py-20">
-              <span className="material-symbols-outlined text-6xl text-slate-300 mb-4 block">
-                favorite
-              </span>
-              <h2 className="text-2xl font-bold text-slate-900 mb-2">Favorites</h2>
-              <p className="text-slate-500">Your favorite restaurants and dishes will appear here.</p>
-            </div>
+          {activeTab === "orderHistory" && (
+            <section>
+              <h2 className="text-2xl font-bold text-slate-900 mb-6">Order history</h2>
+              {renderOrdersTab(pastOrders, "No past orders", "Your completed orders will appear here.")}
+            </section>
           )}
         </div>
       </div>
