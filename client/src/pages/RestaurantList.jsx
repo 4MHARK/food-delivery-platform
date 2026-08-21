@@ -1,22 +1,48 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import AppLayout from "../components/AppLayout";
-
-const FILTERS = ["All", "Pizza", "Burger", "Nigerian", "Drinks"];
+import { useAuth } from "../context/AuthContext";
+import { useFavorites } from "../hooks/useFavorites";
 
 const RestaurantList = () => {
   const navigate = useNavigate();
+  const { isAuthenticated } = useAuth();
+  const { isFavorited, toggle } = useFavorites();
+
+  const handleFavoriteToggle = async (restaurantId) => {
+    if (!isAuthenticated) { navigate("/login"); return; }
+    await toggle(restaurantId);
+  };
 
   const [restaurants, setRestaurants] = useState([]);
+  const [categories, setCategories] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [search, setSearch] = useState("");
   const [activeFilter, setActiveFilter] = useState("All");
 
   useEffect(() => {
-    const fetchRestaurants = async () => {
+    const fetchCategories = async () => {
       try {
-        const res = await fetch(`${import.meta.env.VITE_API_URL}/restaurants`);
+        const res = await fetch(`${import.meta.env.VITE_API_URL}/categories`);
+        const data = await res.json();
+        if (res.ok) setCategories(data.categories || []);
+      } catch {
+        // non-fatal — pills simply fall back to "All" only
+      }
+    };
+    fetchCategories();
+  }, []);
+
+  useEffect(() => {
+    const fetchRestaurants = async () => {
+      setLoading(true);
+      setError("");
+      try {
+        const url = `${import.meta.env.VITE_API_URL}/restaurants${
+          activeFilter === "All" ? "" : `?category=${encodeURIComponent(activeFilter)}`
+        }`;
+        const res = await fetch(url);
         const data = await res.json();
         if (!res.ok) { setError(data.message || "Failed to load restaurants"); return; }
         setRestaurants(data.restaurants);
@@ -27,16 +53,11 @@ const RestaurantList = () => {
       }
     };
     fetchRestaurants();
-  }, []);
+  }, [activeFilter]);
 
-  const filtered = restaurants.filter((r) => {
-    const matchesSearch = r.name.toLowerCase().includes(search.toLowerCase());
-    const matchesFilter =
-      activeFilter === "All" ||
-      r.name.toLowerCase().includes(activeFilter.toLowerCase()) ||
-      r.description.toLowerCase().includes(activeFilter.toLowerCase());
-    return matchesSearch && matchesFilter;
-  });
+  const filtered = restaurants.filter((r) =>
+    r.name.toLowerCase().includes(search.toLowerCase())
+  );
 
   // ── Search + Filter bar (rendered as extraHeader) ──
   const SearchBar = (
@@ -50,7 +71,7 @@ const RestaurantList = () => {
         />
       </div>
       <div className="overflow-x-auto flex gap-2 no-scrollbar">
-        {FILTERS.map((f) => (
+        {["All", ...categories].map((f) => (
           <button
             key={f}
             onClick={() => setActiveFilter(f)}
@@ -174,6 +195,13 @@ const RestaurantList = () => {
                     <span className="material-symbols-outlined text-6xl text-amber-300">restaurant</span>
                   </div>
                 )}
+                <button
+                  onClick={(e) => { e.stopPropagation(); handleFavoriteToggle(r.id); }}
+                  aria-label="Toggle favorite"
+                  className="absolute top-3 left-3 z-10 w-9 h-9 rounded-full bg-white/90 backdrop-blur-sm flex items-center justify-center shadow-sm hover:bg-white transition active:scale-90"
+                >
+                  <span className={`material-symbols-outlined text-lg ${isFavorited(r.id) ? "filled-icon text-red-500" : "text-slate-600"}`}>favorite</span>
+                </button>
                 <div className="absolute top-3 right-3 bg-white/90 backdrop-blur-sm text-slate-900 text-xs font-bold px-3 py-1.5 rounded-full shadow-sm">Delivery fee from ₦400</div>
               </div>
 

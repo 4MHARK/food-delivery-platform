@@ -57,7 +57,7 @@ router.post("/admin/register", validate(adminRegisterSchema), async (req, res, n
 });
 
 // All other admin routes require auth + admin role
-router.use(authMiddleware, adminMiddleware);
+router.use("/admin", authMiddleware, adminMiddleware);
 
 // ── Riders: list all ──
 router.get("/admin/riders", async (req, res, next) => {

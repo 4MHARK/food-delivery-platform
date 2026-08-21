@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useCart } from "../context/CartContext";
 import { useAuth } from "../context/AuthContext";
+import { useFavorites } from "../hooks/useFavorites";
 import AppLayout from "../components/AppLayout";
 
 const RestaurantDetail = () => {
@@ -9,6 +10,12 @@ const RestaurantDetail = () => {
   const navigate = useNavigate();
   const { addItem, removeItem, itemCount: cartItemCount, items: cartItems } = useCart();
   const { isAuthenticated } = useAuth();
+  const { isFavorited, toggle } = useFavorites();
+
+  const handleFavoriteToggle = async () => {
+    if (!isAuthenticated) { navigate("/login"); return; }
+    await toggle(Number(id));
+  };
 
   const [restaurant, setRestaurant] = useState(null);
   const [menuItems, setMenuItems] = useState([]);
@@ -165,6 +172,13 @@ const RestaurantDetail = () => {
           <div className="w-full h-full bg-gradient-to-br from-amber-400 via-amber-500 to-orange-600" />
         )}
         <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/20 to-transparent" />
+        <button
+          onClick={handleFavoriteToggle}
+          aria-label={isFavorited(Number(id)) ? "Remove from favorites" : "Add to favorites"}
+          className="absolute top-4 right-4 z-20 w-10 h-10 rounded-full bg-white/90 backdrop-blur-sm flex items-center justify-center shadow-md hover:bg-white transition active:scale-90"
+        >
+          <span className={`material-symbols-outlined ${isFavorited(Number(id)) ? "filled-icon text-red-500" : "text-slate-600"}`}>favorite</span>
+        </button>
         <div className="absolute bottom-0 left-0 right-0 p-4 lg:p-8 max-w-5xl mx-auto">
           <h1 className="text-3xl md:text-4xl font-extrabold text-white mb-2 drop-shadow-lg">{restaurant.name}</h1>
           <div className="flex flex-wrap items-center gap-3">

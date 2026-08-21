@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
@@ -91,7 +91,7 @@ const Signup = () => {
         navigate("/restaurants");
       }
     } catch (error) {
-      console.log(error);
+      console.error(error);
       if (error.name === "AbortError") {
         setError("Server is taking too long to respond. Please try again.");
       } else {
