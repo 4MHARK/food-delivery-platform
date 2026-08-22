@@ -107,3 +107,16 @@ npm run dev          # → http://localhost:5000
 # Start frontend (from client/)
 npm run dev          # → http://localhost:5173
 ```
+
+## Environment Variables
+
+Copy the example files to create your own local config (never commit real `.env` files):
+
+```bash
+cp server/.env.example server/.env   # then fill in real values
+cp client/.env.example client/.env   # then fill in real values
+```
+
+- `server/.env` — `PORT`, `DATABASE_URL` + `DIRECT_URL` (Supabase Postgres), `JWT_SECRET`, `PAYSTACK_SECRET_KEY`, `ADMIN_INVITE_CODE`, `RESEND_API_KEY`, `RESEND_FROM`, `CLIENT_URL`.
+- `client/.env` — `VITE_API_URL` (backend base URL), `VITE_PAYSTACK_PUBLIC_KEY` (Paystack public key).
+- `VITE_`-prefixed variables are bundled into the client and are public by design. Secrets belong in `server/.env` only.
