@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import AppLayout from "../components/AppLayout";
+import { api } from "../lib/api";
 
 const Favorites = () => {
   const navigate = useNavigate();
@@ -11,15 +12,10 @@ const Favorites = () => {
   useEffect(() => {
     const fetchFavorites = async () => {
       try {
-        const token = localStorage.getItem("token");
-        const res = await fetch(`${import.meta.env.VITE_API_URL}/favorites`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        const data = await res.json();
-        if (!res.ok) { setError(data.message || "Failed to load favorites"); return; }
+        const data = await api.get("/favorites");
         setFavorites(data.favorites);
-      } catch {
-        setError("Something went wrong. Please try again.");
+      } catch (e) {
+        setError(e.message);
       } finally {
         setLoading(false);
       }
@@ -30,19 +26,15 @@ const Favorites = () => {
   const removeFavorite = async (restaurantId) => {
     setFavorites((prev) => prev.filter((r) => r.id !== restaurantId)); // optimistic
     try {
-      const token = localStorage.getItem("token");
-      await fetch(`${import.meta.env.VITE_API_URL}/restaurants/${restaurantId}/favorite`, {
-        method: "DELETE",
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      await api.del(`/restaurants/${restaurantId}/favorite`);
     } catch {
       // best-effort resync on failure
-      const token = localStorage.getItem("token");
-      const res = await fetch(`${import.meta.env.VITE_API_URL}/favorites`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      const data = await res.json();
-      if (res.ok) setFavorites(data.favorites);
+      try {
+        const data = await api.get("/favorites");
+        setFavorites(data.favorites);
+      } catch {
+        // give up silently
+      }
     }
   };
 

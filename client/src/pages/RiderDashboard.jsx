@@ -2,6 +2,10 @@ import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import AppLayout, { RIDER_NAV } from "../components/AppLayout";
+import { api } from "../lib/api";
+import { formatCurrency } from "../lib/format";
+import { useSSE } from "../hooks/useSSE";
+import { useNotificationPermission, notify } from "../hooks/useNotifications";
 
 const ORDER_STATUS = {
   PENDING_PAYMENT:                   { label: "Pending Payment", color: "bg-amber-100 text-amber-700 border-amber-200", dot: "bg-amber-500" },
@@ -93,32 +97,22 @@ const RiderDashboard = () => {
   const prevAvailableRef = useRef(0);
   const [lastUpdated, setLastUpdated] = useState(null);
 
-  // SSE error tracking: stop after 30s of continuous failure
-  const sseFailSinceRef = useRef(null);
-
   const showMsg = (msg) => {
     setMessage(msg);
     clearTimeout(messageTimer.current);
     messageTimer.current = setTimeout(() => setMessage(""), 8000);
   };
 
-  const token = localStorage.getItem("token");
-
   // ── Fetch rider profile ──
   const fetchRider = async () => {
     try {
-      const res = await fetch(`${import.meta.env.VITE_API_URL}/riders/me`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (res.status === 404) {
+      const data = await api.get("/riders/me");
+      setRider(data.rider);
+    } catch (e) {
+      if (e?.status === 404) {
         setRider(null);
         return;
       }
-      const data = await res.json();
-      if (res.ok) {
-        setRider(data.rider);
-      }
-    } catch {
       setError("Failed to load rider profile.");
     }
   };
@@ -133,30 +127,21 @@ const RiderDashboard = () => {
       }
 
       const [ordersRes, deliveriesRes, statsRes] = await Promise.all([
-        fetch(`${import.meta.env.VITE_API_URL}/riders/available-orders`, {
-          headers: { Authorization: `Bearer ${token}` },
-        }),
-        fetch(`${import.meta.env.VITE_API_URL}/riders/my-deliveries`, {
-          headers: { Authorization: `Bearer ${token}` },
-        }),
-        fetch(`${import.meta.env.VITE_API_URL}/riders/stats`, {
-          headers: { Authorization: `Bearer ${token}` },
-        }),
+        api.get("/riders/available-orders").catch(() => null),
+        api.get("/riders/my-deliveries").catch(() => null),
+        api.get("/riders/stats").catch(() => null),
       ]);
 
       let availableOrders = [];
-      if (ordersRes.ok) {
-        const ordersData = await ordersRes.json();
-        availableOrders = ordersData.orders || [];
+      if (ordersRes) {
+        availableOrders = ordersRes.orders || [];
         setAvailableOrders(availableOrders);
       }
-      if (deliveriesRes.ok) {
-        const deliveriesData = await deliveriesRes.json();
-        setMyDeliveries(deliveriesData.deliveries || []);
+      if (deliveriesRes) {
+        setMyDeliveries(deliveriesRes.deliveries || []);
       }
-      if (statsRes.ok) {
-        const statsData = await statsRes.json();
-        setStats(statsData.stats);
+      if (statsRes) {
+        setStats(statsRes.stats);
       }
 
       setLastUpdated(new Date());
@@ -197,23 +182,11 @@ const RiderDashboard = () => {
         body.matricNumber = riderForm.matricNumber;
       }
 
-      const res = await fetch(`${import.meta.env.VITE_API_URL}/riders/register`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify(body),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        showMsg(data.message || "Registration failed.");
-        return;
-      }
+      const data = await api.post("/riders/register", body);
       setRider(data.rider);
       showMsg("Rider profile created! 🎉");
-    } catch {
-      showMsg("Something went wrong. Please try again.");
+    } catch (e) {
+      showMsg(e.message || "Something went wrong. Please try again.");
     } finally {
       setRegistering(false);
     }
@@ -223,23 +196,12 @@ const RiderDashboard = () => {
   const handleAccept = async (orderId) => {
     try {
       setAcceptingOrderId(orderId);
-      const res = await fetch(`${import.meta.env.VITE_API_URL}/deliveries/${orderId}/accept`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        showMsg(data.message || "Failed to accept order.");
-        return;
-      }
+      await api.post(`/deliveries/${orderId}/accept`);
       showMsg(`Order #${orderId} accepted!`);
       // Refresh data
       await fetchData();
-    } catch {
-      showMsg("Something went wrong. Please try again.");
+    } catch (e) {
+      showMsg(e.message || "Something went wrong. Please try again.");
     } finally {
       setAcceptingOrderId(null);
     }
@@ -251,17 +213,11 @@ const RiderDashboard = () => {
     setAvailableOrders((prev) => prev.filter((o) => o.id !== orderId));
     try {
       setRejectingOrderId(orderId);
-      const res = await fetch(`${import.meta.env.VITE_API_URL}/riders/reject-order/${orderId}`, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (!res.ok) {
-        // Rollback — refetch to restore correct state
-        showMsg("Could not skip order. It may reappear on refresh.");
-        await fetchData();
-      }
+      await api.post(`/riders/reject-order/${orderId}`);
     } catch {
-      showMsg("Something went wrong. The order may reappear on refresh.");
+      // Rollback — refetch to restore correct state
+      showMsg("Could not skip order. It may reappear on refresh.");
+      await fetchData();
     } finally {
       setRejectingOrderId(null);
     }
@@ -272,24 +228,12 @@ const RiderDashboard = () => {
     try {
       setUpdatingDeliveryId(deliveryId);
       const body = { status: newStatus, ...extra };
-      const res = await fetch(`${import.meta.env.VITE_API_URL}/deliveries/${deliveryId}/status`, {
-        method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify(body),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        showMsg(data.message || "Failed to update status.");
-        return;
-      }
+      await api.put(`/deliveries/${deliveryId}/status`, body);
       const label = DELIVERY_STATUS[newStatus]?.label || newStatus;
       showMsg(`Delivery status updated to "${label}"`);
       await fetchData();
-    } catch {
-      showMsg("Something went wrong. Please try again.");
+    } catch (e) {
+      showMsg(e.message || "Something went wrong. Please try again.");
     } finally {
       setUpdatingDeliveryId(null);
     }
@@ -310,23 +254,11 @@ const RiderDashboard = () => {
     try {
       setTogglingAvailability(true);
       const newVal = !rider.isAvailable;
-      const res = await fetch(`${import.meta.env.VITE_API_URL}/riders/me`, {
-        method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({ isAvailable: newVal }),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        showMsg(data.message || "Failed to update availability.");
-        return;
-      }
+      const data = await api.put("/riders/me", { isAvailable: newVal });
       setRider((prev) => ({ ...prev, ...data.rider }));
       showMsg(newVal ? "You are now available for deliveries 🟢" : "You are now unavailable ⚫");
-    } catch {
-      showMsg("Something went wrong. Please try again.");
+    } catch (e) {
+      showMsg(e.message || "Something went wrong. Please try again.");
     } finally {
       setTogglingAvailability(false);
     }
@@ -350,65 +282,22 @@ const RiderDashboard = () => {
   }, [rider]);
 
   // ── SSE: real-time updates ──
-  useEffect(() => {
-    if (!rider) return;
+  useNotificationPermission(!!rider);
 
-    let es = null;
-
-    async function connect() {
-      const ticketRes = await fetch(`${import.meta.env.VITE_API_URL}/sseTicket`, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (!ticketRes.ok) return;
-      const { ticket } = await ticketRes.json();
-
-      es = new EventSource(
-        `${import.meta.env.VITE_API_URL}/events?ticket=${encodeURIComponent(ticket)}`
-      );
-
-      es.onmessage = async () => {
-        const result = await fetchData({ silent: true });
-        if (result) {
-          const currentAvailable = result.availableOrders.length;
-          if (currentAvailable > prevAvailableRef.current) {
-            const diff = currentAvailable - prevAvailableRef.current;
-            showMsg(`🔔 ${diff} new order${diff > 1 ? "s" : ""} available!`);
-            if (Notification.permission === "granted") {
-              new Notification("New Order Available!", {
-                body: `${diff} new order${diff > 1 ? "s" : ""} ready for pickup.`,
-              });
-            }
-          }
-          prevAvailableRef.current = currentAvailable;
-        }
-      };
-
-      es.onerror = () => {
-        if (!sseFailSinceRef.current) sseFailSinceRef.current = Date.now();
-        if (Date.now() - sseFailSinceRef.current > 30_000) {
-          es.close();
-        }
-      };
-
-      es.onopen = () => {
-        sseFailSinceRef.current = null; // reset — connection is back
-      };
+  useSSE(async () => {
+    const result = await fetchData({ silent: true });
+    if (result) {
+      const currentAvailable = result.availableOrders.length;
+      if (currentAvailable > prevAvailableRef.current) {
+        const diff = currentAvailable - prevAvailableRef.current;
+        showMsg(`🔔 ${diff} new order${diff > 1 ? "s" : ""} available!`);
+        notify("New Order Available!", {
+          body: `${diff} new order${diff > 1 ? "s" : ""} ready for pickup.`,
+        });
+      }
+      prevAvailableRef.current = currentAvailable;
     }
-
-    connect();
-
-    return () => {
-      if (es) es.close();
-    };
-  }, [rider, token]);
-
-  // ── Request notification permission ──
-  useEffect(() => {
-    if (rider && "Notification" in window && Notification.permission === "default") {
-      Notification.requestPermission();
-    }
-  }, [rider]);
+  }, { enabled: !!rider, deps: [rider] });
 
   // Derive sections
   const activeDelivery = myDeliveries.find((d) => ACTIVE_DELIVERY_STATUSES.includes(d.status)) || null;
@@ -644,7 +533,7 @@ const RiderDashboard = () => {
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
             <div className="bg-white rounded-2xl shadow-sm p-4">
               <p className="text-xs text-slate-400 font-semibold uppercase tracking-wider mb-1">Earnings</p>
-              <p className="text-xl font-extrabold text-slate-900">₦{stats.totalEarnings.toLocaleString()}</p>
+              <p className="text-xl font-extrabold text-slate-900">{formatCurrency(stats.totalEarnings)}</p>
             </div>
             <div className="bg-white rounded-2xl shadow-sm p-4">
               <p className="text-xs text-slate-400 font-semibold uppercase tracking-wider mb-1">Deliveries</p>
@@ -652,7 +541,7 @@ const RiderDashboard = () => {
             </div>
             <div className="bg-white rounded-2xl shadow-sm p-4">
               <p className="text-xs text-slate-400 font-semibold uppercase tracking-wider mb-1">This Week</p>
-              <p className="text-xl font-extrabold text-slate-900">₦{stats.thisWeekEarnings.toLocaleString()}</p>
+              <p className="text-xl font-extrabold text-slate-900">{formatCurrency(stats.thisWeekEarnings)}</p>
             </div>
             <div className="bg-white rounded-2xl shadow-sm p-4">
               <p className="text-xs text-slate-400 font-semibold uppercase tracking-wider mb-1">Week Trips</p>
@@ -730,7 +619,7 @@ const RiderDashboard = () => {
                           {order.orderItems?.map((item) => (
                             <p key={item.id}>
                               {item.quantity}x {item.menuItem?.name || "Item"}{" "}
-                              <span className="text-slate-400">@ ₦{Number(item.unitPrice).toLocaleString()}</span>
+                              <span className="text-slate-400">@ {formatCurrency(Number(item.unitPrice))}</span>
                             </p>
                           ))}
                         </div>
@@ -752,7 +641,7 @@ const RiderDashboard = () => {
 
                         <div className="flex items-center justify-between gap-2">
                           <span className="text-sm font-bold text-slate-900">
-                            ₦{Number(order.totalAmount).toLocaleString()}
+                            {formatCurrency(Number(order.totalAmount))}
                           </span>
                           <div className="flex items-center gap-2">
                             <button
@@ -855,7 +744,7 @@ const RiderDashboard = () => {
                     {/* Total + ETA */}
                     <div className="flex items-center justify-between mb-4">
                       <span className="text-sm font-bold text-slate-900">
-                        Total: ₦{Number(activeDelivery.order?.totalAmount).toLocaleString()}
+                        Total: {formatCurrency(Number(activeDelivery.order?.totalAmount))}
                       </span>
                       {(() => {
                         const [etaMin, etaMax] = estimateETA(rider?.vehicleType, activeDelivery.status);

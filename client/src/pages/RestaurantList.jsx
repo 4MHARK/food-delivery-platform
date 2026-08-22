@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import AppLayout from "../components/AppLayout";
 import { useAuth } from "../context/AuthContext";
 import { useFavorites } from "../hooks/useFavorites";
+import { api } from "../lib/api";
 
 const RestaurantList = () => {
   const navigate = useNavigate();
@@ -24,9 +25,8 @@ const RestaurantList = () => {
   useEffect(() => {
     const fetchCategories = async () => {
       try {
-        const res = await fetch(`${import.meta.env.VITE_API_URL}/categories`);
-        const data = await res.json();
-        if (res.ok) setCategories(data.categories || []);
+        const data = await api.get("/categories", { auth: false });
+        setCategories(data.categories || []);
       } catch {
         // non-fatal — pills simply fall back to "All" only
       }
@@ -39,15 +39,13 @@ const RestaurantList = () => {
       setLoading(true);
       setError("");
       try {
-        const url = `${import.meta.env.VITE_API_URL}/restaurants${
+        const path = `/restaurants${
           activeFilter === "All" ? "" : `?category=${encodeURIComponent(activeFilter)}`
         }`;
-        const res = await fetch(url);
-        const data = await res.json();
-        if (!res.ok) { setError(data.message || "Failed to load restaurants"); return; }
+        const data = await api.get(path, { auth: false });
         setRestaurants(data.restaurants);
-      } catch {
-        setError("Something went wrong. Please try again.");
+      } catch (e) {
+        setError(e.message || "Failed to load restaurants");
       } finally {
         setLoading(false);
       }

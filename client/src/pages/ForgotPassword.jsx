@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
+import { api } from "../lib/api";
 
 const ForgotPassword = () => {
   const [email, setEmail] = useState("");
@@ -13,16 +14,10 @@ const ForgotPassword = () => {
     if (!email) { setError("Please enter your email."); return; }
     setLoading(true);
     try {
-      const res = await fetch(`${import.meta.env.VITE_API_URL}/users/forgot-password`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email }),
-      });
-      const data = await res.json();
-      if (!res.ok) { setError(data.message || "Something went wrong. Please try again."); return; }
+      await api.post("/users/forgot-password", { email }, { auth: false });
       setSent(true);
-    } catch {
-      setError("Something went wrong. Please try again.");
+    } catch (e) {
+      setError(e.message || "Something went wrong. Please try again.");
     } finally {
       setLoading(false);
     }

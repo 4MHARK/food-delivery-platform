@@ -1,26 +1,8 @@
 import { createContext, useContext, useState } from "react";
+import { isTokenExpired } from "../lib/jwt";
 
 // Step 1: Create the context (the "radio channel")
 const AuthContext = createContext(null);
-
-// ── Helpers ──
-
-/** Decode a JWT payload without verifying the signature.  Returns null on failure. */
-function decodeJWTPayload(token) {
-  try {
-    const payload = token.split(".")[1];
-    return JSON.parse(atob(payload));
-  } catch {
-    return null;
-  }
-}
-
-/** True when the token has an `exp` claim in the past.  Treats un-decodable tokens as expired. */
-function isTokenExpired(token) {
-  const decoded = decodeJWTPayload(token);
-  if (!decoded || !decoded.exp) return true;
-  return decoded.exp * 1000 < Date.now();
-}
 
 // Step 2: The provider — wraps the entire app, broadcasts auth state
 export function AuthProvider({ children }) {

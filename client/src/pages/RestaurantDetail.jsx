@@ -4,6 +4,8 @@ import { useCart } from "../context/CartContext";
 import { useAuth } from "../context/AuthContext";
 import { useFavorites } from "../hooks/useFavorites";
 import AppLayout from "../components/AppLayout";
+import { api } from "../lib/api";
+import { formatCurrency } from "../lib/format";
 
 const RestaurantDetail = () => {
   const { id } = useParams();
@@ -34,20 +36,16 @@ const RestaurantDetail = () => {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const [restaurantRes, menuRes, reviewsRes] = await Promise.all([
-          fetch(`${import.meta.env.VITE_API_URL}/restaurants/${id}`),
-          fetch(`${import.meta.env.VITE_API_URL}/restaurants/${id}/menu-items`),
-          fetch(`${import.meta.env.VITE_API_URL}/restaurants/${id}/reviews`),
+        const [restaurantData, menuData, reviewsData] = await Promise.all([
+          api.get(`/restaurants/${id}`, { auth: false }),
+          api.get(`/restaurants/${id}/menu-items`, { auth: false }).catch(() => null),
+          api.get(`/restaurants/${id}/reviews`, { auth: false }).catch(() => null),
         ]);
-        const restaurantData = await restaurantRes.json();
-        const menuData = await menuRes.json();
-        const reviewsData = await reviewsRes.json();
-        if (!restaurantRes.ok) { setError(restaurantData.message || "Restaurant not found"); return; }
         setRestaurant(restaurantData.restaurant);
-        setMenuItems(menuRes.ok ? menuData.menuItems : []);
-        setReviews(reviewsRes.ok ? reviewsData.reviews : []);
-      } catch {
-        setError("Something went wrong. Please try again.");
+        setMenuItems(menuData?.menuItems || []);
+        setReviews(reviewsData?.reviews || []);
+      } catch (e) {
+        setError(e.message || "Restaurant not found");
       } finally {
         setLoading(false);
       }
@@ -57,14 +55,12 @@ const RestaurantDetail = () => {
 
   const refreshReviews = async () => {
     try {
-      const [restaurantRes, reviewsRes] = await Promise.all([
-        fetch(`${import.meta.env.VITE_API_URL}/restaurants/${id}`),
-        fetch(`${import.meta.env.VITE_API_URL}/restaurants/${id}/reviews`),
+      const [restaurantData, reviewsData] = await Promise.all([
+        api.get(`/restaurants/${id}`, { auth: false }).catch(() => null),
+        api.get(`/restaurants/${id}/reviews`, { auth: false }).catch(() => null),
       ]);
-      const restaurantData = await restaurantRes.json();
-      const reviewsData = await reviewsRes.json();
-      if (restaurantRes.ok) setRestaurant(restaurantData.restaurant);
-      if (reviewsRes.ok) setReviews(reviewsData.reviews);
+      if (restaurantData) setRestaurant(restaurantData.restaurant);
+      if (reviewsData) setReviews(reviewsData.reviews);
     } catch { /* best-effort refresh after submit */ }
   };
 
@@ -74,20 +70,13 @@ const RestaurantDetail = () => {
     setSubmitting(true);
     setReviewMsg(null);
     try {
-      const token = localStorage.getItem("token");
-      const res = await fetch(`${import.meta.env.VITE_API_URL}/restaurants/${id}/reviews`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ rating, comment: comment.trim() || undefined }),
-      });
-      const data = await res.json();
-      if (!res.ok) { setReviewMsg({ type: "error", text: data.message || "Could not submit review." }); return; }
+      await api.post(`/restaurants/${id}/reviews`, { rating, comment: comment.trim() || undefined });
       setReviewMsg({ type: "success", text: "Review saved. Thank you!" });
       setRating(0);
       setComment("");
       await refreshReviews();
-    } catch {
-      setReviewMsg({ type: "error", text: "Something went wrong. Please try again." });
+    } catch (e) {
+      setReviewMsg({ type: "error", text: e.message || "Could not submit review." });
     } finally {
       setSubmitting(false);
     }
@@ -377,7 +366,7 @@ const RestaurantDetail = () => {
                         <p className="text-xs md:text-sm text-slate-500 line-clamp-2 mt-1 leading-relaxed">{item.description}</p>
                       </div>
                       <div className="flex items-center justify-between mt-3">
-                        <span className="text-sm md:text-base font-bold text-slate-900">₦{Number(item.price).toLocaleString()}</span>
+                        <span className="text-sm md:text-base font-bold text-slate-900">{formatCurrency(Number(item.price))}</span>
                         {item.isAvailable ? (
                           qty > 0 ? (
                             <div className="flex items-center gap-2">
@@ -419,7 +408,7 @@ const RestaurantDetail = () => {
               <span className="font-bold text-sm">View Cart</span>
             </div>
             <span className="font-bold text-amber-400 text-sm">
-              ₦{cartItems.reduce((sum, i) => sum + i.price * i.quantity, 0).toLocaleString()}
+              {formatCurrency(cartItems.reduce((sum, i) => sum + i.price * i.quantity, 0))}
             </span>
           </button>
         </div>

@@ -2,6 +2,7 @@ import express from "express";
 import prisma from "../config/prisma.js";
 import authMiddleware from "../middleware/auth.middleware.js";
 import { verifyPayment } from "../services/paystack.js";
+import { notify } from "../services/events.js";
 
 const router = express.Router();
 
@@ -84,6 +85,9 @@ router.post("/payments/verify", authMiddleware, async (req, res, next) => {
         },
       }),
     ]);
+
+    // Notify the restaurant owner that a new paid order just arrived (SSE).
+    notify("order:updated", [updatedOrder.restaurant.ownerId]);
 
     res.status(200).json({
       message: "Payment verified successfully",

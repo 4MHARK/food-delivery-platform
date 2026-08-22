@@ -2,6 +2,10 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import AppLayout, { OWNER_NAV } from "../components/AppLayout";
+import { api } from "../lib/api";
+import { useNotificationPermission, notify } from "../hooks/useNotifications";
+import { useSSE } from "../hooks/useSSE";
+import { formatCurrency } from "../lib/format";
 
 const ORDER_STATUS = {
   PENDING_PAYMENT:                   { label: "Pending Payment", color: "bg-amber-100 text-amber-700 border-amber-200", dot: "bg-amber-500" },
@@ -20,7 +24,6 @@ const initialMenuForm = { name: "", description: "", price: "", category: "", im
 const Dashboard = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
-  const pollRef = useRef(null);
   const prevPendingRef = useRef(0);
 
   // ── Core state ──
@@ -51,19 +54,12 @@ const Dashboard = () => {
   const [updatingOrderId, setUpdatingOrderId] = useState(null);
   const [lastUpdated, setLastUpdated] = useState(null);
 
-  const token = localStorage.getItem("token");
-  const authHeaders = { "Content-Type": "application/json", Authorization: `Bearer ${token}` };
-
   const showMsg = (msg) => { setMessage(msg); setTimeout(() => setMessage(""), 10000); };
 
   // ── Fetch restaurant ──
   const fetchRestaurant = useCallback(async () => {
     try {
-      const res = await fetch(`${import.meta.env.VITE_API_URL}/my-restaurant`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.message);
+      const data = await api.get("/my-restaurant");
       const r = data.restaurant;
       setRestaurant(r);
       if (r) {
@@ -74,14 +70,13 @@ const Dashboard = () => {
       setError(err.message || "Failed to load");
       return null;
     }
-  }, [token]);
+  }, []);
 
   // ── Fetch menu ──
   const fetchMenu = useCallback(async (restaurantId) => {
     try {
-      const res = await fetch(`${import.meta.env.VITE_API_URL}/restaurants/${restaurantId}/menu-items`);
-      const data = await res.json();
-      if (res.ok) setMenuItems(data.menuItems || []);
+      const data = await api.get(`/restaurants/${restaurantId}/menu-items`);
+      setMenuItems(data.menuItems || []);
     } catch { /* silent */ }
   }, []);
 
@@ -90,19 +85,15 @@ const Dashboard = () => {
     try {
       setOrdersLoading(true);
       setOrdersError("");
-      const res = await fetch(`${import.meta.env.VITE_API_URL}/restaurants/${restaurantId}/orders`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      const data = await res.json();
-      if (!res.ok) { setOrdersError(data.message || "Failed to load orders"); return; }
+      const data = await api.get(`/restaurants/${restaurantId}/orders`);
       setOrders(data.orders || []);
       setLastUpdated(new Date());
-    } catch {
-      setOrdersError("Something went wrong. Please try again.");
+    } catch (e) {
+      setOrdersError(e.message || "Failed to load orders");
     } finally {
       setOrdersLoading(false);
     }
-  }, [token]);
+  }, []);
 
   // ── Initial load ──
   useEffect(() => {
@@ -117,59 +108,50 @@ const Dashboard = () => {
     init();
   }, [fetchRestaurant, fetchMenu, fetchOrders]);
 
-  // ── Poll for new orders (notification only, does not refresh the list) ──
+  // ── Live order updates via SSE (replaces 30s polling) ──
+  useNotificationPermission(!!restaurant);
+
+  // Baseline of how many pending orders we've already shown, so an SSE refresh
+  // only fires the "new order" toast when the count actually goes up (and stays
+  // in sync when we accept/reject orders ourselves).
   useEffect(() => {
-    if (pollRef.current) clearInterval(pollRef.current);
-    if (restaurant) {
-      // Request browser notification permission
-      if (Notification.permission === "default") {
-        Notification.requestPermission();
-      }
-      // Set initial count from already-loaded orders
-      prevPendingRef.current = orders.filter((o) => o.status === "PENDING_RESTAURANT_CONFIRMATION").length;
-      pollRef.current = setInterval(async () => {
-        try {
-          const res = await fetch(`${import.meta.env.VITE_API_URL}/restaurants/${restaurant.id}/orders`, {
-            headers: { Authorization: `Bearer ${token}` },
+    prevPendingRef.current = orders.filter((o) => o.status === "PENDING_RESTAURANT_CONFIRMATION").length;
+  }, [orders]);
+
+  useSSE(
+    async () => {
+      if (!restaurant) return;
+      try {
+        const data = await api.get(`/restaurants/${restaurant.id}/orders`);
+        const freshOrders = data.orders || [];
+        const currentPending = freshOrders.filter(
+          (o) => o.status === "PENDING_RESTAURANT_CONFIRMATION"
+        ).length;
+        if (currentPending > prevPendingRef.current) {
+          const diff = currentPending - prevPendingRef.current;
+          showMsg(`🔔 ${diff} new order${diff > 1 ? "s" : ""} received!`);
+          setOrders(freshOrders);
+          setLastUpdated(new Date());
+          notify("New Order!", {
+            body: `${diff} new order${diff > 1 ? "s" : ""} received!`,
+            icon: "/favicon.svg",
           });
-          const data = await res.json();
-          if (!res.ok) return;
-          const currentPending = (data.orders || []).filter(
-            (o) => o.status === "PENDING_RESTAURANT_CONFIRMATION"
-          ).length;
-          if (currentPending > prevPendingRef.current) {
-            const diff = currentPending - prevPendingRef.current;
-            showMsg(`🔔 ${diff} new order${diff > 1 ? "s" : ""} received!`);
-            setOrders(data.orders || []);
-            setLastUpdated(new Date());
-            // Browser notification
-            if (Notification.permission === "granted") {
-              new Notification("New Order!", {
-                body: `${diff} new order${diff > 1 ? "s" : ""} received!`,
-                icon: "/favicon.svg",
-              });
-            }
-          }
-          prevPendingRef.current = currentPending;
-        } catch { /* silent — notification poll should not disturb the user */ }
-      }, 30000);
-    }
-    return () => { if (pollRef.current) clearInterval(pollRef.current); };
-  }, [restaurant, token]);
+        }
+        prevPendingRef.current = currentPending;
+      } catch { /* silent — an SSE refresh shouldn't disturb the user */ }
+    },
+    { enabled: !!restaurant, deps: [restaurant?.id] }
+  );
 
   // ── Order actions ──
   const handleAcceptOrder = async (orderId) => {
     try {
       setUpdatingOrderId(orderId);
-      const res = await fetch(`${import.meta.env.VITE_API_URL}/orders/${orderId}/status`, {
-        method: "PUT", headers: authHeaders, body: JSON.stringify({ status: "PREPARING" }),
-      });
-      const data = await res.json();
-      if (!res.ok) { showMsg(data.message || "Failed"); return; }
+      await api.put(`/orders/${orderId}/status`, { status: "PREPARING" });
       setOrders((prev) => prev.map((o) => (o.id === orderId ? { ...o, status: "PREPARING" } : o)));
       showMsg(`Order #${orderId} accepted`);
-    } catch {
-      showMsg("Failed to accept order");
+    } catch (e) {
+      showMsg(e.message || "Failed to accept order");
     } finally {
       setUpdatingOrderId(null);
     }
@@ -179,15 +161,11 @@ const Dashboard = () => {
     if (!window.confirm("Cancel this order? The customer will be notified.")) return;
     try {
       setUpdatingOrderId(orderId);
-      const res = await fetch(`${import.meta.env.VITE_API_URL}/orders/${orderId}/status`, {
-        method: "PUT", headers: authHeaders, body: JSON.stringify({ status: "CANCELLED" }),
-      });
-      const data = await res.json();
-      if (!res.ok) { showMsg(data.message || "Failed"); return; }
+      await api.put(`/orders/${orderId}/status`, { status: "CANCELLED" });
       setOrders((prev) => prev.map((o) => (o.id === orderId ? { ...o, status: "CANCELLED" } : o)));
       showMsg(`Order #${orderId} cancelled`);
-    } catch {
-      showMsg("Failed to cancel order");
+    } catch (e) {
+      showMsg(e.message || "Failed to cancel order");
     } finally {
       setUpdatingOrderId(null);
     }
@@ -198,15 +176,11 @@ const Dashboard = () => {
     if (!current || current.status === newStatus) return;
     try {
       setUpdatingOrderId(orderId);
-      const res = await fetch(`${import.meta.env.VITE_API_URL}/orders/${orderId}/status`, {
-        method: "PUT", headers: authHeaders, body: JSON.stringify({ status: newStatus }),
-      });
-      const data = await res.json();
-      if (!res.ok) { showMsg(data.message || "Failed to update status"); return; }
+      await api.put(`/orders/${orderId}/status`, { status: newStatus });
       setOrders((prev) => prev.map((o) => (o.id === orderId ? { ...o, status: newStatus } : o)));
       showMsg(`Order #${orderId} → ${ORDER_STATUS[newStatus].label}`);
-    } catch {
-      showMsg("Failed to update order status");
+    } catch (e) {
+      showMsg(e.message || "Failed to update order status");
     } finally {
       setUpdatingOrderId(null);
     }
@@ -222,19 +196,15 @@ const Dashboard = () => {
     try {
       setCreating(true);
       setError("");
-      const res = await fetch(`${import.meta.env.VITE_API_URL}/restaurants`, {
-        method: "POST", headers: authHeaders, body: JSON.stringify(restForm),
-      });
-      const data = await res.json();
-      if (!res.ok) { setError(data.message); return; }
+      const data = await api.post("/restaurants", restForm);
       setRestaurant(data.restaurant);
       setRestForm({ name: data.restaurant.name || "", description: data.restaurant.description || "", address: data.restaurant.address || "", phone: data.restaurant.phone || "", imageUrl: data.restaurant.imageUrl || "" });
       setShowCreate(false);
       showMsg("Restaurant created! Start building your menu.");
       fetchMenu(data.restaurant.id);
       fetchOrders(data.restaurant.id);
-    } catch {
-      setError("Failed to create restaurant");
+    } catch (e) {
+      setError(e.message || "Failed to create restaurant");
     } finally {
       setCreating(false);
     }
@@ -245,15 +215,11 @@ const Dashboard = () => {
     e.preventDefault();
     try {
       setSavingRest(true);
-      const res = await fetch(`${import.meta.env.VITE_API_URL}/restaurants/${restaurant.id}`, {
-        method: "PUT", headers: authHeaders, body: JSON.stringify(restForm),
-      });
-      const data = await res.json();
-      if (!res.ok) { setError(data.message); return; }
+      await api.put(`/restaurants/${restaurant.id}`, restForm);
       setRestaurant((prev) => ({ ...prev, ...restForm }));
       showMsg("Restaurant updated");
-    } catch {
-      setError("Failed to update restaurant");
+    } catch (e) {
+      setError(e.message || "Failed to update restaurant");
     } finally {
       setSavingRest(false);
     }
@@ -268,17 +234,13 @@ const Dashboard = () => {
     }
     try {
       setSavingMenu(true);
-      const res = await fetch(`${import.meta.env.VITE_API_URL}/restaurants/${restaurant.id}/menu-items`, {
-        method: "POST", headers: authHeaders, body: JSON.stringify({ ...menuForm, price: Number(menuForm.price) }),
-      });
-      const data = await res.json();
-      if (!res.ok) { setError(data.message); return; }
+      await api.post(`/restaurants/${restaurant.id}/menu-items`, { ...menuForm, price: Number(menuForm.price) });
       await fetchMenu(restaurant.id);
       setMenuForm(initialMenuForm);
       setShowAddMenu(false);
       showMsg("Menu item added");
-    } catch {
-      setError("Failed to add menu item");
+    } catch (e) {
+      setError(e.message || "Failed to add menu item");
     } finally {
       setSavingMenu(false);
     }
@@ -288,21 +250,16 @@ const Dashboard = () => {
     e.preventDefault();
     try {
       setSavingMenu(true);
-      const res = await fetch(`${import.meta.env.VITE_API_URL}/menu-items/${editingItem.id}`, {
-        method: "PUT", headers: authHeaders,
-        body: JSON.stringify({
-          name: editingItem.name, description: editingItem.description,
-          price: Number(editingItem.price), category: editingItem.category,
-          imageUrl: editingItem.imageUrl || "",
-        }),
+      await api.put(`/menu-items/${editingItem.id}`, {
+        name: editingItem.name, description: editingItem.description,
+        price: Number(editingItem.price), category: editingItem.category,
+        imageUrl: editingItem.imageUrl || "",
       });
-      const data = await res.json();
-      if (!res.ok) { setError(data.message); return; }
       await fetchMenu(restaurant.id);
       setEditingItem(null);
       showMsg("Menu item updated");
-    } catch {
-      setError("Failed to update menu item");
+    } catch (e) {
+      setError(e.message || "Failed to update menu item");
     } finally {
       setSavingMenu(false);
     }
@@ -312,14 +269,11 @@ const Dashboard = () => {
     if (!window.confirm("Delete this item?")) return;
     try {
       setDeletingId(itemId);
-      const res = await fetch(`${import.meta.env.VITE_API_URL}/menu-items/${itemId}`, {
-        method: "DELETE", headers: authHeaders,
-      });
-      if (!res.ok) { const d = await res.json(); setError(d.message); return; }
+      await api.del(`/menu-items/${itemId}`);
       await fetchMenu(restaurant.id);
       showMsg("Menu item deleted");
-    } catch {
-      setError("Failed to delete");
+    } catch (e) {
+      setError(e.message || "Failed to delete");
     } finally {
       setDeletingId(null);
     }
@@ -668,7 +622,7 @@ const Dashboard = () => {
                         <p className="text-sm font-semibold text-slate-900 truncate">{item.name}</p>
                         <div className="flex items-center gap-2">
                           <span className="text-xs text-slate-400">{item.category}</span>
-                          <span className="text-xs font-bold text-slate-700">₦{Number(item.price).toLocaleString()}</span>
+                          <span className="text-xs font-bold text-slate-700">{formatCurrency(Number(item.price))}</span>
                         </div>
                       </div>
                     </div>
@@ -802,7 +756,7 @@ const Dashboard = () => {
                                 <span className="text-slate-600">
                                   {item.quantity}&times; {item.menuItem?.name || `Item #${item.menuItemId}`}
                                 </span>
-                                <span className="text-slate-400 text-xs">₦{(item.unitPrice * item.quantity).toLocaleString()}</span>
+                                <span className="text-slate-400 text-xs">{formatCurrency((item.unitPrice * item.quantity))}</span>
                               </div>
                             ))}
                           </div>
@@ -811,7 +765,7 @@ const Dashboard = () => {
                               <span className="material-symbols-outlined text-sm shrink-0">location_on</span>
                               <span className="truncate">{order.deliveryAddress}</span>
                             </div>
-                            <span className="text-sm font-bold text-slate-900 shrink-0 ml-2">₦{Number(order.totalAmount).toLocaleString()}</span>
+                            <span className="text-sm font-bold text-slate-900 shrink-0 ml-2">{formatCurrency(Number(order.totalAmount))}</span>
                           </div>
                         </div>
                       ))}
@@ -865,7 +819,7 @@ const Dashboard = () => {
                                   <span className="text-slate-600">
                                     {item.quantity}&times; {item.menuItem?.name || `Item #${item.menuItemId}`}
                                   </span>
-                                  <span className="text-slate-400 text-xs">₦{(item.unitPrice * item.quantity).toLocaleString()}</span>
+                                  <span className="text-slate-400 text-xs">{formatCurrency((item.unitPrice * item.quantity))}</span>
                                 </div>
                               ))}
                             </div>
@@ -874,7 +828,7 @@ const Dashboard = () => {
                                 <span className="material-symbols-outlined text-sm shrink-0">location_on</span>
                                 <span className="truncate">{order.deliveryAddress}</span>
                               </div>
-                              <span className="text-sm font-bold text-slate-900 shrink-0 ml-2">₦{Number(order.totalAmount).toLocaleString()}</span>
+                              <span className="text-sm font-bold text-slate-900 shrink-0 ml-2">{formatCurrency(Number(order.totalAmount))}</span>
                             </div>
                           </div>
                         );
@@ -913,7 +867,7 @@ const Dashboard = () => {
                                   {new Date(order.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
                                 </p>
                               </div>
-                              <span className="text-sm font-bold text-slate-400 shrink-0">₦{Number(order.totalAmount).toLocaleString()}</span>
+                              <span className="text-sm font-bold text-slate-400 shrink-0">{formatCurrency(Number(order.totalAmount))}</span>
                             </div>
                           </div>
                         );

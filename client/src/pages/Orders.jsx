@@ -2,15 +2,10 @@ import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import AppLayout from "../components/AppLayout";
-
-const STATUS = {
-  PENDING_PAYMENT: { label: "Pending Payment", color: "bg-amber-100 text-amber-700", icon: "hourglass_empty" },
-  PENDING_RESTAURANT_CONFIRMATION: { label: "Awaiting Confirm", color: "bg-blue-100 text-blue-700", icon: "check_circle" },
-  PREPARING: { label: "Preparing", color: "bg-orange-100 text-orange-700", icon: "cooking" },
-  OUT_FOR_DELIVERY: { label: "On the Way", color: "bg-purple-100 text-purple-700", icon: "local_shipping" },
-  DELIVERED: { label: "Delivered", color: "bg-green-100 text-green-700", icon: "done_all" },
-  CANCELLED: { label: "Cancelled", color: "bg-slate-100 text-slate-500", icon: "cancel" },
-};
+import OrderCard, { STATUS } from "../components/OrderCard";
+import { api } from "../lib/api";
+import { useSSE } from "../hooks/useSSE";
+import { useNotificationPermission, notify } from "../hooks/useNotifications";
 
 const Orders = () => {
   const navigate = useNavigate();
@@ -23,15 +18,10 @@ const Orders = () => {
   useEffect(() => {
     const fetchOrders = async () => {
       try {
-        const token = localStorage.getItem("token");
-        const res = await fetch(`${import.meta.env.VITE_API_URL}/orders`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        const data = await res.json();
-        if (!res.ok) { setError(data.message || "Failed to load orders"); return; }
+        const data = await api.get("/orders");
         setOrders(data.orders);
-      } catch {
-        setError("Something went wrong. Please try again.");
+      } catch (e) {
+        setError(e.message);
       } finally {
         setLoading(false);
       }
@@ -40,88 +30,33 @@ const Orders = () => {
   }, []);
 
   // ── SSE: real-time status updates ──
+  useNotificationPermission();
 
+  useSSE(async () => {
+    try {
+      const data = await api.get("/orders");
+      const freshOrders = data.orders || [];
 
-  useEffect(() => {
-    if (Notification.permission === "default") {
-      Notification.requestPermission();
-    }
-
-    const token = localStorage.getItem("token");
-    let failSince = null;
-    let es = null;
-
-    async function connect() {
-      const ticketRes = await fetch(`${import.meta.env.VITE_API_URL}/sseTicket`, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${token}` },
+      // Which orders changed status? (compare against current state)
+      const changed = freshOrders.filter((fresh) => {
+        const old = orders.find((o) => o.id === fresh.id);
+        return old && old.status !== fresh.status;
       });
-      if (!ticketRes.ok) return;
-      const { ticket } = await ticketRes.json();
 
-      es = new EventSource(
-        `${import.meta.env.VITE_API_URL}/events?ticket=${encodeURIComponent(ticket)}`
-      );
+      // Notify for each changed order (browser batches notifications)
+      for (const order of changed) {
+        const label = STATUS[order.status]
+          ? STATUS[order.status].label
+          : order.status;
+        notify("Order Updated", {
+          body: `Order #${order.id} is now "${label}"`,
+          icon: "/favicon.svg",
+        });
+      }
 
-      es.onmessage = async () => {
-        try {
-          const res = await fetch(`${import.meta.env.VITE_API_URL}/orders`, {
-            headers: { Authorization: `Bearer ${token}` },
-          });
-          const data = await res.json();
-          if (!res.ok) return;
-          const freshOrders = data.orders || [];
-          setOrders((prev) => {
-            const changed = freshOrders.filter((fresh) => {
-              const old = prev.find((o) => o.id === fresh.id);
-              return old && old.status !== fresh.status;
-            });
-
-            // Notify for each changed order (browser batches notifications)
-            if (Notification.permission === "granted") {
-              for (const order of changed) {
-                const label = STATUS[order.status]
-                  ? STATUS[order.status].label
-                  : order.status;
-                new Notification("Order Updated", {
-                  body: `Order #${order.id} is now "${label}"`,
-                  icon: "/favicon.svg",
-                });
-              }
-            }
-            return freshOrders;
-          });
-        } catch { /* silent */ }
-      };
-
-      es.onerror = () => {
-        if (!failSince) failSince = Date.now();
-        if (Date.now() - failSince > 30_000) {
-          es.close();
-        }
-      };
-
-      es.onopen = () => {
-        failSince = null; // reset — connection is back
-      };
-    }
-
-    connect();
-
-    return () => {
-      if (es) es.close();
-    };
-  }, []);
-
-  const formatDate = (dateString) => {
-    const date = new Date(dateString);
-    return date.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
-  };
-
-  const formatTime = (dateString) => {
-    const date = new Date(dateString);
-    return date.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
-  };
+      setOrders(freshOrders);
+    } catch { /* silent */ }
+  });
 
   const renderContent = () => {
     // LOADING
@@ -186,49 +121,9 @@ const Orders = () => {
     // SUCCESS
     return (
       <div className="space-y-4">
-        {orders.map((order) => {
-          const status = STATUS[order.status] || STATUS.PENDING_PAYMENT;
-          return (
-            <article
-              key={order.id}
-              onClick={() => navigate(`/orders/${order.id}`)}
-              className="bg-white rounded-2xl shadow-sm overflow-hidden hover:shadow-md transition cursor-pointer"
-            >
-              <div className="px-5 py-4 flex items-center justify-between">
-                <div className="flex items-center gap-2.5">
-                  <span className="material-symbols-outlined text-amber-500">storefront</span>
-                  <div>
-                    <h3 className="text-sm font-bold text-slate-900">{order.restaurant?.name || "Restaurant"}</h3>
-                    <p className="text-xs text-slate-400">{formatDate(order.createdAt)} · {formatTime(order.createdAt)}</p>
-                  </div>
-                </div>
-                <span className={`flex items-center gap-1 text-[11px] font-bold px-2.5 py-1.5 rounded-full ${status.color}`}>
-                  <span className="material-symbols-outlined text-sm">{status.icon}</span>
-                  {status.label}
-                </span>
-              </div>
-
-              <div className="border-t border-slate-50 px-5 py-3 space-y-1.5">
-                {order.orderItems?.map((item) => (
-                  <div key={item.id} className="flex items-center justify-between text-sm">
-                    <span className="text-slate-600">
-                      {item.quantity}× {item.menuItem?.name || `Item #${item.menuItemId}`}
-                    </span>
-                    <span className="text-slate-400 text-xs">₦{(Number(item.unitPrice) * item.quantity).toLocaleString()}</span>
-                  </div>
-                ))}
-              </div>
-
-              <div className="border-t border-slate-50 px-5 py-3 flex items-center justify-between bg-slate-50/30">
-                <div className="flex items-center gap-1.5 text-xs text-slate-400">
-                  <span className="material-symbols-outlined text-sm">location_on</span>
-                  <span className="truncate max-w-[180px]">{order.deliveryAddress}</span>
-                </div>
-                <span className="text-sm font-bold text-slate-900">₦{Number(order.totalAmount).toLocaleString()}</span>
-              </div>
-            </article>
-          );
-        })}
+        {orders.map((order) => (
+          <OrderCard key={order.id} order={order} />
+        ))}
       </div>
     );
   };

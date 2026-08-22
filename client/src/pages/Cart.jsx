@@ -1,8 +1,10 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { useCart } from "../context/CartContext";
 import AppLayout from "../components/AppLayout";
+import { api } from "../lib/api";
+import { formatCurrency } from "../lib/format";
 
 const Cart = () => {
   const navigate = useNavigate();
@@ -12,6 +14,7 @@ const Cart = () => {
   const [placing, setPlacing] = useState(false);
   const [error, setError] = useState("");
   const idempotencyKeyRef = useRef(null);
+  const [feesByRestaurant, setFeesByRestaurant] = useState({});
 
   // Group items by restaurant
   const grouped = items.reduce((acc, item) => {
@@ -40,27 +43,17 @@ const Cart = () => {
     try {
       setPlacing(true);
       setError("");
-      const token = localStorage.getItem("token");
 
       // Step 1: Create the order on the backend
-      const res = await fetch(`${import.meta.env.VITE_API_URL}/orders/checkout`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          restaurantId,
-          deliveryAddress: deliveryAddress.trim(),
-          idempotencyKey: idempotencyKeyRef.current,
-          items: restaurantItems.map((item) => ({
-            menuItemId: item.menuItemId,
-            quantity: item.quantity,
-          })),
-        }),
+      const data = await api.post("/orders/checkout", {
+        restaurantId,
+        deliveryAddress: deliveryAddress.trim(),
+        idempotencyKey: idempotencyKeyRef.current,
+        items: restaurantItems.map((item) => ({
+          menuItemId: item.menuItemId,
+          quantity: item.quantity,
+        })),
       });
-      const data = await res.json();
-      if (!res.ok) { setError(data.message || "Failed to place order"); setPlacing(false); return; }
 
       const { order, payment } = data;
 
@@ -90,17 +83,7 @@ const Cart = () => {
         onSuccess: async () => {
           // Step 4: Verify payment on the backend
           try {
-            const verifyRes = await fetch(`${import.meta.env.VITE_API_URL}/payments/verify`, {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-                Authorization: `Bearer ${token}`,
-              },
-              body: JSON.stringify({ reference: payment.reference }),
-            });
-            if (!verifyRes.ok) {
-              throw new Error("Payment verification failed");
-            }
+            await api.post("/payments/verify", { reference: payment.reference });
             navigate(`/orders/${order.id}`);
           } catch {
             // Surface the failure instead of silently swallowing it
@@ -115,11 +98,50 @@ const Cart = () => {
         },
       });
       handler.openIframe();
-    } catch {
-      setError("Something went wrong. Please try again.");
+    } catch (e) {
+      setError(e?.message || "Something went wrong. Please try again.");
       setPlacing(false);
     }
   };
+
+  // Fetch server-computed fees for each restaurant group. The server is the single
+  // source of truth for money — the cart only ever displays its numbers.
+  useEffect(() => {
+    if (items.length === 0) {
+      setFeesByRestaurant({});
+      return;
+    }
+
+    let cancelled = false;
+    const groups = items.reduce((acc, item) => {
+      if (!acc[item.restaurantId]) acc[item.restaurantId] = [];
+      acc[item.restaurantId].push(item);
+      return acc;
+    }, {});
+
+    const fetchFees = async () => {
+      const next = {};
+      await Promise.all(
+        Object.entries(groups).map(async ([restaurantId, groupItems]) => {
+          try {
+            const data = await api.post("/orders/estimate", {
+              restaurantId: Number(restaurantId),
+              items: groupItems.map((i) => ({ menuItemId: i.menuItemId, quantity: i.quantity })),
+            });
+            next[restaurantId] = data.fees;
+          } catch {
+            // Leave undefined → the UI shows a placeholder until the server responds
+          }
+        })
+      );
+      if (!cancelled) setFeesByRestaurant(next);
+    };
+    fetchFees();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [items]);
 
   return (
     <AppLayout onBack={() => navigate(-1)} showCart={false} showUserDropdown={false}>
@@ -165,10 +187,7 @@ const Cart = () => {
 
             {Object.values(grouped).map((group) => {
               const groupTotal = group.items.reduce((sum, i) => sum + i.price * i.quantity, 0);
-              const estDelivery = 400;
-              const estService = 200;
-              const estTax = Math.round(groupTotal * 0.075);
-              const estTotal = groupTotal + estDelivery + estService + estTax;
+              const fees = feesByRestaurant[group.restaurantId];
               return (
                 <div key={group.restaurantId} className="bg-white rounded-2xl shadow-sm overflow-hidden">
                   <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
@@ -189,7 +208,7 @@ const Cart = () => {
                       <div key={item.menuItemId} className="px-5 py-4 flex items-center justify-between">
                         <div className="flex-1 min-w-0">
                           <p className="text-sm font-semibold text-slate-900 truncate">{item.name}</p>
-                          <p className="text-sm text-slate-500">₦{Number(item.price).toLocaleString()} each</p>
+                          <p className="text-sm text-slate-500">{formatCurrency(Number(item.price))} each</p>
                         </div>
                         <div className="flex items-center gap-3">
                           <button onClick={() => removeItem(item.menuItemId)} className="w-8 h-8 rounded-full bg-slate-100 text-slate-600 hover:bg-slate-200 flex items-center justify-center transition active:scale-90">
@@ -215,23 +234,23 @@ const Cart = () => {
                     <div className="space-y-1.5 mb-4 text-sm">
                       <div className="flex justify-between text-slate-500">
                         <span>Subtotal</span>
-                        <span>₦{groupTotal.toLocaleString()}</span>
+                        <span>{formatCurrency(groupTotal)}</span>
                       </div>
                       <div className="flex justify-between text-slate-500">
                         <span>Delivery fee</span>
-                        <span>₦{estDelivery.toLocaleString()}</span>
+                        <span>{fees ? formatCurrency(fees.deliveryFee) : "—"}</span>
                       </div>
                       <div className="flex justify-between text-slate-500">
                         <span>Service fee</span>
-                        <span>₦{estService.toLocaleString()}</span>
+                        <span>{fees ? formatCurrency(fees.serviceFee) : "—"}</span>
                       </div>
                       <div className="flex justify-between text-slate-500">
-                        <span>Tax (7.5%)</span>
-                        <span>₦{estTax.toLocaleString()}</span>
+                        <span>Tax</span>
+                        <span>{fees ? formatCurrency(fees.tax) : "—"}</span>
                       </div>
                       <div className="flex justify-between font-bold text-slate-900 pt-1.5 border-t border-slate-200">
                         <span>Total</span>
-                        <span>₦{estTotal.toLocaleString()}</span>
+                        <span>{fees ? formatCurrency(fees.totalAmount) : "—"}</span>
                       </div>
                     </div>
                     <div className="flex items-center justify-between">
@@ -254,7 +273,7 @@ const Cart = () => {
             {Object.keys(grouped).length > 1 && (
               <div className="flex items-center justify-between bg-white rounded-2xl shadow-sm px-5 py-4">
                 <span className="font-bold text-slate-900">Total</span>
-                <span className="font-bold text-lg text-slate-900">₦{total.toLocaleString()}</span>
+                <span className="font-bold text-lg text-slate-900">{formatCurrency(total)}</span>
               </div>
             )}
 
