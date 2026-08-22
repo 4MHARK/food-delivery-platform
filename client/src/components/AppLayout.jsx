@@ -79,7 +79,7 @@ const AppLayout = ({
 
   const isOwner = user?.role === "OWNER";
   const isRider = user?.role === "RIDER";
-  const isAdmin = user?.role === "ADMIN";
+  const isAdmin = user?.role === "ADMIN" || user?.role === "SUPER_ADMIN";
   const desktopNav = desktopNavItems || (isAdmin ? [] : isOwner ? OWNER_NAV : isRider ? RIDER_NAV : DEFAULT_NAV);
   const bottomNav = bottomNavItems || (isAdmin ? [] : isOwner ? OWNER_NAV : isRider ? RIDER_NAV : DEFAULT_NAV);
   const currentPath = location.pathname;

@@ -65,7 +65,7 @@ router.post("/users", registerLimiter, validate(signupSchema), async (req, res, 
     });
 
     const token = jwt.sign(
-      { id: newUser.id, email: newUser.email, role: newUser.role },
+      { id: newUser.id, email: newUser.email, role: newUser.role, campusId: newUser.campusId },
       process.env.JWT_SECRET,
       { expiresIn: "1d" }
     );
@@ -78,6 +78,7 @@ router.post("/users", registerLimiter, validate(signupSchema), async (req, res, 
         name: newUser.name,
         email: newUser.email,
         role: newUser.role,
+        campusId: newUser.campusId,
         phone: newUser.phone,
         createdAt: newUser.createdAt,
       },
@@ -113,7 +114,8 @@ router.post("/users/login", loginLimiter, validate(loginSchema), async (req, res
      const token = jwt.sign({
       id: user.id,
       email: user.email,
-      role: user.role
+      role: user.role,
+      campusId: user.campusId
     },
     process.env.JWT_SECRET,
     {
@@ -130,6 +132,7 @@ router.post("/users/login", loginLimiter, validate(loginSchema), async (req, res
         email: user.email,
         phone: user.phone,
         role: user.role,
+        campusId: user.campusId,
         createdAt: user.createdAt,
         updatedAt: user.updatedAt,
       },

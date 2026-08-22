@@ -60,6 +60,12 @@ router.post("/riders/register", authMiddleware, validate(riderRegisterSchema), a
       data: { phone },
     });
 
+    // Default new riders to the Main Campus (explicit campus picker is a follow-up).
+    const campus = await prisma.campus.findFirst({ where: { name: "Main Campus" } });
+    if (!campus) {
+      return res.status(500).json({ message: "Default campus not found. Run the migration first." });
+    }
+
     const rider = await prisma.rider.create({
       data: {
         userId: req.user.id,
@@ -67,6 +73,7 @@ router.post("/riders/register", authMiddleware, validate(riderRegisterSchema), a
         licensePlate: licensePlate || null,
         licenseNumber: licenseNumber || null,
         matricNumber: matricNumber || null,
+        campusId: campus.id,
       },
       include: {
         user: {
