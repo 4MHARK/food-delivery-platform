@@ -128,6 +128,12 @@ router.post("/deliveries/:orderId/accept", authMiddleware, riderMiddleware, asyn
       });
     }
 
+    if (rider.isSuspended) {
+      return res.status(403).json({
+        message: "Your rider account has been suspended. Contact your campus admin.",
+      });
+    }
+
     const orderId = Number(req.params.orderId);
 
     // Active delivery statuses (non-terminal)

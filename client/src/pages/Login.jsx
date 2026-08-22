@@ -54,6 +54,8 @@ const Login = () => {
         navigate("/dashboard");
       } else if (data.user.role === "RIDER") {
         navigate("/rider");
+      } else if (data.user.role === "ADMIN" || data.user.role === "SUPER_ADMIN") {
+        navigate("/admin");
       } else {
         navigate("/restaurants");
       }

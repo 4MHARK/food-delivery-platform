@@ -6,7 +6,7 @@ const AdminRoute = ({ children }) => {
 
   if (!isAuthenticated) return <Navigate to="/login" replace />;
 
-  if (user?.role !== "ADMIN") return <Navigate to="/restaurants" replace />;
+  if (user?.role !== "ADMIN" && user?.role !== "SUPER_ADMIN") return <Navigate to="/restaurants" replace />;
 
   return children;
 };

@@ -31,7 +31,11 @@ async function attachRatings(restaurants) {
 router.get("/restaurants", async (req, res, next) => {
   try {
     const { category } = req.query;
-    const where = category ? { menuItems: { some: { category } } } : {};
+    // Only approved restaurants are visible to customers.
+    const where = {
+      approvalStatus: "APPROVED",
+      ...(category ? { menuItems: { some: { category } } } : {}),
+    };
     const restaurants = await prisma.restaurant.findMany({
       where,
       include: {
@@ -53,7 +57,7 @@ router.get("/restaurants", async (req, res, next) => {
 router.get("/restaurants/:id", async (req, res, next) => {
   try {
     const restaurant = await prisma.restaurant.findUnique({
-      where: { id: Number(req.params.id) },
+      where: { id: Number(req.params.id), approvalStatus: "APPROVED" },
       include: {
         owner: {
           select: { id: true, name: true, email: true },
@@ -100,6 +104,12 @@ router.post("/restaurants", authMiddleware, ownerMiddleware, validate(restaurant
       return res.status(400).json({ message: "You already have a restaurant. Each owner can only have one restaurant." });
     }
 
+    // Default new restaurants to the Main Campus (explicit campus picker is a follow-up).
+    const campus = await prisma.campus.findFirst({ where: { name: "Main Campus" } });
+    if (!campus) {
+      return res.status(500).json({ message: "Default campus not found. Run the migration first." });
+    }
+
     const newRestaurant = await prisma.restaurant.create({
       data: {
         name,
@@ -108,6 +118,7 @@ router.post("/restaurants", authMiddleware, ownerMiddleware, validate(restaurant
         phone,
         imageUrl,
         ownerId: req.user.id,
+        campusId: campus.id,
       },
       include: {
         owner: {

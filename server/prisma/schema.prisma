@@ -18,6 +18,7 @@ enum UserRole {
   OWNER
   RIDER
   ADMIN
+  SUPER_ADMIN
 }
 
 enum OrderStatus {
@@ -45,6 +46,24 @@ enum DeliveryStatus {
   FAILED
 }
 
+enum RestaurantApprovalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  SUSPENDED
+}
+
+model Campus {
+  id          Int          @id @default(autoincrement())
+  name        String
+  address     String?
+  users       User[]
+  restaurants Restaurant[]
+  riders      Rider[]
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+}
+
 
 model User {
   id        Int      @id @default(autoincrement())
@@ -59,10 +78,14 @@ model User {
   restaurantReviews RestaurantReview[]
   riderReviews      RiderReview[]
   favorites         CustomerFavorite[]
+  campusId          Int?
+  campus            Campus?  @relation(fields: [campusId], references: [id])
   resetTokenHash      String?
   resetTokenExpiresAt DateTime?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+
+  @@index([campusId])
 }
 
 model Rider {
@@ -74,12 +97,17 @@ model Rider {
   matricNumber  String?     @unique
   isAvailable   Boolean     @default(true)
   isVerified    Boolean     @default(false)
+  isSuspended   Boolean     @default(false)
+  campusId      Int
+  campus        Campus      @relation(fields: [campusId], references: [id])
   user          User        @relation(fields: [userId], references: [id])
   deliveries    Delivery[]
   rejectedOrders RejectedOrder[]
   reviews        RiderReview[]
   createdAt     DateTime    @default(now())
   updatedAt     DateTime    @updatedAt
+
+  @@index([campusId])
 }
 
 model Restaurant {
@@ -95,10 +123,14 @@ model Restaurant {
   favoritedBy CustomerFavorite[]
   ownerId   Int
   owner     User     @relation(fields: [ownerId], references: [id])
+  campusId  Int
+  campus    Campus   @relation(fields: [campusId], references: [id])
+  approvalStatus RestaurantApprovalStatus @default(PENDING)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@index([ownerId])
+  @@index([campusId])
 }
 
 model CustomerFavorite {

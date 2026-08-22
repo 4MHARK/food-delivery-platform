@@ -55,6 +55,19 @@ const RESTAURANTS = [
 async function main() {
   const password = await bcrypt.hash(DEMO_PASSWORD, 10);
 
+  // ── Campus (idempotent; the migration also creates Main Campus) ──
+  let campus = await prisma.campus.findFirst({ where: { name: "Main Campus" } });
+  if (!campus) {
+    campus = await prisma.campus.create({ data: { name: "Main Campus", address: "Lagos, Nigeria" } });
+  }
+
+  // ── Super admin (global; no campus) ──
+  const superAdmin = await prisma.user.upsert({
+    where: { email: "admin@chowzilla.com" },
+    update: {},
+    create: { name: "ChowZilla Admin", email: "admin@chowzilla.com", password, role: "SUPER_ADMIN" },
+  });
+
   // ── Users (upsert on unique email → safe to re-run) ──
   const owner = await prisma.user.upsert({
     where: { email: "owner@chowzilla.com" },
@@ -78,7 +91,7 @@ async function main() {
   await prisma.rider.upsert({
     where: { userId: riderUser.id },
     update: {},
-    create: { userId: riderUser.id, vehicleType: "Motorcycle", licenseNumber: "LAG-12345", matricNumber: "RID-001" },
+    create: { userId: riderUser.id, vehicleType: "Motorcycle", licenseNumber: "LAG-12345", matricNumber: "RID-001", campusId: campus.id },
   });
 
   // ── Restaurants + menu items ──
@@ -94,6 +107,8 @@ async function main() {
           phone: r.phone,
           imageUrl: "",
           ownerId: owner.id,
+          campusId: campus.id,
+          approvalStatus: "APPROVED",
         },
       });
     }
@@ -118,6 +133,7 @@ async function main() {
   }
 
   console.log("Seed complete ✅");
+  console.log(`  Admin:    ${superAdmin.email} / ${DEMO_PASSWORD}`);
   console.log(`  Owner:    ${owner.email} / ${DEMO_PASSWORD}`);
   console.log(`  Customer: ${customer.email} / ${DEMO_PASSWORD}`);
   console.log(`  Rider:    ${riderUser.email} / ${DEMO_PASSWORD}`);

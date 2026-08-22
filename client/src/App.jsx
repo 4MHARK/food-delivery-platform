@@ -31,7 +31,7 @@ function HomeRedirect() {
 
   // Logged in — route by role
   const dest =
-    user?.role === "ADMIN" ? "/admin"
+    user?.role === "ADMIN" || user?.role === "SUPER_ADMIN" ? "/admin"
     : user?.role === "OWNER" ? "/dashboard"
     : user?.role === "RIDER" ? "/rider"
     : "/restaurants";
