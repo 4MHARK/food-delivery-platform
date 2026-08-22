@@ -45,7 +45,7 @@ order payments, 2 separate files
 | D03 | DATABASE | P3 | No seed data file for development/demo | 30 min |(Done)
 | DV01 | DEVOPS | P1 | `client/.env.production` missing `VITE_PAYSTACK_PUBLIC_KEY` | 5 min |(Done)
 | DV02 | DEVOPS | P2 | `server/.env` contains live DB credentials + Paystack secret on disk (properly gitignored, not committed) | 5 min |(Done)
-| DV03 | DEVOPS | P3 | No test framework configured anywhere | 2+ hr |
+| DV03 | DEVOPS | P3 | No test framework configured anywhere | 2+ hr |(Deferred)
 
 ---
 
