@@ -40,7 +40,7 @@ order payments, 2 separate files
 | FS02 | FULL-STACK | P1 | No `.env.example` files anywhere | 10 min |(Done)
 | FS03 | FULL-STACK | P2 | `User.phone` vs `Rider.phone` — duplicated phone field | 30 min |(Done)
 | FS04 | FULL-STACK | P2 | Order status polling (30s) instead of SSE on owner dashboard | 1 hr |(Done)
-| D01 | DATABASE | P2 | No indexes on foreign key columns — query perf risk at scale | 30 min |
+| D01 | DATABASE | P2 | No indexes on foreign key columns — query perf risk at scale | 30 min |(Done)
 | D02 | DATABASE | P2 | Schema drift — current schema diverged from last migration | 1 hr |
 | D03 | DATABASE | P3 | No seed data file for development/demo | 30 min |
 | DV01 | DEVOPS | P1 | `client/.env.production` missing `VITE_PAYSTACK_PUBLIC_KEY` | 5 min |

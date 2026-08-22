@@ -97,6 +97,8 @@ model Restaurant {
   owner     User     @relation(fields: [ownerId], references: [id])
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  @@index([ownerId])
 }
 
 model CustomerFavorite {
@@ -124,6 +126,7 @@ model MenuItem {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  @@index([restaurantId])
 }
 
 model Order {
@@ -148,6 +151,7 @@ model Order {
   rejectedBy      RejectedOrder[]
   createdAt       DateTime    @default(now())
   updatedAt       DateTime    @updatedAt
+  @@index([restaurantId])
   @@unique([customerId, idempotencyKey])
 }
 
@@ -163,6 +167,8 @@ model Delivery {
   rider         Rider          @relation(fields: [riderId], references: [id])
   createdAt     DateTime       @default(now())
   updatedAt     DateTime       @updatedAt
+
+  @@index([riderId])
 }
 
 model RejectedOrder {
@@ -187,6 +193,9 @@ model OrderItem {
   menuItem   MenuItem @relation(fields: [menuItemId], references: [id])
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
+
+  @@index([orderId])
+  @@index([menuItemId])
 }
 
 model Payment {
