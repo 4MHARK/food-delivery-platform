@@ -36,10 +36,10 @@ order payments, 2 separate files
 | F16 | FRONTEND | P3 | Admin dashboard: 4 of 6 sections are "coming soon" | 2+ hr |(Later)
 | F17 | FRONTEND | P3 | No shared API client — ~35 raw `fetch()` calls copy-pasted | 2+ hr |(Done)
 | F18 | FRONTEND | P3 | No `utils/` or `hooks/` directory — logic embedded in pages | 2+ hr |(Done)
-| FS01 | FULL-STACK | P1 | Client calculates fees client-side for display; server recalculates — mismatch risk | 15 min |
-| FS02 | FULL-STACK | P1 | No `.env.example` files anywhere | 10 min |
-| FS03 | FULL-STACK | P2 | `User.phone` vs `Rider.phone` — duplicated phone field | 30 min |
-| FS04 | FULL-STACK | P2 | Order status polling (30s) instead of SSE on owner dashboard | 1 hr |
+| FS01 | FULL-STACK | P1 | Client calculates fees client-side for display; server recalculates — mismatch risk | 15 min |(Done)
+| FS02 | FULL-STACK | P1 | No `.env.example` files anywhere | 10 min |(Done)
+| FS03 | FULL-STACK | P2 | `User.phone` vs `Rider.phone` — duplicated phone field | 30 min |(Done)
+| FS04 | FULL-STACK | P2 | Order status polling (30s) instead of SSE on owner dashboard | 1 hr |(Done)
 | D01 | DATABASE | P2 | No indexes on foreign key columns — query perf risk at scale | 30 min |
 | D02 | DATABASE | P2 | Schema drift — current schema diverged from last migration | 1 hr |
 | D03 | DATABASE | P3 | No seed data file for development/demo | 30 min |

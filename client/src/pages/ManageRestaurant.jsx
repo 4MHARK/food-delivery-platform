@@ -4,6 +4,7 @@ import { useAuth } from "../context/AuthContext";
 import AppLayout, { OWNER_NAV } from "../components/AppLayout";
 import { api } from "../lib/api";
 import { useNotificationPermission, notify } from "../hooks/useNotifications";
+import { useSSE } from "../hooks/useSSE";
 import { formatCurrency } from "../lib/format";
 
 const ORDER_STATUS = {
@@ -23,7 +24,6 @@ const initialMenuForm = { name: "", description: "", price: "", category: "", im
 const Dashboard = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
-  const pollRef = useRef(null);
   const prevPendingRef = useRef(0);
 
   // ── Core state ──
@@ -108,36 +108,40 @@ const Dashboard = () => {
     init();
   }, [fetchRestaurant, fetchMenu, fetchOrders]);
 
-  // ── Poll for new orders (notification only, does not refresh the list) ──
+  // ── Live order updates via SSE (replaces 30s polling) ──
   useNotificationPermission(!!restaurant);
 
+  // Baseline of how many pending orders we've already shown, so an SSE refresh
+  // only fires the "new order" toast when the count actually goes up (and stays
+  // in sync when we accept/reject orders ourselves).
   useEffect(() => {
-    if (pollRef.current) clearInterval(pollRef.current);
-    if (restaurant) {
-      // Set initial count from already-loaded orders
-      prevPendingRef.current = orders.filter((o) => o.status === "PENDING_RESTAURANT_CONFIRMATION").length;
-      pollRef.current = setInterval(async () => {
-        try {
-          const data = await api.get(`/restaurants/${restaurant.id}/orders`);
-          const currentPending = (data.orders || []).filter(
-            (o) => o.status === "PENDING_RESTAURANT_CONFIRMATION"
-          ).length;
-          if (currentPending > prevPendingRef.current) {
-            const diff = currentPending - prevPendingRef.current;
-            showMsg(`🔔 ${diff} new order${diff > 1 ? "s" : ""} received!`);
-            setOrders(data.orders || []);
-            setLastUpdated(new Date());
-            notify("New Order!", {
-              body: `${diff} new order${diff > 1 ? "s" : ""} received!`,
-              icon: "/favicon.svg",
-            });
-          }
-          prevPendingRef.current = currentPending;
-        } catch { /* silent — notification poll should not disturb the user */ }
-      }, 30000);
-    }
-    return () => { if (pollRef.current) clearInterval(pollRef.current); };
-  }, [restaurant]);
+    prevPendingRef.current = orders.filter((o) => o.status === "PENDING_RESTAURANT_CONFIRMATION").length;
+  }, [orders]);
+
+  useSSE(
+    async () => {
+      if (!restaurant) return;
+      try {
+        const data = await api.get(`/restaurants/${restaurant.id}/orders`);
+        const freshOrders = data.orders || [];
+        const currentPending = freshOrders.filter(
+          (o) => o.status === "PENDING_RESTAURANT_CONFIRMATION"
+        ).length;
+        if (currentPending > prevPendingRef.current) {
+          const diff = currentPending - prevPendingRef.current;
+          showMsg(`🔔 ${diff} new order${diff > 1 ? "s" : ""} received!`);
+          setOrders(freshOrders);
+          setLastUpdated(new Date());
+          notify("New Order!", {
+            body: `${diff} new order${diff > 1 ? "s" : ""} received!`,
+            icon: "/favicon.svg",
+          });
+        }
+        prevPendingRef.current = currentPending;
+      } catch { /* silent — an SSE refresh shouldn't disturb the user */ }
+    },
+    { enabled: !!restaurant, deps: [restaurant?.id] }
+  );
 
   // ── Order actions ──
   const handleAcceptOrder = async (orderId) => {
