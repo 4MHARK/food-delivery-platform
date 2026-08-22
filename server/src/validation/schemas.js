@@ -17,18 +17,25 @@ export const loginSchema = z.object({
 
 // ── Checkout ──
 
+const orderItems = z
+  .array(
+    z.object({
+      menuItemId: z.coerce.number().int("Menu item id must be a whole number").positive("Menu item id must be positive"),
+      quantity: z.coerce.number().int("Quantity must be a whole number").min(1, "Quantity must be at least 1"),
+    })
+  )
+  .min(1, "Order must have at least one item");
+
 export const checkoutSchema = z.object({
   restaurantId: z.coerce.number().int("Restaurant id must be a whole number").positive("Restaurant id must be positive"),
   deliveryAddress: z.string().trim().min(1, "Delivery address is required"),
   idempotencyKey: z.string().trim().min(1, "Idempotency key is required"),
-  items: z
-    .array(
-      z.object({
-        menuItemId: z.coerce.number().int("Menu item id must be a whole number").positive("Menu item id must be positive"),
-        quantity: z.coerce.number().int("Quantity must be a whole number").min(1, "Quantity must be at least 1"),
-      })
-    )
-    .min(1, "Order must have at least one item"),
+  items: orderItems,
+});
+
+export const estimateSchema = z.object({
+  restaurantId: z.coerce.number().int("Restaurant id must be a whole number").positive("Restaurant id must be positive"),
+  items: orderItems,
 });
 
 // ── Restaurant ──

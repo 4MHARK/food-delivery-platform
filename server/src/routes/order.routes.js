@@ -3,13 +3,52 @@ import prisma from "../config/prisma.js";
 import authMiddleware from "../middleware/auth.middleware.js";
 import ownerMiddleware from "../middleware/owner.middleware.js";
 import { validate } from "../middleware/validate.js";
-import { checkoutSchema } from "../validation/schemas.js";
+import { checkoutSchema, estimateSchema } from "../validation/schemas.js";
 import { calculateFees } from "../services/feecalculator.js";
 import { notify } from "../services/events.js";
 import crypto from "crypto";
 import { checkoutLimiter } from "../middleware/rate-limiter.js";
 
 const router = express.Router();
+
+// Resolve + price cart items against the DB. Shared by checkout and estimate so the
+// server stays the single source of truth for what an order actually costs.
+async function resolveOrderItems(restaurantId, items) {
+  const restaurant = await prisma.restaurant.findUnique({
+    where: { id: Number(restaurantId) },
+  });
+  if (!restaurant) {
+    return { error: { status: 404, message: "Restaurant not found" } };
+  }
+
+  const validatedItems = [];
+  for (const item of items) {
+    const menuItem = await prisma.menuItem.findUnique({
+      where: { id: item.menuItemId },
+    });
+
+    if (!menuItem) {
+      return { error: { status: 404, message: `Menu item "${item.menuItemId}" not found` } };
+    }
+
+    if (menuItem.restaurantId !== Number(restaurantId)) {
+      return {
+        error: {
+          status: 400,
+          message: `"${menuItem.name}" belongs to a different restaurant. You can only order from one restaurant at a time.`,
+        },
+      };
+    }
+
+    validatedItems.push({
+      unitPrice: Number(menuItem.price),
+      quantity: item.quantity,
+      menuItemId: item.menuItemId,
+    });
+  }
+
+  return { validatedItems };
+}
 
 // ── Checkout: create order + payment ──
 router.post("/orders/checkout", checkoutLimiter, authMiddleware, validate(checkoutSchema), async (req, res, next) => {
@@ -18,44 +57,14 @@ router.post("/orders/checkout", checkoutLimiter, authMiddleware, validate(checko
 
     // 1. Input validated by validate(checkoutSchema) middleware (zod)
 
-    // 2. Check restaurant exists
-    const restaurant = await prisma.restaurant.findUnique({
-      where: { id: Number(restaurantId) },
-    });
-    if (!restaurant) {
-      return res.status(404).json({ message: "Restaurant not found" });
-    }
+    // 2. Check restaurant exists + validate menu items (exist + all belong to this restaurant)
+    const { validatedItems, error } = await resolveOrderItems(restaurantId, items);
+    if (error) return res.status(error.status).json({ message: error.message });
 
-    // 3. Validate menu items: exist + all belong to this restaurant
-    const validatedItems = [];
-    for (const item of items) {
-      const menuItem = await prisma.menuItem.findUnique({
-        where: { id: item.menuItemId },
-      });
-
-      if (!menuItem) {
-        return res.status(404).json({
-          message: `Menu item "${item.menuItemId}" not found`,
-        });
-      }
-
-      if (menuItem.restaurantId !== Number(restaurantId)) {
-        return res.status(400).json({
-          message: `"${menuItem.name}" belongs to a different restaurant. You can only order from one restaurant at a time.`,
-        });
-      }
-
-      validatedItems.push({
-        unitPrice: Number(menuItem.price),
-        quantity: item.quantity,
-        menuItemId: item.menuItemId,
-      });
-    }
-
-    // 4. Calculate fees on the backend (never trust frontend totals)
+    // 3. Calculate fees on the backend (never trust frontend totals)
     const fees = calculateFees(validatedItems);
 
-    // 5. Create the order — idempotent: a duplicate (customerId, idempotencyKey) returns the existing order
+    // 4. Create the order — idempotent: a duplicate (customerId, idempotencyKey) returns the existing order
     let order;
     try {
       order = await prisma.order.create({
@@ -110,7 +119,7 @@ router.post("/orders/checkout", checkoutLimiter, authMiddleware, validate(checko
       throw error;
     }
 
-    // 6. Create payment record
+    // 5. Create payment record
     const reference = `CHOW-${Date.now()}-${crypto.randomBytes(4).toString("hex")}`;
     const payment = await prisma.payment.create({
       data: {
@@ -121,7 +130,7 @@ router.post("/orders/checkout", checkoutLimiter, authMiddleware, validate(checko
       },
     });
 
-    // 7. Return everything
+    // 6. Return everything
     res.status(201).json({
       message: "Order created — payment pending",
       order,
@@ -130,6 +139,21 @@ router.post("/orders/checkout", checkoutLimiter, authMiddleware, validate(checko
     });
   } catch (error) {
     next(error)
+  }
+});
+
+// ── Estimate fees (no order created) — the cart calls this so the total it shows is
+//    always the server's real number, never a client-side guess ──
+router.post("/orders/estimate", authMiddleware, validate(estimateSchema), async (req, res, next) => {
+  try {
+    const { restaurantId, items } = req.body;
+    const { validatedItems, error } = await resolveOrderItems(restaurantId, items);
+    if (error) return res.status(error.status).json({ message: error.message });
+
+    const fees = calculateFees(validatedItems);
+    res.status(200).json({ message: "Fees estimated", fees });
+  } catch (error) {
+    next(error);
   }
 });
 

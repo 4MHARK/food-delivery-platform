@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { useCart } from "../context/CartContext";
@@ -14,6 +14,7 @@ const Cart = () => {
   const [placing, setPlacing] = useState(false);
   const [error, setError] = useState("");
   const idempotencyKeyRef = useRef(null);
+  const [feesByRestaurant, setFeesByRestaurant] = useState({});
 
   // Group items by restaurant
   const grouped = items.reduce((acc, item) => {
@@ -103,6 +104,45 @@ const Cart = () => {
     }
   };
 
+  // Fetch server-computed fees for each restaurant group. The server is the single
+  // source of truth for money — the cart only ever displays its numbers.
+  useEffect(() => {
+    if (items.length === 0) {
+      setFeesByRestaurant({});
+      return;
+    }
+
+    let cancelled = false;
+    const groups = items.reduce((acc, item) => {
+      if (!acc[item.restaurantId]) acc[item.restaurantId] = [];
+      acc[item.restaurantId].push(item);
+      return acc;
+    }, {});
+
+    const fetchFees = async () => {
+      const next = {};
+      await Promise.all(
+        Object.entries(groups).map(async ([restaurantId, groupItems]) => {
+          try {
+            const data = await api.post("/orders/estimate", {
+              restaurantId: Number(restaurantId),
+              items: groupItems.map((i) => ({ menuItemId: i.menuItemId, quantity: i.quantity })),
+            });
+            next[restaurantId] = data.fees;
+          } catch {
+            // Leave undefined → the UI shows a placeholder until the server responds
+          }
+        })
+      );
+      if (!cancelled) setFeesByRestaurant(next);
+    };
+    fetchFees();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [items]);
+
   return (
     <AppLayout onBack={() => navigate(-1)} showCart={false} showUserDropdown={false}>
       <div className="px-4 lg:px-8 max-w-2xl mx-auto pt-8 pb-24 md:pb-8">
@@ -147,10 +187,7 @@ const Cart = () => {
 
             {Object.values(grouped).map((group) => {
               const groupTotal = group.items.reduce((sum, i) => sum + i.price * i.quantity, 0);
-              const estDelivery = 400;
-              const estService = 200;
-              const estTax = Math.round(groupTotal * 0.075);
-              const estTotal = groupTotal + estDelivery + estService + estTax;
+              const fees = feesByRestaurant[group.restaurantId];
               return (
                 <div key={group.restaurantId} className="bg-white rounded-2xl shadow-sm overflow-hidden">
                   <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
@@ -201,19 +238,19 @@ const Cart = () => {
                       </div>
                       <div className="flex justify-between text-slate-500">
                         <span>Delivery fee</span>
-                        <span>{formatCurrency(estDelivery)}</span>
+                        <span>{fees ? formatCurrency(fees.deliveryFee) : "—"}</span>
                       </div>
                       <div className="flex justify-between text-slate-500">
                         <span>Service fee</span>
-                        <span>{formatCurrency(estService)}</span>
+                        <span>{fees ? formatCurrency(fees.serviceFee) : "—"}</span>
                       </div>
                       <div className="flex justify-between text-slate-500">
-                        <span>Tax (7.5%)</span>
-                        <span>{formatCurrency(estTax)}</span>
+                        <span>Tax</span>
+                        <span>{fees ? formatCurrency(fees.tax) : "—"}</span>
                       </div>
                       <div className="flex justify-between font-bold text-slate-900 pt-1.5 border-t border-slate-200">
                         <span>Total</span>
-                        <span>{formatCurrency(estTotal)}</span>
+                        <span>{fees ? formatCurrency(fees.totalAmount) : "—"}</span>
                       </div>
                     </div>
                     <div className="flex items-center justify-between">
