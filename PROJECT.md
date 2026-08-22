@@ -153,7 +153,12 @@ A food delivery platform where customers order from restaurants. Built with Reac
 
 ## Known Bugs
 
-*None currently.*
+| # | Bug | Root cause | Status |
+|---|-----|-----------|--------|
+| 1 | Order page blank on iPhone after ordering | No error boundary (any uncaught render error blanks the app) + `crypto.randomUUID()` unavailable in non-HTTPS (LAN) mobile contexts + Paystack `onClose`/`onCancel` double-navigation | Fixed 2026-08-22 |
+| 2 | Restaurant order-status dropdown buttons don't work | Dropdown offered `OUT_FOR_DELIVERY`/`DELIVERED`, which `PUT /orders/:id/status` rejects — those are rider actions, not owner actions | Fixed 2026-08-22 |
+| 3 | Customer order tracking duplicated / misrendered | "Order Progress" timeline and "Delivery Tracker" both render at the same time when the order is `OUT_FOR_DELIVERY` | Fixed 2026-08-22 |
+| 4 | Blank page after going back from Paystack to add more items | Cart cleared + force-navigated to the order page on Paystack cancel/close, trapping the user in a broken state | Fixed 2026-08-22 |
 
 ---
 

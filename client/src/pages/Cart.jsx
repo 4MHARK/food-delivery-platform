@@ -14,6 +14,7 @@ const Cart = () => {
   const [placing, setPlacing] = useState(false);
   const [error, setError] = useState("");
   const idempotencyKeyRef = useRef(null);
+  const paymentHandledRef = useRef(false);
   const [feesByRestaurant, setFeesByRestaurant] = useState({});
 
   // Group items by restaurant
@@ -35,9 +36,13 @@ const Cart = () => {
       return;
     }
 
-    // Generate an idempotency key once per checkout attempt — reused on retry
+    // Generate an idempotency key once per checkout attempt — reused on retry.
+    // crypto.randomUUID() is unavailable in non-HTTPS contexts (e.g. testing over
+    // a LAN IP on a phone), so fall back to a timestamped random string.
     if (!idempotencyKeyRef.current) {
-      idempotencyKeyRef.current = crypto.randomUUID();
+      idempotencyKeyRef.current =
+        (typeof crypto !== "undefined" && crypto.randomUUID && crypto.randomUUID()) ||
+        `order-${Date.now()}-${Math.random().toString(36).slice(2)}`;
     }
 
     try {
@@ -69,11 +74,12 @@ const Cart = () => {
 
       // Order created — reset the key so the next order gets a fresh one
       idempotencyKeyRef.current = null;
+      // Reset the handler so a fresh attempt can navigate again
+      paymentHandledRef.current = false;
 
-      // Step 2: Clear cart items (the order exists regardless of payment outcome)
-      restaurantItems.forEach((item) => clearItem(item.menuItemId));
-
-      // Step 3: Open Paystack popup for payment
+      // Open Paystack popup for payment. The cart is NOT cleared here — items are
+      // only removed once payment is confirmed, so cancelling the popup leaves the
+      // user's cart intact (they can add more items or retry).
       const handler = PaystackPop.setup({
         key: import.meta.env.VITE_PAYSTACK_PUBLIC_KEY,
         email: user.email,
@@ -81,9 +87,12 @@ const Cart = () => {
         currency: "NGN",
         ref: payment.reference,
         onSuccess: async () => {
-          // Step 4: Verify payment on the backend
+          // Paystack fires onClose after success too — act only once.
+          if (paymentHandledRef.current) return;
+          paymentHandledRef.current = true;
           try {
             await api.post("/payments/verify", { reference: payment.reference });
+            restaurantItems.forEach((item) => clearItem(item.menuItemId));
             navigate(`/orders/${order.id}`);
           } catch {
             // Surface the failure instead of silently swallowing it
@@ -91,10 +100,12 @@ const Cart = () => {
           }
         },
         onCancel: () => {
-          navigate(`/orders/${order.id}`);
+          // User closed the popup without paying — stay on the cart.
+          paymentHandledRef.current = true;
         },
         onClose: () => {
-          navigate(`/orders/${order.id}`);
+          // Always fires when the popup closes (including after success/cancel).
+          paymentHandledRef.current = true;
         },
       });
       handler.openIframe();
