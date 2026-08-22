@@ -35,7 +35,7 @@ order payments, 2 separate files
 | F15 | FRONTEND | P3 | Profile page: 3 of 4 tabs are "coming soon" placeholders | 2+ hr |(Done)
 | F16 | FRONTEND | P3 | Admin dashboard: 4 of 6 sections are "coming soon" | 2+ hr |(Later)
 | F17 | FRONTEND | P3 | No shared API client — ~35 raw `fetch()` calls copy-pasted | 2+ hr |(Done)
-| F18 | FRONTEND | P3 | No `utils/` or `hooks/` directory — logic embedded in pages | 2+ hr |
+| F18 | FRONTEND | P3 | No `utils/` or `hooks/` directory — logic embedded in pages | 2+ hr |(Done)
 | FS01 | FULL-STACK | P1 | Client calculates fees client-side for display; server recalculates — mismatch risk | 15 min |
 | FS02 | FULL-STACK | P1 | No `.env.example` files anywhere | 10 min |
 | FS03 | FULL-STACK | P2 | `User.phone` vs `Rider.phone` — duplicated phone field | 30 min |

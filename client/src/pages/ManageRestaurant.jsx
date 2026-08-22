@@ -3,6 +3,8 @@ import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import AppLayout, { OWNER_NAV } from "../components/AppLayout";
 import { api } from "../lib/api";
+import { useNotificationPermission, notify } from "../hooks/useNotifications";
+import { formatCurrency } from "../lib/format";
 
 const ORDER_STATUS = {
   PENDING_PAYMENT:                   { label: "Pending Payment", color: "bg-amber-100 text-amber-700 border-amber-200", dot: "bg-amber-500" },
@@ -107,13 +109,11 @@ const Dashboard = () => {
   }, [fetchRestaurant, fetchMenu, fetchOrders]);
 
   // ── Poll for new orders (notification only, does not refresh the list) ──
+  useNotificationPermission(!!restaurant);
+
   useEffect(() => {
     if (pollRef.current) clearInterval(pollRef.current);
     if (restaurant) {
-      // Request browser notification permission
-      if (Notification.permission === "default") {
-        Notification.requestPermission();
-      }
       // Set initial count from already-loaded orders
       prevPendingRef.current = orders.filter((o) => o.status === "PENDING_RESTAURANT_CONFIRMATION").length;
       pollRef.current = setInterval(async () => {
@@ -127,13 +127,10 @@ const Dashboard = () => {
             showMsg(`🔔 ${diff} new order${diff > 1 ? "s" : ""} received!`);
             setOrders(data.orders || []);
             setLastUpdated(new Date());
-            // Browser notification
-            if (Notification.permission === "granted") {
-              new Notification("New Order!", {
-                body: `${diff} new order${diff > 1 ? "s" : ""} received!`,
-                icon: "/favicon.svg",
-              });
-            }
+            notify("New Order!", {
+              body: `${diff} new order${diff > 1 ? "s" : ""} received!`,
+              icon: "/favicon.svg",
+            });
           }
           prevPendingRef.current = currentPending;
         } catch { /* silent — notification poll should not disturb the user */ }
@@ -621,7 +618,7 @@ const Dashboard = () => {
                         <p className="text-sm font-semibold text-slate-900 truncate">{item.name}</p>
                         <div className="flex items-center gap-2">
                           <span className="text-xs text-slate-400">{item.category}</span>
-                          <span className="text-xs font-bold text-slate-700">₦{Number(item.price).toLocaleString()}</span>
+                          <span className="text-xs font-bold text-slate-700">{formatCurrency(Number(item.price))}</span>
                         </div>
                       </div>
                     </div>
@@ -755,7 +752,7 @@ const Dashboard = () => {
                                 <span className="text-slate-600">
                                   {item.quantity}&times; {item.menuItem?.name || `Item #${item.menuItemId}`}
                                 </span>
-                                <span className="text-slate-400 text-xs">₦{(item.unitPrice * item.quantity).toLocaleString()}</span>
+                                <span className="text-slate-400 text-xs">{formatCurrency((item.unitPrice * item.quantity))}</span>
                               </div>
                             ))}
                           </div>
@@ -764,7 +761,7 @@ const Dashboard = () => {
                               <span className="material-symbols-outlined text-sm shrink-0">location_on</span>
                               <span className="truncate">{order.deliveryAddress}</span>
                             </div>
-                            <span className="text-sm font-bold text-slate-900 shrink-0 ml-2">₦{Number(order.totalAmount).toLocaleString()}</span>
+                            <span className="text-sm font-bold text-slate-900 shrink-0 ml-2">{formatCurrency(Number(order.totalAmount))}</span>
                           </div>
                         </div>
                       ))}
@@ -818,7 +815,7 @@ const Dashboard = () => {
                                   <span className="text-slate-600">
                                     {item.quantity}&times; {item.menuItem?.name || `Item #${item.menuItemId}`}
                                   </span>
-                                  <span className="text-slate-400 text-xs">₦{(item.unitPrice * item.quantity).toLocaleString()}</span>
+                                  <span className="text-slate-400 text-xs">{formatCurrency((item.unitPrice * item.quantity))}</span>
                                 </div>
                               ))}
                             </div>
@@ -827,7 +824,7 @@ const Dashboard = () => {
                                 <span className="material-symbols-outlined text-sm shrink-0">location_on</span>
                                 <span className="truncate">{order.deliveryAddress}</span>
                               </div>
-                              <span className="text-sm font-bold text-slate-900 shrink-0 ml-2">₦{Number(order.totalAmount).toLocaleString()}</span>
+                              <span className="text-sm font-bold text-slate-900 shrink-0 ml-2">{formatCurrency(Number(order.totalAmount))}</span>
                             </div>
                           </div>
                         );
@@ -866,7 +863,7 @@ const Dashboard = () => {
                                   {new Date(order.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
                                 </p>
                               </div>
-                              <span className="text-sm font-bold text-slate-400 shrink-0">₦{Number(order.totalAmount).toLocaleString()}</span>
+                              <span className="text-sm font-bold text-slate-400 shrink-0">{formatCurrency(Number(order.totalAmount))}</span>
                             </div>
                           </div>
                         );

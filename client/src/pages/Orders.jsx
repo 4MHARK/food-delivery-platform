@@ -4,6 +4,8 @@ import { useAuth } from "../context/AuthContext";
 import AppLayout from "../components/AppLayout";
 import OrderCard, { STATUS } from "../components/OrderCard";
 import { api } from "../lib/api";
+import { useSSE } from "../hooks/useSSE";
+import { useNotificationPermission, notify } from "../hooks/useNotifications";
 
 const Orders = () => {
   const navigate = useNavigate();
@@ -28,74 +30,33 @@ const Orders = () => {
   }, []);
 
   // ── SSE: real-time status updates ──
+  useNotificationPermission();
 
+  useSSE(async () => {
+    try {
+      const data = await api.get("/orders");
+      const freshOrders = data.orders || [];
 
-  useEffect(() => {
-    if (Notification.permission === "default") {
-      Notification.requestPermission();
-    }
+      // Which orders changed status? (compare against current state)
+      const changed = freshOrders.filter((fresh) => {
+        const old = orders.find((o) => o.id === fresh.id);
+        return old && old.status !== fresh.status;
+      });
 
-    let failSince = null;
-    let es = null;
-
-    async function connect() {
-      let ticket;
-      try {
-        const data = await api.post("/sseTicket");
-        ticket = data.ticket;
-      } catch {
-        return;
+      // Notify for each changed order (browser batches notifications)
+      for (const order of changed) {
+        const label = STATUS[order.status]
+          ? STATUS[order.status].label
+          : order.status;
+        notify("Order Updated", {
+          body: `Order #${order.id} is now "${label}"`,
+          icon: "/favicon.svg",
+        });
       }
 
-      es = new EventSource(
-        `${import.meta.env.VITE_API_URL}/events?ticket=${encodeURIComponent(ticket)}`
-      );
-
-      es.onmessage = async () => {
-        try {
-          const data = await api.get("/orders");
-          const freshOrders = data.orders || [];
-          setOrders((prev) => {
-            const changed = freshOrders.filter((fresh) => {
-              const old = prev.find((o) => o.id === fresh.id);
-              return old && old.status !== fresh.status;
-            });
-
-            // Notify for each changed order (browser batches notifications)
-            if (Notification.permission === "granted") {
-              for (const order of changed) {
-                const label = STATUS[order.status]
-                  ? STATUS[order.status].label
-                  : order.status;
-                new Notification("Order Updated", {
-                  body: `Order #${order.id} is now "${label}"`,
-                  icon: "/favicon.svg",
-                });
-              }
-            }
-            return freshOrders;
-          });
-        } catch { /* silent */ }
-      };
-
-      es.onerror = () => {
-        if (!failSince) failSince = Date.now();
-        if (Date.now() - failSince > 30_000) {
-          es.close();
-        }
-      };
-
-      es.onopen = () => {
-        failSince = null; // reset — connection is back
-      };
-    }
-
-    connect();
-
-    return () => {
-      if (es) es.close();
-    };
-  }, []);
+      setOrders(freshOrders);
+    } catch { /* silent */ }
+  });
 
   const renderContent = () => {
     // LOADING

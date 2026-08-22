@@ -5,6 +5,7 @@ import { useAuth } from "../context/AuthContext";
 import { useFavorites } from "../hooks/useFavorites";
 import AppLayout from "../components/AppLayout";
 import { api } from "../lib/api";
+import { formatCurrency } from "../lib/format";
 
 const RestaurantDetail = () => {
   const { id } = useParams();
@@ -365,7 +366,7 @@ const RestaurantDetail = () => {
                         <p className="text-xs md:text-sm text-slate-500 line-clamp-2 mt-1 leading-relaxed">{item.description}</p>
                       </div>
                       <div className="flex items-center justify-between mt-3">
-                        <span className="text-sm md:text-base font-bold text-slate-900">₦{Number(item.price).toLocaleString()}</span>
+                        <span className="text-sm md:text-base font-bold text-slate-900">{formatCurrency(Number(item.price))}</span>
                         {item.isAvailable ? (
                           qty > 0 ? (
                             <div className="flex items-center gap-2">
@@ -407,7 +408,7 @@ const RestaurantDetail = () => {
               <span className="font-bold text-sm">View Cart</span>
             </div>
             <span className="font-bold text-amber-400 text-sm">
-              ₦{cartItems.reduce((sum, i) => sum + i.price * i.quantity, 0).toLocaleString()}
+              {formatCurrency(cartItems.reduce((sum, i) => sum + i.price * i.quantity, 0))}
             </span>
           </button>
         </div>

@@ -4,6 +4,7 @@ import { useAuth } from "../context/AuthContext";
 import { useCart } from "../context/CartContext";
 import AppLayout from "../components/AppLayout";
 import { api } from "../lib/api";
+import { formatCurrency } from "../lib/format";
 
 const Cart = () => {
   const navigate = useNavigate();
@@ -170,7 +171,7 @@ const Cart = () => {
                       <div key={item.menuItemId} className="px-5 py-4 flex items-center justify-between">
                         <div className="flex-1 min-w-0">
                           <p className="text-sm font-semibold text-slate-900 truncate">{item.name}</p>
-                          <p className="text-sm text-slate-500">₦{Number(item.price).toLocaleString()} each</p>
+                          <p className="text-sm text-slate-500">{formatCurrency(Number(item.price))} each</p>
                         </div>
                         <div className="flex items-center gap-3">
                           <button onClick={() => removeItem(item.menuItemId)} className="w-8 h-8 rounded-full bg-slate-100 text-slate-600 hover:bg-slate-200 flex items-center justify-center transition active:scale-90">
@@ -196,23 +197,23 @@ const Cart = () => {
                     <div className="space-y-1.5 mb-4 text-sm">
                       <div className="flex justify-between text-slate-500">
                         <span>Subtotal</span>
-                        <span>₦{groupTotal.toLocaleString()}</span>
+                        <span>{formatCurrency(groupTotal)}</span>
                       </div>
                       <div className="flex justify-between text-slate-500">
                         <span>Delivery fee</span>
-                        <span>₦{estDelivery.toLocaleString()}</span>
+                        <span>{formatCurrency(estDelivery)}</span>
                       </div>
                       <div className="flex justify-between text-slate-500">
                         <span>Service fee</span>
-                        <span>₦{estService.toLocaleString()}</span>
+                        <span>{formatCurrency(estService)}</span>
                       </div>
                       <div className="flex justify-between text-slate-500">
                         <span>Tax (7.5%)</span>
-                        <span>₦{estTax.toLocaleString()}</span>
+                        <span>{formatCurrency(estTax)}</span>
                       </div>
                       <div className="flex justify-between font-bold text-slate-900 pt-1.5 border-t border-slate-200">
                         <span>Total</span>
-                        <span>₦{estTotal.toLocaleString()}</span>
+                        <span>{formatCurrency(estTotal)}</span>
                       </div>
                     </div>
                     <div className="flex items-center justify-between">
@@ -235,7 +236,7 @@ const Cart = () => {
             {Object.keys(grouped).length > 1 && (
               <div className="flex items-center justify-between bg-white rounded-2xl shadow-sm px-5 py-4">
                 <span className="font-bold text-slate-900">Total</span>
-                <span className="font-bold text-lg text-slate-900">₦{total.toLocaleString()}</span>
+                <span className="font-bold text-lg text-slate-900">{formatCurrency(total)}</span>
               </div>
             )}
 

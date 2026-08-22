@@ -3,6 +3,9 @@ import { useParams, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import AppLayout from "../components/AppLayout";
 import { api } from "../lib/api";
+import { useSSE } from "../hooks/useSSE";
+import { useNotificationPermission, notify } from "../hooks/useNotifications";
+import { formatCurrency } from "../lib/format";
 
 const STATUS_FLOW = [
   { key: "PENDING_PAYMENT", label: "Placed", icon: "receipt" },
@@ -144,78 +147,41 @@ const OrderDetail = () => {
   }, [id]);
 
   // ── SSE: real-time status updates ──
-  useEffect(() => {
-    if (Notification.permission === "default") {
-      Notification.requestPermission();
-    }
+  useNotificationPermission();
 
-    let failSince = null;
-    let es = null;
+  useSSE(async () => {
+    try {
+      const data = await api.get(`/orders/${id}`);
+      const fresh = data.order;
 
-    async function connect() {
-      let ticket;
-      try {
-        const data = await api.post("/sseTicket");
-        ticket = data.ticket;
-      } catch {
+      if (!order) {
+        setOrder(fresh);
         return;
       }
 
-      es = new EventSource(
-        `${import.meta.env.VITE_API_URL}/events?ticket=${encodeURIComponent(ticket)}`
-      );
+      const orderStatusChanged = fresh.status !== order.status;
+      const deliveryStatusChanged =
+        fresh.delivery?.status !== order.delivery?.status;
 
-      es.onmessage = async () => {
-        try {
-          const data = await api.get(`/orders/${id}`);
-          const fresh = data.order;
-          setOrder((prev) => {
-            if (!prev) return fresh;
+      if (!orderStatusChanged && !deliveryStatusChanged) return;
 
-            const orderStatusChanged = fresh.status !== prev.status;
-            const deliveryStatusChanged =
-              fresh.delivery?.status !== prev.delivery?.status;
+      if (orderStatusChanged) {
+        const label = fresh.status.replace(/_/g, " ").toLowerCase();
+        notify("Order Updated", {
+          body: `Order #${fresh.id} is now ${label}`,
+          icon: "/favicon.svg",
+        });
+      } else if (deliveryStatusChanged) {
+        const step = DELIVERY_STEPS.find((s) => s.key === fresh.delivery?.status);
+        notify("Delivery Update", {
+          body: `Your rider: "${step?.label || "Status updated"}"`,
+          icon: "/favicon.svg",
+        });
+      }
 
-            if (!orderStatusChanged && !deliveryStatusChanged) return prev;
-
-            if (Notification.permission === "granted") {
-              if (orderStatusChanged) {
-                const label = fresh.status.replace(/_/g, " ").toLowerCase();
-                new Notification("Order Updated", {
-                  body: `Order #${fresh.id} is now ${label}`,
-                  icon: "/favicon.svg",
-                });
-              } else if (deliveryStatusChanged) {
-                const step = DELIVERY_STEPS.find((s) => s.key === fresh.delivery?.status);
-                new Notification("Delivery Update", {
-                  body: `Your rider: "${step?.label || "Status updated"}"`,
-                  icon: "/favicon.svg",
-                });
-              }
-            }
-            return fresh;
-          });
-        } catch { /* silent */ }
-      };
-
-      es.onerror = () => {
-        if (!failSince) failSince = Date.now();
-        if (Date.now() - failSince > 30_000) {
-          es.close();
-        }
-      };
-
-      es.onopen = () => {
-        failSince = null; // reset — connection is back
-      };
-    }
-
-    connect();
-
-    return () => {
-      if (es) es.close();
-    };
-  }, [id]);
+      setOrder(fresh);
+    } catch { /* silent */ }
+  }, { deps: [id] });
 
   const getStepState = (stepKey) => {
     if (!order) return "upcoming";
@@ -578,10 +544,10 @@ const OrderDetail = () => {
                   </div>
                   <div>
                     <p className="text-sm font-semibold text-slate-900">{item.menuItem?.name || `Item #${item.menuItemId}`}</p>
-                    <p className="text-xs text-slate-400">₦{Number(item.unitPrice).toLocaleString()} × {item.quantity}</p>
+                    <p className="text-xs text-slate-400">{formatCurrency(Number(item.unitPrice))} × {item.quantity}</p>
                   </div>
                 </div>
-                <span className="text-sm font-bold text-slate-900">₦{(Number(item.unitPrice) * item.quantity).toLocaleString()}</span>
+                <span className="text-sm font-bold text-slate-900">{formatCurrency((Number(item.unitPrice) * item.quantity))}</span>
               </div>
             ))}
           </div>
@@ -589,23 +555,23 @@ const OrderDetail = () => {
           <div className="border-t border-slate-100 px-5 py-4 space-y-2 bg-slate-50/30">
             <div className="flex items-center justify-between text-sm">
               <span className="text-slate-500">Subtotal</span>
-              <span className="text-slate-700 font-medium">₦{Number(order.subtotal).toLocaleString()}</span>
+              <span className="text-slate-700 font-medium">{formatCurrency(Number(order.subtotal))}</span>
             </div>
             <div className="flex items-center justify-between text-sm">
               <span className="text-slate-500">Delivery Fee</span>
-              <span className="text-slate-700 font-medium">₦{Number(order.deliveryFee).toLocaleString()}</span>
+              <span className="text-slate-700 font-medium">{formatCurrency(Number(order.deliveryFee))}</span>
             </div>
             <div className="flex items-center justify-between text-sm">
               <span className="text-slate-500">Service Fee</span>
-              <span className="text-slate-700 font-medium">₦{Number(order.serviceFee).toLocaleString()}</span>
+              <span className="text-slate-700 font-medium">{formatCurrency(Number(order.serviceFee))}</span>
             </div>
             {/* <div className="flex items-center justify-between text-sm">
               <span className="text-slate-500">Tax</span>
-              <span className="text-slate-700 font-medium">₦{Number(order.tax).toLocaleString()}</span>
+              <span className="text-slate-700 font-medium">{formatCurrency(Number(order.tax))}</span>
             </div> */}
             <div className="flex items-center justify-between pt-2 border-t border-slate-200">
               <span className="text-sm font-bold text-slate-900">Total</span>
-              <span className="text-lg font-extrabold text-slate-900">₦{Number(order.totalAmount).toLocaleString()}</span>
+              <span className="text-lg font-extrabold text-slate-900">{formatCurrency(Number(order.totalAmount))}</span>
             </div>
           </div>
         </div>

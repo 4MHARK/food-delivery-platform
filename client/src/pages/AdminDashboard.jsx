@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import AppLayout from "../components/AppLayout";
 import { api } from "../lib/api";
+import { formatCurrency } from "../lib/format";
 
 const ADMIN_NAV = [
   { icon: "admin_panel_settings", label: "Admin", path: "/admin" },
@@ -175,7 +176,7 @@ const OverviewSection = () => {
                       <p className="text-xs text-slate-400">{o.customer} · {new Date(o.createdAt).toLocaleDateString()}</p>
                     </div>
                     <div className="flex items-center gap-3">
-                      <span className="text-sm font-bold text-slate-900">₦{o.totalAmount.toLocaleString()}</span>
+                      <span className="text-sm font-bold text-slate-900">{formatCurrency(o.totalAmount)}</span>
                       <span className="text-xs font-semibold px-2 py-1 rounded-full bg-slate-100 text-slate-600">
                         {o.status.replace(/_/g, " ")}
                       </span>

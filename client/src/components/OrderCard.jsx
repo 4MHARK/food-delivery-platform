@@ -1,4 +1,5 @@
 import { useNavigate } from "react-router-dom";
+import { formatCurrency } from "../lib/format";
 
 export const STATUS = {
   PENDING_PAYMENT: { label: "Pending Payment", color: "bg-amber-100 text-amber-700", icon: "hourglass_empty" },
@@ -44,7 +45,7 @@ const OrderCard = ({ order }) => {
             <span className="text-slate-600">
               {item.quantity}× {item.menuItem?.name || `Item #${item.menuItemId}`}
             </span>
-            <span className="text-slate-400 text-xs">₦{(Number(item.unitPrice) * item.quantity).toLocaleString()}</span>
+            <span className="text-slate-400 text-xs">{formatCurrency((Number(item.unitPrice) * item.quantity))}</span>
           </div>
         ))}
       </div>
@@ -54,7 +55,7 @@ const OrderCard = ({ order }) => {
           <span className="material-symbols-outlined text-sm">location_on</span>
           <span className="truncate max-w-[180px]">{order.deliveryAddress}</span>
         </div>
-        <span className="text-sm font-bold text-slate-900">₦{Number(order.totalAmount).toLocaleString()}</span>
+        <span className="text-sm font-bold text-slate-900">{formatCurrency(Number(order.totalAmount))}</span>
       </div>
     </article>
   );

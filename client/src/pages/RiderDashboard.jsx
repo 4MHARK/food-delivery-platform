@@ -3,6 +3,9 @@ import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import AppLayout, { RIDER_NAV } from "../components/AppLayout";
 import { api } from "../lib/api";
+import { formatCurrency } from "../lib/format";
+import { useSSE } from "../hooks/useSSE";
+import { useNotificationPermission, notify } from "../hooks/useNotifications";
 
 const ORDER_STATUS = {
   PENDING_PAYMENT:                   { label: "Pending Payment", color: "bg-amber-100 text-amber-700 border-amber-200", dot: "bg-amber-500" },
@@ -93,9 +96,6 @@ const RiderDashboard = () => {
   // Polling
   const prevAvailableRef = useRef(0);
   const [lastUpdated, setLastUpdated] = useState(null);
-
-  // SSE error tracking: stop after 30s of continuous failure
-  const sseFailSinceRef = useRef(null);
 
   const showMsg = (msg) => {
     setMessage(msg);
@@ -282,66 +282,22 @@ const RiderDashboard = () => {
   }, [rider]);
 
   // ── SSE: real-time updates ──
-  useEffect(() => {
-    if (!rider) return;
+  useNotificationPermission(!!rider);
 
-    let es = null;
-
-    async function connect() {
-      let ticket;
-      try {
-        const data = await api.post("/sseTicket");
-        ticket = data.ticket;
-      } catch {
-        return;
+  useSSE(async () => {
+    const result = await fetchData({ silent: true });
+    if (result) {
+      const currentAvailable = result.availableOrders.length;
+      if (currentAvailable > prevAvailableRef.current) {
+        const diff = currentAvailable - prevAvailableRef.current;
+        showMsg(`🔔 ${diff} new order${diff > 1 ? "s" : ""} available!`);
+        notify("New Order Available!", {
+          body: `${diff} new order${diff > 1 ? "s" : ""} ready for pickup.`,
+        });
       }
-
-      es = new EventSource(
-        `${import.meta.env.VITE_API_URL}/events?ticket=${encodeURIComponent(ticket)}`
-      );
-
-      es.onmessage = async () => {
-        const result = await fetchData({ silent: true });
-        if (result) {
-          const currentAvailable = result.availableOrders.length;
-          if (currentAvailable > prevAvailableRef.current) {
-            const diff = currentAvailable - prevAvailableRef.current;
-            showMsg(`🔔 ${diff} new order${diff > 1 ? "s" : ""} available!`);
-            if (Notification.permission === "granted") {
-              new Notification("New Order Available!", {
-                body: `${diff} new order${diff > 1 ? "s" : ""} ready for pickup.`,
-              });
-            }
-          }
-          prevAvailableRef.current = currentAvailable;
-        }
-      };
-
-      es.onerror = () => {
-        if (!sseFailSinceRef.current) sseFailSinceRef.current = Date.now();
-        if (Date.now() - sseFailSinceRef.current > 30_000) {
-          es.close();
-        }
-      };
-
-      es.onopen = () => {
-        sseFailSinceRef.current = null; // reset — connection is back
-      };
+      prevAvailableRef.current = currentAvailable;
     }
-
-    connect();
-
-    return () => {
-      if (es) es.close();
-    };
-  }, [rider]);
-
-  // ── Request notification permission ──
-  useEffect(() => {
-    if (rider && "Notification" in window && Notification.permission === "default") {
-      Notification.requestPermission();
-    }
-  }, [rider]);
+  }, { enabled: !!rider, deps: [rider] });
 
   // Derive sections
   const activeDelivery = myDeliveries.find((d) => ACTIVE_DELIVERY_STATUSES.includes(d.status)) || null;
@@ -577,7 +533,7 @@ const RiderDashboard = () => {
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
             <div className="bg-white rounded-2xl shadow-sm p-4">
               <p className="text-xs text-slate-400 font-semibold uppercase tracking-wider mb-1">Earnings</p>
-              <p className="text-xl font-extrabold text-slate-900">₦{stats.totalEarnings.toLocaleString()}</p>
+              <p className="text-xl font-extrabold text-slate-900">{formatCurrency(stats.totalEarnings)}</p>
             </div>
             <div className="bg-white rounded-2xl shadow-sm p-4">
               <p className="text-xs text-slate-400 font-semibold uppercase tracking-wider mb-1">Deliveries</p>
@@ -585,7 +541,7 @@ const RiderDashboard = () => {
             </div>
             <div className="bg-white rounded-2xl shadow-sm p-4">
               <p className="text-xs text-slate-400 font-semibold uppercase tracking-wider mb-1">This Week</p>
-              <p className="text-xl font-extrabold text-slate-900">₦{stats.thisWeekEarnings.toLocaleString()}</p>
+              <p className="text-xl font-extrabold text-slate-900">{formatCurrency(stats.thisWeekEarnings)}</p>
             </div>
             <div className="bg-white rounded-2xl shadow-sm p-4">
               <p className="text-xs text-slate-400 font-semibold uppercase tracking-wider mb-1">Week Trips</p>
@@ -663,7 +619,7 @@ const RiderDashboard = () => {
                           {order.orderItems?.map((item) => (
                             <p key={item.id}>
                               {item.quantity}x {item.menuItem?.name || "Item"}{" "}
-                              <span className="text-slate-400">@ ₦{Number(item.unitPrice).toLocaleString()}</span>
+                              <span className="text-slate-400">@ {formatCurrency(Number(item.unitPrice))}</span>
                             </p>
                           ))}
                         </div>
@@ -685,7 +641,7 @@ const RiderDashboard = () => {
 
                         <div className="flex items-center justify-between gap-2">
                           <span className="text-sm font-bold text-slate-900">
-                            ₦{Number(order.totalAmount).toLocaleString()}
+                            {formatCurrency(Number(order.totalAmount))}
                           </span>
                           <div className="flex items-center gap-2">
                             <button
@@ -788,7 +744,7 @@ const RiderDashboard = () => {
                     {/* Total + ETA */}
                     <div className="flex items-center justify-between mb-4">
                       <span className="text-sm font-bold text-slate-900">
-                        Total: ₦{Number(activeDelivery.order?.totalAmount).toLocaleString()}
+                        Total: {formatCurrency(Number(activeDelivery.order?.totalAmount))}
                       </span>
                       {(() => {
                         const [etaMin, etaMax] = estimateETA(rider?.vehicleType, activeDelivery.status);
