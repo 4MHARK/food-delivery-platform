@@ -10,6 +10,27 @@ import { adminRegisterSchema } from "../validation/schemas.js";
 
 const router = express.Router();
 
+// Build a 14-day daily series (zero-filled) for trend charts.
+function buildDailySeries(since, rows, getDate, getValue) {
+  const days = [];
+  const buckets = {};
+  for (let i = 0; i < 14; i++) {
+    const d = new Date(since);
+    d.setDate(d.getDate() + i);
+    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+    buckets[key] = 0;
+    days.push(key);
+  }
+  for (const row of rows) {
+    const d = getDate(row);
+    if (!d) continue;
+    const dt = new Date(d);
+    const key = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, "0")}-${String(dt.getDate()).padStart(2, "0")}`;
+    if (key in buckets) buckets[key] += getValue(row);
+  }
+  return days.map((key) => ({ date: key, value: buckets[key] }));
+}
+
 // ── Admin registration (public — requires invite code) ──
 router.post("/admin/register", validate(adminRegisterSchema), async (req, res, next) => {
   try {
@@ -210,13 +231,27 @@ router.put("/admin/riders/:id/suspend", async (req, res, next) => {
 // ── Platform overview (stats for admin dashboard) ──
 router.get("/admin/overview", async (req, res, next) => {
   try {
+    const isSuperAdmin = req.user.role === "SUPER_ADMIN";
+    const campusId = req.user.campusId;
+
+    // School admins see only their campus; super admins see the whole platform.
+    const ridersWhere = isSuperAdmin ? {} : { campusId };
+    const restaurantsWhere = isSuperAdmin ? {} : { campusId };
+    const ordersWhere = isSuperAdmin ? {} : { restaurant: { campusId } };
+    // Customers have no direct campus link, so a school's "users" are the
+    // customers who have ordered from that campus's restaurants.
+    const usersWhere = isSuperAdmin
+      ? {}
+      : { role: "CUSTOMER", orders: { some: { restaurant: { campusId } } } };
+
     const [totalUsers, totalOrders, totalRiders, totalRestaurants, recentOrders] =
       await Promise.all([
-        prisma.user.count(),
-        prisma.order.count(),
-        prisma.rider.count(),
-        prisma.restaurant.count(),
+        prisma.user.count({ where: usersWhere }),
+        prisma.order.count({ where: ordersWhere }),
+        prisma.rider.count({ where: ridersWhere }),
+        prisma.restaurant.count({ where: restaurantsWhere }),
         prisma.order.findMany({
+          where: ordersWhere,
           take: 5,
           orderBy: { createdAt: "desc" },
           include: {
@@ -240,6 +275,124 @@ router.get("/admin/overview", async (req, res, next) => {
           restaurant: o.restaurant.name,
           createdAt: o.createdAt,
         })),
+      },
+    });
+  } catch (error) {
+    next(error)
+  }
+});
+
+// ── Analytics (campus-scoped metrics + trends) ──
+router.get("/admin/analytics", async (req, res, next) => {
+  try {
+    const isSuperAdmin = req.user.role === "SUPER_ADMIN";
+    const campusId = req.user.campusId;
+
+    const ordersWhere = isSuperAdmin ? {} : { restaurant: { campusId } };
+    const paymentsWhere = isSuperAdmin ? {} : { order: { restaurant: { campusId } } };
+    const ridersWhere = isSuperAdmin ? {} : { campusId };
+    const customersWhere = isSuperAdmin
+      ? { role: "CUSTOMER" }
+      : { role: "CUSTOMER", orders: { some: { restaurant: { campusId } } } };
+    const deliveriesWhere = {
+      status: "DELIVERED",
+      pickedUpAt: { not: null },
+      deliveredAt: { not: null },
+      ...(isSuperAdmin ? {} : { order: { restaurant: { campusId } } }),
+    };
+
+    const since = new Date();
+    since.setDate(since.getDate() - 13);
+    since.setHours(0, 0, 0, 0);
+
+    const [orders, riders, payments, deliveries, customers] = await Promise.all([
+      prisma.order.findMany({
+        where: ordersWhere,
+        select: {
+          id: true,
+          status: true,
+          totalAmount: true,
+          createdAt: true,
+          restaurant: { select: { name: true } },
+        },
+      }),
+      prisma.rider.findMany({
+        where: ridersWhere,
+        select: {
+          id: true,
+          user: { select: { name: true } },
+          deliveries: { select: { status: true } },
+        },
+      }),
+      prisma.payment.findMany({
+        where: paymentsWhere,
+        select: { status: true },
+      }),
+      prisma.delivery.findMany({
+        where: deliveriesWhere,
+        select: { pickedUpAt: true, deliveredAt: true },
+      }),
+      prisma.user.findMany({
+        where: customersWhere,
+        select: { createdAt: true },
+      }),
+    ]);
+
+    // Revenue = GMV: total value of every order placed (all statuses).
+    const revenue = orders.reduce((sum, o) => sum + Number(o.totalAmount), 0);
+
+    // Commission: flat 10% of GMV for now (per-campus configurable rates are a follow-up).
+    const commissionRate = 10;
+    const commission = revenue * (commissionRate / 100);
+
+    const completed = orders.filter((o) => o.status === "DELIVERED").length;
+    const cancelled = orders.filter((o) => o.status === "CANCELLED").length;
+    const pending = orders.length - completed - cancelled;
+
+    const avgDeliveryMs = deliveries.length
+      ? deliveries.reduce((sum, d) => sum + (new Date(d.deliveredAt) - new Date(d.pickedUpAt)), 0) / deliveries.length
+      : 0;
+
+    const successPayments = payments.filter((p) => p.status === "SUCCESS").length;
+    const failedPayments = payments.filter((p) => p.status === "FAILED").length;
+    const settledPayments = successPayments + failedPayments;
+    const paymentSuccessRate = settledPayments === 0 ? 0 : Math.round((successPayments / settledPayments) * 100);
+
+    // Top restaurants by order count (derived from the scoped orders).
+    const byRestaurant = {};
+    orders.forEach((o) => {
+      const name = o.restaurant.name;
+      if (!byRestaurant[name]) byRestaurant[name] = { name, orders: 0, revenue: 0 };
+      byRestaurant[name].orders += 1;
+      byRestaurant[name].revenue += Number(o.totalAmount);
+    });
+    const topRestaurants = Object.values(byRestaurant)
+      .sort((a, b) => b.orders - a.orders)
+      .slice(0, 5);
+
+    const topRiders = riders
+      .map((r) => ({ name: r.user.name, completed: r.deliveries.filter((d) => d.status === "DELIVERED").length }))
+      .sort((a, b) => b.completed - a.completed)
+      .slice(0, 5);
+
+    const recentOrders = orders.filter((o) => new Date(o.createdAt) >= since);
+    const orderTrend = buildDailySeries(since, recentOrders, (o) => o.createdAt, () => 1);
+    const revenueTrend = buildDailySeries(since, recentOrders, (o) => o.createdAt, (o) => Number(o.totalAmount));
+    const userTrend = buildDailySeries(since, customers, (c) => c.createdAt, () => 1);
+
+    res.status(200).json({
+      revenue,
+      commission,
+      commissionRate,
+      orderBreakdown: { completed, cancelled, pending },
+      avgDeliveryTimeMinutes: Math.round(avgDeliveryMs / 60000),
+      paymentSuccessRate,
+      topRestaurants,
+      topRiders,
+      trends: {
+        orders: orderTrend,
+        revenue: revenueTrend,
+        users: userTrend,
       },
     });
   } catch (error) {
@@ -322,8 +475,14 @@ router.put("/admin/restaurants/:id/status", async (req, res, next) => {
 // ── Customers: list all ──
 router.get("/admin/customers", async (req, res, next) => {
   try {
+    // School admins see only customers who have ordered from their campus.
+    const where =
+      req.user.role === "SUPER_ADMIN"
+        ? { role: "CUSTOMER" }
+        : { role: "CUSTOMER", orders: { some: { restaurant: { campusId: req.user.campusId } } } };
+
     const customers = await prisma.user.findMany({
-      where: { role: "CUSTOMER" },
+      where,
       include: { _count: { select: { orders: true } } },
       orderBy: { createdAt: "desc" },
     });
@@ -349,7 +508,12 @@ router.get("/admin/customers", async (req, res, next) => {
 // ── Orders: list all (latest 100) ──
 router.get("/admin/orders", async (req, res, next) => {
   try {
+    // School admins see only orders placed at their campus's restaurants.
+    const where =
+      req.user.role === "SUPER_ADMIN" ? {} : { restaurant: { campusId: req.user.campusId } };
+
     const orders = await prisma.order.findMany({
+      where,
       include: {
         customer: { select: { name: true } },
         restaurant: { select: { name: true } },
@@ -379,7 +543,14 @@ router.get("/admin/orders", async (req, res, next) => {
 // ── Payments: list all (latest 100) ──
 router.get("/admin/payments", async (req, res, next) => {
   try {
+    // School admins see only payments for their campus's orders.
+    const where =
+      req.user.role === "SUPER_ADMIN"
+        ? {}
+        : { order: { restaurant: { campusId: req.user.campusId } } };
+
     const payments = await prisma.payment.findMany({
+      where,
       orderBy: { createdAt: "desc" },
       take: 100,
     });

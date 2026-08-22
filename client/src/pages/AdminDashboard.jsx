@@ -115,9 +115,9 @@ const AdminDashboard = () => {
             {activeSection === "overview" && <OverviewSection />}
             {activeSection === "riders" && <RidersSection />}
             {activeSection === "restaurants" && <RestaurantsSection />}
-            {activeSection === "customers" && <ComingSoon title="Customers" />}
-            {activeSection === "orders" && <ComingSoon title="Orders" />}
-            {activeSection === "payments" && <ComingSoon title="Payments" />}
+            {activeSection === "customers" && <CustomersSection />}
+            {activeSection === "orders" && <OrdersSection />}
+            {activeSection === "payments" && <PaymentsSection />}
             {activeSection === "campuses" && <CampusesSection />}
           </div>
         </main>
@@ -131,6 +131,7 @@ const AdminDashboard = () => {
 // ══════════════════════════════════════════════
 const OverviewSection = () => {
   const [overview, setOverview] = useState(null);
+  const [analytics, setAnalytics] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -138,8 +139,15 @@ const OverviewSection = () => {
     try {
       setLoading(true);
       setError("");
-      const data = await api.get("/admin/overview");
-      setOverview(data.overview);
+      const overviewData = await api.get("/admin/overview");
+      setOverview(overviewData.overview);
+      // Analytics is optional — a failure there shouldn't blank the whole overview.
+      try {
+        const analyticsData = await api.get("/admin/analytics");
+        setAnalytics(analyticsData);
+      } catch {
+        setAnalytics(null);
+      }
     } catch (err) {
       setError(err.message || "Failed to load overview.");
     } finally {
@@ -190,6 +198,34 @@ const OverviewSection = () => {
             <StatCard label="Restaurants" value={overview.totalRestaurants} color="bg-green-50 text-green-700" />
           </div>
 
+          {analytics && (
+            <>
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                <StatCard label="Revenue (GMV)" value={formatCurrency(analytics.revenue)} color="bg-amber-50 text-amber-700" />
+                <StatCard label="Commission" value={formatCurrency(analytics.commission)} color="bg-purple-50 text-purple-700" />
+                <StatCard label="Avg Delivery" value={`${analytics.avgDeliveryTimeMinutes} min`} color="bg-blue-50 text-blue-700" />
+                <StatCard label="Payment Success" value={`${analytics.paymentSuccessRate}%`} color="bg-green-50 text-green-700" />
+              </div>
+
+              <div className="grid grid-cols-3 gap-4">
+                <MiniStat label="Completed" value={analytics.orderBreakdown.completed} color="text-green-600" />
+                <MiniStat label="Cancelled" value={analytics.orderBreakdown.cancelled} color="text-red-600" />
+                <MiniStat label="Pending" value={analytics.orderBreakdown.pending} color="text-amber-600" />
+              </div>
+
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                <TrendChart title="Orders (14d)" data={analytics.trends.orders} color="#f59e0b" formatValue={(v) => `${v} orders`} />
+                <TrendChart title="Revenue (14d)" data={analytics.trends.revenue} color="#10b981" formatValue={(v) => formatCurrency(v)} />
+                <TrendChart title="New Users (14d)" data={analytics.trends.users} color="#3b82f6" formatValue={(v) => `${v} users`} />
+              </div>
+
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                <TopList title="Top Restaurants" items={analytics.topRestaurants.map((r) => ({ name: r.name, detail: `${r.orders} orders · ${formatCurrency(r.revenue)}` }))} />
+                <TopList title="Top Riders" items={analytics.topRiders.map((r) => ({ name: r.name, detail: `${r.completed} delivered` }))} />
+              </div>
+            </>
+          )}
+
           <div>
             <h3 className="text-sm font-bold text-slate-500 uppercase tracking-wider mb-3">Recent Orders</h3>
             <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
@@ -223,6 +259,67 @@ const StatCard = ({ label, value, color }) => (
   <div className={`rounded-2xl p-5 ${color} bg-opacity-10`}>
     <p className="text-xs font-semibold opacity-70 uppercase tracking-wider mb-1">{label}</p>
     <p className="text-3xl font-extrabold">{value}</p>
+  </div>
+);
+
+const MiniStat = ({ label, value, color }) => (
+  <div className="bg-white rounded-2xl shadow-sm p-4 text-center">
+    <p className={`text-2xl font-extrabold ${color}`}>{value}</p>
+    <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mt-0.5">{label}</p>
+  </div>
+);
+
+// Lightweight inline-SVG area chart (no chart library dependency).
+const TrendChart = ({ title, data, color, formatValue }) => {
+  const width = 600;
+  const height = 160;
+  const pad = { top: 12, right: 12, bottom: 22, left: 12 };
+  const values = data.map((d) => d.value);
+  const max = Math.max(1, ...values);
+  const innerW = width - pad.left - pad.right;
+  const innerH = height - pad.top - pad.bottom;
+  const x = (i) => pad.left + (data.length <= 1 ? innerW / 2 : (i / (data.length - 1)) * innerW);
+  const y = (v) => pad.top + innerH - (v / max) * innerH;
+  const linePoints = data.map((d, i) => `${x(i)},${y(d.value)}`).join(" ");
+  const areaPoints = `${pad.left},${pad.top + innerH} ${linePoints} ${x(data.length - 1)},${pad.top + innerH}`;
+  const total = values.reduce((a, b) => a + b, 0);
+
+  return (
+    <div className="bg-white rounded-2xl shadow-sm p-5">
+      <div className="flex items-center justify-between mb-3">
+        <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">{title}</p>
+        <p className="text-sm font-bold text-slate-900">{formatValue ? formatValue(total) : total}</p>
+      </div>
+      <svg viewBox={`0 0 ${width} ${height}`} className="w-full h-32" preserveAspectRatio="none">
+        <polygon points={areaPoints} fill={color} opacity="0.12" />
+        <polyline points={linePoints} fill="none" stroke={color} strokeWidth="2.5" strokeLinejoin="round" strokeLinecap="round" />
+      </svg>
+      <div className="flex justify-between mt-2 text-[10px] text-slate-400">
+        <span>{data[0]?.date?.slice(5)}</span>
+        <span>{data[data.length - 1]?.date?.slice(5)}</span>
+      </div>
+    </div>
+  );
+};
+
+const TopList = ({ title, items }) => (
+  <div className="bg-white rounded-2xl shadow-sm p-5">
+    <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">{title}</p>
+    {items.length === 0 ? (
+      <p className="text-sm text-slate-400">No data yet.</p>
+    ) : (
+      <div className="space-y-2">
+        {items.map((item, i) => (
+          <div key={item.name} className="flex items-center justify-between">
+            <div className="flex items-center gap-2 min-w-0">
+              <span className="text-xs font-bold text-slate-400 w-4">{i + 1}</span>
+              <span className="text-sm font-semibold text-slate-900 truncate">{item.name}</span>
+            </div>
+            <span className="text-xs text-slate-500 shrink-0 ml-2">{item.detail}</span>
+          </div>
+        ))}
+      </div>
+    )}
   </div>
 );
 
@@ -857,24 +954,277 @@ const CampusesSection = () => {
 };
 
 // ══════════════════════════════════════════════
-//  COMING SOON PLACEHOLDER
+//  CUSTOMERS SECTION (view-only, campus-scoped)
 // ══════════════════════════════════════════════
-const ComingSoon = ({ title }) => (
-  <div className="space-y-6">
-    <div>
-      <h2 className="text-xl font-bold text-slate-900">{title}</h2>
-      <p className="text-sm text-slate-500 mt-1">Manage {title.toLowerCase()} on the platform.</p>
-    </div>
-    <div className="text-center py-20">
-      <div className="w-20 h-20 rounded-full bg-slate-100 flex items-center justify-center mx-auto mb-5">
-        <span className="material-symbols-outlined text-4xl text-slate-300">construction</span>
+const CustomersSection = () => {
+  const [customers, setCustomers] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  const fetchCustomers = async () => {
+    try {
+      setLoading(true);
+      setError("");
+      const data = await api.get("/admin/customers");
+      setCustomers(data.customers);
+    } catch (err) {
+      setError(err.message || "Failed to load customers.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => { fetchCustomers(); }, []);
+
+  if (loading) {
+    return (
+      <div className="animate-pulse space-y-4">
+        <div className="h-8 w-40 bg-slate-200 rounded" />
+        {[1, 2, 3].map((i) => (
+          <div key={i} className="h-20 bg-slate-200 rounded-2xl" />
+        ))}
       </div>
-      <h3 className="text-lg font-bold text-slate-400 mb-2">Coming Soon</h3>
-      <p className="text-sm text-slate-400 max-w-sm mx-auto">
-        The {title.toLowerCase()} management section is under development and will be available in a future update.
-      </p>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="text-center py-16">
+        <div className="w-16 h-16 rounded-full bg-red-100 flex items-center justify-center mx-auto mb-4">
+          <span className="material-symbols-outlined text-3xl text-red-400">error_outline</span>
+        </div>
+        <p className="text-slate-900 font-semibold mb-2">Failed to load customers</p>
+        <p className="text-slate-500 text-sm mb-4">{error}</p>
+        <button onClick={fetchCustomers} className="text-amber-500 font-semibold text-sm hover:text-amber-600">Try again</button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h2 className="text-xl font-bold text-slate-900">Customers</h2>
+        <p className="text-sm text-slate-500 mt-1">
+          {customers.length} customer{customers.length !== 1 ? "s" : ""} · Customers who have ordered at your campus.
+        </p>
+      </div>
+
+      {customers.length === 0 ? (
+        <div className="text-center py-16">
+          <div className="w-16 h-16 rounded-full bg-slate-100 flex items-center justify-center mx-auto mb-3">
+            <span className="material-symbols-outlined text-3xl text-slate-300">group</span>
+          </div>
+          <p className="text-slate-500 text-sm font-medium">No customers yet.</p>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {customers.map((c) => (
+            <div key={c.id} className="bg-white rounded-2xl shadow-sm p-5">
+              <div className="flex items-start justify-between gap-4">
+                <div className="flex-1 min-w-0">
+                  <h3 className="text-sm font-bold text-slate-900 truncate">{c.name}</h3>
+                  <p className="text-xs text-slate-400 mb-2">{c.email}{c.phone ? ` · ${c.phone}` : ""}</p>
+                  <div className="flex gap-3 text-xs text-slate-500">
+                    <span>{c.orderCount} order{c.orderCount !== 1 ? "s" : ""}</span>
+                    <span>Joined {new Date(c.createdAt).toLocaleDateString()}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
-  </div>
-);
+  );
+};
+
+// ══════════════════════════════════════════════
+//  ORDERS SECTION (view-only, campus-scoped)
+// ══════════════════════════════════════════════
+const ORDER_STATUS_STYLE = {
+  PENDING_PAYMENT: "bg-slate-100 text-slate-600",
+  PENDING_RESTAURANT_CONFIRMATION: "bg-amber-100 text-amber-700",
+  PREPARING: "bg-blue-100 text-blue-700",
+  OUT_FOR_DELIVERY: "bg-purple-100 text-purple-700",
+  DELIVERED: "bg-green-100 text-green-700",
+  CANCELLED: "bg-red-100 text-red-700",
+};
+
+const OrdersSection = () => {
+  const [orders, setOrders] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  const fetchOrders = async () => {
+    try {
+      setLoading(true);
+      setError("");
+      const data = await api.get("/admin/orders");
+      setOrders(data.orders);
+    } catch (err) {
+      setError(err.message || "Failed to load orders.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => { fetchOrders(); }, []);
+
+  if (loading) {
+    return (
+      <div className="animate-pulse space-y-4">
+        <div className="h-8 w-40 bg-slate-200 rounded" />
+        {[1, 2, 3].map((i) => (
+          <div key={i} className="h-20 bg-slate-200 rounded-2xl" />
+        ))}
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="text-center py-16">
+        <div className="w-16 h-16 rounded-full bg-red-100 flex items-center justify-center mx-auto mb-4">
+          <span className="material-symbols-outlined text-3xl text-red-400">error_outline</span>
+        </div>
+        <p className="text-slate-900 font-semibold mb-2">Failed to load orders</p>
+        <p className="text-slate-500 text-sm mb-4">{error}</p>
+        <button onClick={fetchOrders} className="text-amber-500 font-semibold text-sm hover:text-amber-600">Try again</button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h2 className="text-xl font-bold text-slate-900">Orders</h2>
+        <p className="text-sm text-slate-500 mt-1">
+          {orders.length} order{orders.length !== 1 ? "s" : ""} · Latest 100.
+        </p>
+      </div>
+
+      {orders.length === 0 ? (
+        <div className="text-center py-16">
+          <div className="w-16 h-16 rounded-full bg-slate-100 flex items-center justify-center mx-auto mb-3">
+            <span className="material-symbols-outlined text-3xl text-slate-300">receipt_long</span>
+          </div>
+          <p className="text-slate-500 text-sm font-medium">No orders yet.</p>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {orders.map((o) => (
+            <div key={o.id} className="bg-white rounded-2xl shadow-sm p-5">
+              <div className="flex items-start justify-between gap-4">
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 mb-1">
+                    <h3 className="text-sm font-bold text-slate-900 truncate">#{o.id} · {o.restaurant}</h3>
+                    <span className={`inline-flex items-center text-[10px] font-bold px-2 py-0.5 rounded-full ${ORDER_STATUS_STYLE[o.status] || "bg-slate-100 text-slate-600"}`}>
+                      {o.status.replace(/_/g, " ")}
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-400">{o.customer} · {new Date(o.createdAt).toLocaleDateString()}</p>
+                </div>
+                <span className="text-sm font-bold text-slate-900 shrink-0">{formatCurrency(o.totalAmount)}</span>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
+
+// ══════════════════════════════════════════════
+//  PAYMENTS SECTION (view-only, campus-scoped)
+// ══════════════════════════════════════════════
+const PAYMENT_STATUS_STYLE = {
+  PENDING: "bg-amber-100 text-amber-700",
+  SUCCESS: "bg-green-100 text-green-700",
+  FAILED: "bg-red-100 text-red-700",
+};
+
+const PaymentsSection = () => {
+  const [payments, setPayments] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  const fetchPayments = async () => {
+    try {
+      setLoading(true);
+      setError("");
+      const data = await api.get("/admin/payments");
+      setPayments(data.payments);
+    } catch (err) {
+      setError(err.message || "Failed to load payments.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => { fetchPayments(); }, []);
+
+  if (loading) {
+    return (
+      <div className="animate-pulse space-y-4">
+        <div className="h-8 w-40 bg-slate-200 rounded" />
+        {[1, 2, 3].map((i) => (
+          <div key={i} className="h-20 bg-slate-200 rounded-2xl" />
+        ))}
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="text-center py-16">
+        <div className="w-16 h-16 rounded-full bg-red-100 flex items-center justify-center mx-auto mb-4">
+          <span className="material-symbols-outlined text-3xl text-red-400">error_outline</span>
+        </div>
+        <p className="text-slate-900 font-semibold mb-2">Failed to load payments</p>
+        <p className="text-slate-500 text-sm mb-4">{error}</p>
+        <button onClick={fetchPayments} className="text-amber-500 font-semibold text-sm hover:text-amber-600">Try again</button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h2 className="text-xl font-bold text-slate-900">Payments</h2>
+        <p className="text-sm text-slate-500 mt-1">
+          {payments.length} payment{payments.length !== 1 ? "s" : ""} · Latest 100.
+        </p>
+      </div>
+
+      {payments.length === 0 ? (
+        <div className="text-center py-16">
+          <div className="w-16 h-16 rounded-full bg-slate-100 flex items-center justify-center mx-auto mb-3">
+            <span className="material-symbols-outlined text-3xl text-slate-300">payments</span>
+          </div>
+          <p className="text-slate-500 text-sm font-medium">No payments yet.</p>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {payments.map((p) => (
+            <div key={p.id} className="bg-white rounded-2xl shadow-sm p-5">
+              <div className="flex items-start justify-between gap-4">
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 mb-1">
+                    <h3 className="text-sm font-bold text-slate-900 truncate">{p.reference}</h3>
+                    <span className={`inline-flex items-center text-[10px] font-bold px-2 py-0.5 rounded-full ${PAYMENT_STATUS_STYLE[p.status] || "bg-slate-100 text-slate-600"}`}>
+                      {p.status}
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-400">Order #{p.orderId} · {p.provider} · {new Date(p.createdAt).toLocaleDateString()}</p>
+                </div>
+                <span className="text-sm font-bold text-slate-900 shrink-0">{formatCurrency(p.amount)}</span>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
 
 export default AdminDashboard;
