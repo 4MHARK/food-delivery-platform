@@ -65,7 +65,7 @@ router.get("/admin/riders", async (req, res, next) => {
     const riders = await prisma.rider.findMany({
       include: {
         user: {
-          select: { id: true, name: true, email: true, createdAt: true },
+          select: { id: true, name: true, email: true, phone: true, createdAt: true },
         },
         deliveries: {
           select: { id: true, status: true },
@@ -79,7 +79,7 @@ router.get("/admin/riders", async (req, res, next) => {
       userId: r.userId,
       name: r.user.name,
       email: r.user.email,
-      phone: r.phone,
+      phone: r.user.phone,
       vehicleType: r.vehicleType,
       licensePlate: r.licensePlate,
       licenseNumber: r.licenseNumber,

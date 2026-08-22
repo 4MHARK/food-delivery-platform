@@ -54,6 +54,12 @@ router.post("/riders/register", authMiddleware, validate(riderRegisterSchema), a
       }
     }
 
+    // Store the rider's contact number on the User record (single source of truth)
+    await prisma.user.update({
+      where: { id: req.user.id },
+      data: { phone },
+    });
+
     const rider = await prisma.rider.create({
       data: {
         userId: req.user.id,
@@ -61,7 +67,6 @@ router.post("/riders/register", authMiddleware, validate(riderRegisterSchema), a
         licensePlate: licensePlate || null,
         licenseNumber: licenseNumber || null,
         matricNumber: matricNumber || null,
-        phone,
       },
       include: {
         user: {
@@ -155,6 +160,14 @@ router.put("/riders/me", authMiddleware, riderMiddleware, validate(riderUpdateSc
       }
     }
 
+    // Phone lives on the User record now — sync it there if provided
+    if (phone !== undefined) {
+      await prisma.user.update({
+        where: { id: req.user.id },
+        data: { phone },
+      });
+    }
+
     const updated = await prisma.rider.update({
       where: { userId: req.user.id },
       data: {
@@ -162,7 +175,6 @@ router.put("/riders/me", authMiddleware, riderMiddleware, validate(riderUpdateSc
         ...(licensePlate !== undefined && { licensePlate }),
         ...(licenseNumber !== undefined && { licenseNumber }),
         ...(matricNumber !== undefined && { matricNumber }),
-        ...(phone !== undefined && { phone }),
         ...(isAvailable !== undefined && { isAvailable }),
       },
       include: {

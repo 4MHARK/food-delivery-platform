@@ -246,7 +246,7 @@ router.get("/orders/:id", authMiddleware, async (req, res, next) => {
           include: {
             rider: {
               include: {
-                user: { select: { id: true, name: true } },
+                user: { select: { id: true, name: true, phone: true } },
               },
             },
           },

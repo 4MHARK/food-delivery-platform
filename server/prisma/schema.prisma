@@ -72,7 +72,6 @@ model Rider {
   licensePlate  String?
   licenseNumber String?     @unique
   matricNumber  String?     @unique
-  phone         String
   isAvailable   Boolean     @default(true)
   isVerified    Boolean     @default(false)
   user          User        @relation(fields: [userId], references: [id])

@@ -399,8 +399,8 @@ const OrderDetail = () => {
                 <h3 className="text-sm font-bold text-slate-900">Delivery Tracker</h3>
                 <p className="text-xs text-slate-500">
                   Rider: <span className="font-semibold text-slate-700">{order.delivery.rider?.user?.name || "Assigned"}</span>
-                  {order.delivery.rider?.phone && (
-                    <span className="text-slate-400"> · {order.delivery.rider.phone}</span>
+                  {order.delivery.rider?.user?.phone && (
+                    <span className="text-slate-400"> · {order.delivery.rider.user.phone}</span>
                   )}
                 </p>
               </div>
@@ -496,7 +496,7 @@ const OrderDetail = () => {
             <h3 className="text-lg font-bold text-green-700 mb-1">Order Delivered!</h3>
             <p className="text-sm text-green-600">
               Delivered by {order.delivery.rider?.user?.name || "your rider"}
-              {order.delivery.rider?.phone && <span> · {order.delivery.rider.phone}</span>}
+              {order.delivery.rider?.user?.phone && <span> · {order.delivery.rider.user.phone}</span>}
               {order.delivery.deliveredAt && ` at ${new Date(order.delivery.deliveredAt).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}`}
             </p>
           </div>
