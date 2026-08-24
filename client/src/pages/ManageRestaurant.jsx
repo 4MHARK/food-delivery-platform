@@ -171,21 +171,6 @@ const Dashboard = () => {
     }
   };
 
-  const handleUpdateStatus = async (orderId, newStatus) => {
-    const current = orders.find((o) => o.id === orderId);
-    if (!current || current.status === newStatus) return;
-    try {
-      setUpdatingOrderId(orderId);
-      await api.put(`/orders/${orderId}/status`, { status: newStatus });
-      setOrders((prev) => prev.map((o) => (o.id === orderId ? { ...o, status: newStatus } : o)));
-      showMsg(`Order #${orderId} → ${ORDER_STATUS[newStatus].label}`);
-    } catch (e) {
-      showMsg(e.message || "Failed to update order status");
-    } finally {
-      setUpdatingOrderId(null);
-    }
-  };
-
   // ── Create restaurant ──
   const handleCreateRestaurant = async (e) => {
     e.preventDefault();
@@ -283,7 +268,6 @@ const Dashboard = () => {
   const pendingOrders = orders.filter((o) => o.status === "PENDING_RESTAURANT_CONFIRMATION");
   const activeOrders = orders.filter((o) => ACTIVE_STATUSES.includes(o.status));
   const pastOrders = orders.filter((o) => TERMINAL_STATUSES.includes(o.status));
-  const allStatuses = Object.keys(ORDER_STATUS);
 
   // ═══════════════════════════════════════════
   //  NO RESTAURANT — show welcome + create form
@@ -796,18 +780,17 @@ const Dashboard = () => {
                                 </p>
                               </div>
                               <div className="flex items-center gap-2 shrink-0">
-                                <select
-                                  value={order.status}
-                                  onChange={(e) => handleUpdateStatus(order.id, e.target.value)}
-                                  disabled={updatingOrderId === order.id}
-                                  className="text-xs font-semibold border border-slate-200 rounded-lg px-2 py-1.5 bg-slate-50 focus:ring-1 focus:ring-amber-500 outline-none disabled:opacity-50 cursor-pointer"
-                                >
-                                  {allStatuses.filter((s) => s !== "PENDING_PAYMENT").map((s) => (
-                                    <option key={s} value={s} disabled={s === order.status}>
-                                      {ORDER_STATUS[s].label}
-                                    </option>
-                                  ))}
-                                </select>
+                                {/* The owner can only cancel a PREPARING order; once it's
+                                    OUT_FOR_DELIVERY the rider owns the next steps. */}
+                                {order.status === "PREPARING" && (
+                                  <button
+                                    onClick={() => handleRejectOrder(order.id)}
+                                    disabled={updatingOrderId === order.id}
+                                    className="px-4 py-2 rounded-full bg-white border border-slate-200 hover:bg-red-50 hover:border-red-200 hover:text-red-600 text-slate-500 text-xs font-bold transition active:scale-95"
+                                  >
+                                    Cancel order
+                                  </button>
+                                )}
                                 {updatingOrderId === order.id && (
                                   <span className="material-symbols-outlined text-sm text-amber-500 animate-spin">progress_activity</span>
                                 )}

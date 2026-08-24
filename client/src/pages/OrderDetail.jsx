@@ -286,8 +286,9 @@ const OrderDetail = () => {
           </span>
         </div>
 
-        {/* Status Timeline */}
-        {!isCancelled && (
+        {/* Status Timeline — hidden once out for delivery so the Delivery Tracker
+            below is the single progress view (avoids duplicated tracking). */}
+        {!isCancelled && order.status !== "OUT_FOR_DELIVERY" && (
           <div className="bg-white rounded-2xl shadow-sm p-6 mb-6">
             <h3 className="text-sm font-bold text-slate-900 mb-6">Order Progress</h3>
 
