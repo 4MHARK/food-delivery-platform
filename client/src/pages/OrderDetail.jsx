@@ -10,7 +10,9 @@ import { formatCurrency } from "../lib/format";
 const STATUS_FLOW = [
   { key: "PENDING_PAYMENT", label: "Placed", icon: "receipt" },
   { key: "PENDING_RESTAURANT_CONFIRMATION", label: "Confirmed", icon: "check_circle" },
+  { key: "ACCEPTED", label: "Accepted", icon: "task_alt" },
   { key: "PREPARING", label: "Preparing", icon: "cooking" },
+  { key: "READY_FOR_PICKUP", label: "Ready for pickup", icon: "inventory_2" },
   { key: "OUT_FOR_DELIVERY", label: "On the way", icon: "local_shipping" },
   { key: "DELIVERED", label: "Delivered", icon: "done_all" },
 ];
@@ -18,7 +20,9 @@ const STATUS_FLOW = [
 const STATUS_COLORS = {
   PENDING_PAYMENT: "border-amber-500 text-amber-700 bg-amber-50",
   PENDING_RESTAURANT_CONFIRMATION: "border-blue-500 text-blue-700 bg-blue-50",
+  ACCEPTED: "border-teal-500 text-teal-700 bg-teal-50",
   PREPARING: "border-orange-500 text-orange-700 bg-orange-50",
+  READY_FOR_PICKUP: "border-indigo-500 text-indigo-700 bg-indigo-50",
   OUT_FOR_DELIVERY: "border-purple-500 text-purple-700 bg-purple-50",
   DELIVERED: "border-green-600 text-green-700 bg-green-50",
   CANCELLED: "border-red-400 text-red-600 bg-red-50",
@@ -371,7 +375,7 @@ const OrderDetail = () => {
         )}
 
         {/* ── Delivery Failed Notice (delivery failed, awaiting new rider) ── */}
-        {order.delivery && order.delivery.status === "FAILED" && order.status === "PREPARING" && (
+        {order.delivery && order.delivery.status === "FAILED" && order.status === "READY_FOR_PICKUP" && (
           <div className="bg-amber-50 rounded-2xl p-6 mb-6 text-center border border-amber-200">
             <div className="w-14 h-14 rounded-full bg-amber-100 flex items-center justify-center mx-auto mb-3">
               <span className="material-symbols-outlined text-3xl text-amber-500">assignment_late</span>

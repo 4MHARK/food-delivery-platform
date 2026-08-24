@@ -4,7 +4,9 @@ import { formatCurrency } from "../lib/format";
 export const STATUS = {
   PENDING_PAYMENT: { label: "Pending Payment", color: "bg-amber-100 text-amber-700", icon: "hourglass_empty" },
   PENDING_RESTAURANT_CONFIRMATION: { label: "Awaiting Confirm", color: "bg-blue-100 text-blue-700", icon: "check_circle" },
+  ACCEPTED: { label: "Accepted", color: "bg-teal-100 text-teal-700", icon: "task_alt" },
   PREPARING: { label: "Preparing", color: "bg-orange-100 text-orange-700", icon: "cooking" },
+  READY_FOR_PICKUP: { label: "Ready for Pickup", color: "bg-indigo-100 text-indigo-700", icon: "inventory_2" },
   OUT_FOR_DELIVERY: { label: "On the Way", color: "bg-purple-100 text-purple-700", icon: "local_shipping" },
   DELIVERED: { label: "Delivered", color: "bg-green-100 text-green-700", icon: "done_all" },
   CANCELLED: { label: "Cancelled", color: "bg-slate-100 text-slate-500", icon: "cancel" },

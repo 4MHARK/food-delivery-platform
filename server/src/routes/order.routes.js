@@ -287,7 +287,7 @@ router.put("/orders/:id/status", authMiddleware, ownerMiddleware, async (req, re
       return res.status(400).json({ message: "Status is required" });
     }
 
-    const validStatuses = ["PENDING_RESTAURANT_CONFIRMATION", "PREPARING", "CANCELLED"];
+    const validStatuses = ["ACCEPTED", "PREPARING", "READY_FOR_PICKUP", "CANCELLED"];
     if (!validStatuses.includes(status)) {
       return res.status(400).json({ message: "Invalid status" });
     }
@@ -337,8 +337,8 @@ router.put("/orders/:id/status", authMiddleware, ownerMiddleware, async (req, re
     // Notify customer of order status change
     notify("order:updated", [order.customerId]);
 
-    // When order becomes PREPARING, also notify all riders (new available order)
-    if (status === "PREPARING") {
+    // When the food is ready for pickup, also notify all riders (new available order)
+    if (status === "READY_FOR_PICKUP") {
       notify("order:updated", ["*"]);
     }
 

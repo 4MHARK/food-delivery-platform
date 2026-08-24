@@ -19,7 +19,7 @@ const VALID_TRANSITIONS = {
   FAILED:      [],
 };
 
-// Get available orders for riders (PREPARING, no delivery assigned, not rejected by this rider)
+// Get available orders for riders (READY_FOR_PICKUP, no delivery assigned, not rejected by this rider)
 router.get("/riders/available-orders", authMiddleware, riderMiddleware, async (req, res, next) => {
   try {
     const rider = await prisma.rider.findUnique({
@@ -28,7 +28,7 @@ router.get("/riders/available-orders", authMiddleware, riderMiddleware, async (r
 
     const orders = await prisma.order.findMany({
       where: {
-        status: "PREPARING",
+        status: "READY_FOR_PICKUP",
         delivery: null, // No rider assigned yet
         rejectedBy: rider
           ? { none: { riderId: rider.id } } // Exclude orders this rider skipped
@@ -81,7 +81,7 @@ router.post("/riders/reject-order/:orderId", authMiddleware, riderMiddleware, as
       return res.status(404).json({ message: "Order not found" });
     }
 
-    if (order.status !== "PREPARING") {
+    if (order.status !== "READY_FOR_PICKUP") {
       return res.status(400).json({ message: "This order is no longer available" });
     }
 
@@ -156,7 +156,7 @@ router.post("/deliveries/:orderId/accept", authMiddleware, riderMiddleware, asyn
         };
       }
 
-      // Verify order exists and is in PREPARING status
+      // Verify order exists and is in READY_FOR_PICKUP status
       const order = await tx.order.findUnique({
         where: { id: orderId },
         include: { delivery: true },
@@ -166,7 +166,7 @@ router.post("/deliveries/:orderId/accept", authMiddleware, riderMiddleware, asyn
         throw { status: 404, message: "Order not found" };
       }
 
-      if (order.status !== "PREPARING") {
+      if (order.status !== "READY_FOR_PICKUP") {
         throw { status: 400, message: "This order is no longer available for pickup" };
       }
 
@@ -290,11 +290,11 @@ router.put("/deliveries/:id/status", authMiddleware, riderMiddleware, validate(d
       let updatedOrder = null;
 
       // When delivery is marked FAILED: keep the record for audit trail
-      // and reset the order to PREPARING so another rider can accept it
+      // and reset the order to READY_FOR_PICKUP so another rider can accept it
       if (status === "FAILED") {
         updatedOrder = await tx.order.update({
           where: { id: delivery.orderId },
-          data: { status: "PREPARING" },
+          data: { status: "READY_FOR_PICKUP" },
           include: {
             orderItems: { include: { menuItem: true } },
             restaurant: { select: { id: true, name: true, address: true } },

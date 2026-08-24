@@ -10,12 +10,14 @@ import { formatCurrency } from "../lib/format";
 const ORDER_STATUS = {
   PENDING_PAYMENT:                   { label: "Pending Payment", color: "bg-amber-100 text-amber-700 border-amber-200", dot: "bg-amber-500" },
   PENDING_RESTAURANT_CONFIRMATION:   { label: "Awaiting Confirm", color: "bg-blue-100 text-blue-700 border-blue-200", dot: "bg-blue-500" },
+  ACCEPTED:                          { label: "Accepted", color: "bg-teal-100 text-teal-700 border-teal-200", dot: "bg-teal-500" },
   PREPARING:                         { label: "Preparing", color: "bg-orange-100 text-orange-700 border-orange-200", dot: "bg-orange-500" },
+  READY_FOR_PICKUP:                  { label: "Ready for Pickup", color: "bg-indigo-100 text-indigo-700 border-indigo-200", dot: "bg-indigo-500" },
   OUT_FOR_DELIVERY:                  { label: "On the Way", color: "bg-purple-100 text-purple-700 border-purple-200", dot: "bg-purple-500" },
   DELIVERED:                         { label: "Delivered", color: "bg-green-100 text-green-700 border-green-200", dot: "bg-green-500" },
   CANCELLED:                         { label: "Cancelled", color: "bg-slate-100 text-slate-500 border-slate-200", dot: "bg-slate-400" },
 };
-const ACTIVE_STATUSES = ["PREPARING", "OUT_FOR_DELIVERY"];
+const ACTIVE_STATUSES = ["ACCEPTED", "PREPARING", "READY_FOR_PICKUP", "OUT_FOR_DELIVERY"];
 const TERMINAL_STATUSES = ["DELIVERED", "CANCELLED"];
 
 const initialRestForm = { name: "", description: "", address: "", phone: "", imageUrl: "" };
@@ -144,14 +146,14 @@ const Dashboard = () => {
   );
 
   // ── Order actions ──
-  const handleAcceptOrder = async (orderId) => {
+  const advanceOrder = async (orderId, status, label) => {
     try {
       setUpdatingOrderId(orderId);
-      await api.put(`/orders/${orderId}/status`, { status: "PREPARING" });
-      setOrders((prev) => prev.map((o) => (o.id === orderId ? { ...o, status: "PREPARING" } : o)));
-      showMsg(`Order #${orderId} accepted`);
+      await api.put(`/orders/${orderId}/status`, { status });
+      setOrders((prev) => prev.map((o) => (o.id === orderId ? { ...o, status } : o)));
+      showMsg(`Order #${orderId} ${label}`);
     } catch (e) {
-      showMsg(e.message || "Failed to accept order");
+      showMsg(e.message || "Failed to update order");
     } finally {
       setUpdatingOrderId(null);
     }
@@ -706,7 +708,7 @@ const Dashboard = () => {
                               <div className="min-w-0">
                                 <div className="flex items-center gap-2 flex-wrap">
                                   <span className="text-xs text-slate-400 font-semibold uppercase tracking-wider">Order #{order.id}</span>
-                                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${ORDER_STATUS.PENDING_PAYMENT.color}`}>New</span>
+                                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${ORDER_STATUS.PENDING_RESTAURANT_CONFIRMATION.color}`}>New</span>
                                 </div>
                                 <p className="text-xs text-slate-500 mt-1">
                                   {order.customer?.name || "Customer"} ·{" "}
@@ -717,7 +719,7 @@ const Dashboard = () => {
                               </div>
                               <div className="flex items-center gap-2 shrink-0">
                                 <button
-                                  onClick={() => handleAcceptOrder(order.id)}
+                                  onClick={() => advanceOrder(order.id, "ACCEPTED", "accepted")}
                                   disabled={updatingOrderId === order.id}
                                   className="px-4 py-2 rounded-full bg-emerald-500 hover:bg-emerald-600 disabled:bg-emerald-300 text-white text-xs font-bold transition active:scale-95 flex items-center gap-1"
                                 >
@@ -780,9 +782,26 @@ const Dashboard = () => {
                                 </p>
                               </div>
                               <div className="flex items-center gap-2 shrink-0">
-                                {/* The owner can only cancel a PREPARING order; once it's
-                                    OUT_FOR_DELIVERY the rider owns the next steps. */}
+                                {order.status === "ACCEPTED" && (
+                                  <button
+                                    onClick={() => advanceOrder(order.id, "PREPARING", "marked preparing")}
+                                    disabled={updatingOrderId === order.id}
+                                    className="px-4 py-2 rounded-full bg-orange-500 hover:bg-orange-600 disabled:bg-orange-300 text-white text-xs font-bold transition active:scale-95"
+                                  >
+                                    Preparing
+                                  </button>
+                                )}
                                 {order.status === "PREPARING" && (
+                                  <button
+                                    onClick={() => advanceOrder(order.id, "READY_FOR_PICKUP", "ready for pickup")}
+                                    disabled={updatingOrderId === order.id}
+                                    className="px-4 py-2 rounded-full bg-indigo-500 hover:bg-indigo-600 disabled:bg-indigo-300 text-white text-xs font-bold transition active:scale-95"
+                                  >
+                                    Ready for pickup
+                                  </button>
+                                )}
+                                {/* Owner can cancel until the rider takes over at OUT_FOR_DELIVERY. */}
+                                {["ACCEPTED", "PREPARING", "READY_FOR_PICKUP"].includes(order.status) && (
                                   <button
                                     onClick={() => handleRejectOrder(order.id)}
                                     disabled={updatingOrderId === order.id}

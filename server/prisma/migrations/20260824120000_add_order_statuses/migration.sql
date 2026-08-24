@@ -1,0 +1,3 @@
+-- AlterEnum
+ALTER TYPE "OrderStatus" ADD VALUE 'ACCEPTED';
+ALTER TYPE "OrderStatus" ADD VALUE 'READY_FOR_PICKUP';
