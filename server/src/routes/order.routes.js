@@ -6,6 +6,7 @@ import { validate } from "../middleware/validate.js";
 import { checkoutSchema, estimateSchema } from "../validation/schemas.js";
 import { calculateFees } from "../services/feecalculator.js";
 import { notify } from "../services/events.js";
+import { refundPayment } from "../services/paystack.js";
 import crypto from "crypto";
 import { checkoutLimiter } from "../middleware/rate-limiter.js";
 
@@ -302,6 +303,26 @@ router.put("/orders/:id/status", authMiddleware, ownerMiddleware, async (req, re
 
     if (order.restaurant.ownerId !== req.user.id) {
       return res.status(403).json({ message: "You can only update orders for your restaurant" });
+    }
+
+    // Refund the customer before cancelling a paid order — otherwise they lose
+    // both their food and their money. The `order.status !== "CANCELLED"` guard
+    // stops a second "Cancel" click from refunding an already-cancelled order twice.
+    if (status === "CANCELLED" && order.status !== "CANCELLED") {
+      const payment = await prisma.payment.findUnique({
+        where: { orderId: order.id },
+      });
+
+      // Only orders that actually took the customer's money get refunded.
+      if (payment && payment.status === "SUCCESS") {
+        const { refunded } = await refundPayment(payment.reference);
+
+        if (!refunded) {
+          return res.status(502).json({
+            message: "Refund failed — order was NOT cancelled. Please try again.",
+          });
+        }
+      }
     }
 
     const updated = await prisma.order.update({
