@@ -1044,7 +1044,9 @@ const CustomersSection = () => {
 const ORDER_STATUS_STYLE = {
   PENDING_PAYMENT: "bg-slate-100 text-slate-600",
   PENDING_RESTAURANT_CONFIRMATION: "bg-amber-100 text-amber-700",
+  ACCEPTED: "bg-teal-100 text-teal-700",
   PREPARING: "bg-blue-100 text-blue-700",
+  READY_FOR_PICKUP: "bg-indigo-100 text-indigo-700",
   OUT_FOR_DELIVERY: "bg-purple-100 text-purple-700",
   DELIVERED: "bg-green-100 text-green-700",
   CANCELLED: "bg-red-100 text-red-700",
