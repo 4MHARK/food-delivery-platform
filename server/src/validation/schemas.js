@@ -123,6 +123,7 @@ export const riderUpdateSchema = z.object({
 export const deliveryStatusSchema = z.object({
   status: z.enum(["ZILLA_ON_IT", "AT_KITCHEN", "BAGGED", "MOVING", "CLOSE_BY", "DELIVERED", "FAILED"]),
   reason: z.string().trim().max(500, "Reason must be 500 characters or less").optional(),
+  code: z.string().trim().max(10, "Code must be 10 characters or less").optional(),
 });
 
 // ── Password reset ──

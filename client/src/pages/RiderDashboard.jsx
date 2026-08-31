@@ -90,6 +90,7 @@ const RiderDashboard = () => {
   // FAILED confirmation dialog
   const [failTarget, setFailTarget] = useState(null); // deliveryId | null
   const [failReason, setFailReason] = useState("");
+  const [deliveryCode, setDeliveryCode] = useState("");
 
   // Toast
   const [message, setMessage] = useState("");
@@ -239,6 +240,17 @@ const RiderDashboard = () => {
     } finally {
       setUpdatingDeliveryId(null);
     }
+  };
+
+  // ── Deliver: require the customer's 4-digit code ──
+  const handleDeliver = async (deliveryId) => {
+    const code = deliveryCode.trim();
+    if (!/^\d{4}$/.test(code)) {
+      showMsg("Enter the 4-digit code from the customer.");
+      return;
+    }
+    await handleUpdateDeliveryStatus(deliveryId, "DELIVERED", { code });
+    setDeliveryCode("");
   };
 
   // ── Confirm and execute FAILED ──
@@ -833,22 +845,36 @@ const RiderDashboard = () => {
                         </>
                       )}
                       {activeDelivery.status === "CLOSE_BY" && (
-                        <>
-                          <button
-                            onClick={() => handleUpdateDeliveryStatus(activeDelivery.id, "DELIVERED")}
-                            disabled={updatingDeliveryId === activeDelivery.id}
-                            className="bg-green-600 hover:bg-green-700 disabled:bg-green-300 text-white text-sm font-bold px-4 py-2.5 rounded-full transition active:scale-95"
-                          >
-                            {updatingDeliveryId === activeDelivery.id ? "Updating..." : "Delivered"}
-                          </button>
-                          <button
-                            onClick={() => { setFailTarget(activeDelivery.id); setFailReason(""); }}
-                            disabled={updatingDeliveryId === activeDelivery.id}
-                            className="bg-white hover:bg-red-50 text-red-600 border-2 border-red-200 text-sm font-bold px-4 py-2.5 rounded-full transition active:scale-95"
-                          >
-                            Report Issue
-                          </button>
-                        </>
+                        <div className="w-full flex flex-col gap-3">
+                          <p className="text-xs font-medium text-slate-500">
+                            Ask the customer for their 4-digit code, then confirm to complete the delivery.
+                          </p>
+                          <input
+                            type="text"
+                            inputMode="numeric"
+                            maxLength={4}
+                            value={deliveryCode}
+                            onChange={(e) => setDeliveryCode(e.target.value.replace(/\D/g, ""))}
+                            placeholder="4-digit code"
+                            className="w-full rounded-full border-2 border-slate-200 px-4 py-2.5 text-center text-lg font-bold tracking-[0.5em] outline-none focus:border-green-500"
+                          />
+                          <div className="flex gap-2">
+                            <button
+                              onClick={() => handleDeliver(activeDelivery.id)}
+                              disabled={updatingDeliveryId === activeDelivery.id}
+                              className="bg-green-600 hover:bg-green-700 disabled:bg-green-300 text-white text-sm font-bold px-4 py-2.5 rounded-full transition active:scale-95 flex-1"
+                            >
+                              {updatingDeliveryId === activeDelivery.id ? "Updating..." : "Confirm & Deliver"}
+                            </button>
+                            <button
+                              onClick={() => { setFailTarget(activeDelivery.id); setFailReason(""); }}
+                              disabled={updatingDeliveryId === activeDelivery.id}
+                              className="bg-white hover:bg-red-50 text-red-600 border-2 border-red-200 text-sm font-bold px-4 py-2.5 rounded-full transition active:scale-95"
+                            >
+                              Report Issue
+                            </button>
+                          </div>
+                        </div>
                       )}
                     </div>
                   </div>

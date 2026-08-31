@@ -3,6 +3,7 @@ import prisma from "../config/prisma.js";
 import authMiddleware from "../middleware/auth.middleware.js";
 import { verifyPayment } from "../services/paystack.js";
 import { notify } from "../services/events.js";
+import crypto from "node:crypto";
 
 const router = express.Router();
 
@@ -74,7 +75,10 @@ router.post("/payments/verify", authMiddleware, async (req, res, next) => {
       }),
       prisma.order.update({
         where: { id: payment.orderId },
-        data: { status: "PENDING_RESTAURANT_CONFIRMATION" },
+        data: {
+          status: "PENDING_RESTAURANT_CONFIRMATION",
+          deliveryCode: crypto.randomInt(0, 10000).toString().padStart(4, "0"),
+        },
         include: {
           orderItems: {
             include: {

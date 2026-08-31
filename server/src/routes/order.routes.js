@@ -270,6 +270,9 @@ router.get("/orders/:id", authMiddleware, async (req, res, next) => {
       });
     }
 
+    // Only the customer sees their handoff code.
+    if (!isCustomer) delete order.deliveryCode;
+
     res.status(200).json({
       message: "Order fetched successfully",
       order,
