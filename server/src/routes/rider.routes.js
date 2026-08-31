@@ -3,7 +3,8 @@ import prisma from "../config/prisma.js";
 import authMiddleware from "../middleware/auth.middleware.js";
 import riderMiddleware from "../middleware/rider.middleware.js";
 import { validate } from "../middleware/validate.js";
-import { riderRegisterSchema, riderUpdateSchema } from "../validation/schemas.js";
+import { riderRegisterSchema, riderUpdateSchema, bankDetailsSchema } from "../validation/schemas.js";
+import { createTransferRecipient } from "../services/paystack.js";
 
 const router = express.Router();
 
@@ -197,6 +198,87 @@ router.put("/riders/me", authMiddleware, riderMiddleware, validate(riderUpdateSc
     });
   } catch (error) {
    next(error)
+  }
+});
+
+// Save the rider's bank account (creates a Paystack transfer recipient)
+router.put("/riders/me/bank", authMiddleware, riderMiddleware, validate(bankDetailsSchema), async (req, res, next) => {
+  try {
+    const { accountNumber, bankCode, bankName } = req.body;
+
+    const rider = await prisma.rider.findUnique({
+      where: { userId: req.user.id },
+      include: { user: { select: { name: true } } },
+    });
+
+    if (!rider) {
+      return res.status(404).json({ message: "Rider profile not found. Please register first." });
+    }
+
+    const recipient = await createTransferRecipient({
+      name: rider.user.name,
+      accountNumber,
+      bankCode,
+    });
+
+    if (!recipient.ok) {
+      return res.status(400).json({ message: recipient.message || "Invalid bank details" });
+    }
+
+    const updated = await prisma.rider.update({
+      where: { userId: req.user.id },
+      data: {
+        bankName: bankName || null,
+        bankCode,
+        accountNumber,
+        accountName: recipient.accountName || rider.user.name,
+        recipientCode: recipient.recipientCode,
+      },
+    });
+
+    res.status(200).json({
+      message: "Bank details saved",
+      rider: {
+        id: updated.id,
+        bankName: updated.bankName,
+        accountNumber: updated.accountNumber,
+        accountName: updated.accountName,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// Rider's payout history
+router.get("/riders/payouts", authMiddleware, riderMiddleware, async (req, res, next) => {
+  try {
+    const rider = await prisma.rider.findUnique({
+      where: { userId: req.user.id },
+    });
+
+    if (!rider) {
+      return res.status(404).json({ message: "Rider profile not found. Please register first." });
+    }
+
+    const payouts = await prisma.payout.findMany({
+      where: { type: "RIDER", order: { delivery: { riderId: rider.id } } },
+      include: { order: { select: { id: true, createdAt: true } } },
+      orderBy: { createdAt: "desc" },
+    });
+
+    res.status(200).json({
+      message: "Payouts fetched successfully",
+      payouts: payouts.map((p) => ({
+        id: p.id,
+        orderId: p.orderId,
+        amount: Number(p.amount),
+        status: p.status,
+        createdAt: p.createdAt,
+      })),
+    });
+  } catch (error) {
+    next(error);
   }
 });
 

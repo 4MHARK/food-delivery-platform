@@ -5,6 +5,7 @@ import riderMiddleware from "../middleware/rider.middleware.js";
 import { validate } from "../middleware/validate.js";
 import { deliveryStatusSchema } from "../validation/schemas.js";
 import { notify } from "../services/events.js";
+import { settleOrderPayouts } from "../services/payouts.js";
 
 const router = express.Router();
 
@@ -325,6 +326,12 @@ router.put("/deliveries/:id/status", authMiddleware, riderMiddleware, validate(d
 
       return { delivery: updatedDelivery, order: updatedOrder };
     }, { timeout: 20000, maxWait: 10000 });
+
+    // Fire the payout transfers after the transaction commits — non-blocking so a
+    // payout failure never makes the rider's "Delivered" appear to fail.
+    if (status === "DELIVERED") {
+      settleOrderPayouts(result.delivery.orderId).catch((e) => console.error("[payout]", e));
+    }
 
     const response = {
       message: "Delivery status updated successfully",

@@ -55,6 +55,17 @@ enum RestaurantApprovalStatus {
   SUSPENDED
 }
 
+enum PayoutType {
+  RESTAURANT
+  RIDER
+}
+
+enum PayoutStatus {
+  PENDING
+  SUCCESS
+  FAILED
+}
+
 model Campus {
   id          Int          @id @default(autoincrement())
   name        String
@@ -100,6 +111,11 @@ model Rider {
   isAvailable   Boolean     @default(true)
   isVerified    Boolean     @default(false)
   isSuspended   Boolean     @default(false)
+  bankName      String?
+  bankCode      String?
+  accountNumber String?
+  accountName   String?
+  recipientCode String?
   campusId      Int
   campus        Campus      @relation(fields: [campusId], references: [id])
   user          User        @relation(fields: [userId], references: [id])
@@ -127,6 +143,11 @@ model Restaurant {
   owner     User     @relation(fields: [ownerId], references: [id])
   campusId  Int
   campus    Campus   @relation(fields: [campusId], references: [id])
+  bankName      String?
+  bankCode      String?
+  accountNumber String?
+  accountName   String?
+  recipientCode String?
   approvalStatus RestaurantApprovalStatus @default(PENDING)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -183,6 +204,7 @@ model Order {
   restaurant      Restaurant  @relation(fields: [restaurantId], references: [id])
   orderItems      OrderItem[]
   rejectedBy      RejectedOrder[]
+  payouts         Payout[]
   createdAt       DateTime    @default(now())
   updatedAt       DateTime    @updatedAt
   @@index([restaurantId])
@@ -245,6 +267,23 @@ model Payment {
   gatewayResponse Json?
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
+}
+
+model Payout {
+  id              Int          @id @default(autoincrement())
+  orderId         Int
+  order           Order        @relation(fields: [orderId], references: [id])
+  type            PayoutType
+  amount          Decimal      @db.Decimal(10,2)
+  recipientCode   String?
+  reference       String       @unique
+  status          PayoutStatus @default(PENDING)
+  gatewayResponse Json?
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  @@index([orderId])
+  @@index([type, status])
 }
 
 model RestaurantReview {

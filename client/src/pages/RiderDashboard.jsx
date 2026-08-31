@@ -92,6 +92,17 @@ const RiderDashboard = () => {
   const [failReason, setFailReason] = useState("");
   const [deliveryCode, setDeliveryCode] = useState("");
 
+  // Bank / payouts
+  const [bankForm, setBankForm] = useState({ accountNumber: "", bankCode: "", bankName: "" });
+  const [savingBank, setSavingBank] = useState(false);
+  const [verifying, setVerifying] = useState(false);
+  const [resolvedName, setResolvedName] = useState(null); // account name from Paystack
+  const [editingBank, setEditingBank] = useState(false);
+  const [banks, setBanks] = useState([]); // fetched from Paystack
+  const [payouts, setPayouts] = useState([]);
+  const [payoutsLoading, setPayoutsLoading] = useState(false);
+  const [showPayoutAccount, setShowPayoutAccount] = useState(false);
+
   // Toast
   const [message, setMessage] = useState("");
   const messageTimer = useRef(null);
@@ -111,6 +122,12 @@ const RiderDashboard = () => {
     try {
       const data = await api.get("/riders/me");
       setRider(data.rider);
+      setBankForm({
+        accountNumber: data.rider.accountNumber || "",
+        bankCode: data.rider.bankCode || "",
+        bankName: data.rider.bankName || "",
+      });
+      setResolvedName(data.rider.accountName || null);
     } catch (e) {
       if (e?.status === 404) {
         setRider(null);
@@ -278,11 +295,74 @@ const RiderDashboard = () => {
     }
   };
 
+  // ── Fetch payout history ──
+  const fetchPayouts = async () => {
+    try {
+      setPayoutsLoading(true);
+      const data = await api.get("/riders/payouts");
+      setPayouts(data.payouts || []);
+    } catch { /* silent */ } finally {
+      setPayoutsLoading(false);
+    }
+  };
+
+  // ── Save bank details (creates a Paystack transfer recipient) ──
+  const handleSaveBank = async (e) => {
+    e.preventDefault();
+    if (!bankForm.accountNumber || !bankForm.bankCode) {
+      showMsg("Account number and bank code are required.");
+      return;
+    }
+    try {
+      setSavingBank(true);
+      const data = await api.put("/riders/me/bank", bankForm);
+      setRider((prev) => ({ ...prev, ...data.rider }));
+      setEditingBank(false);
+      showMsg("Bank details saved.");
+    } catch (e) {
+      showMsg(e.message || "Failed to save bank details.");
+    } finally {
+      setSavingBank(false);
+    }
+  };
+
+  // ── Verify account number + bank → show the account name before saving ──
+  const handleVerifyAccount = async () => {
+    if (bankForm.accountNumber.length !== 10 || !bankForm.bankCode) {
+      showMsg("Enter the 10-digit account number and pick a bank first.");
+      return;
+    }
+    try {
+      setVerifying(true);
+      setResolvedName(null);
+      const data = await api.get(
+        `/payments/resolve-account?account_number=${bankForm.accountNumber}&bank_code=${bankForm.bankCode}`
+      );
+      setResolvedName(data.accountName);
+      showMsg("Account verified.");
+    } catch (e) {
+      setResolvedName(null);
+      showMsg(e.message || "Could not resolve account.");
+    } finally {
+      setVerifying(false);
+    }
+  };
+
+  const fetchBanks = async () => {
+    try {
+      const data = await api.get("/payments/banks");
+      setBanks(data.banks || []);
+    } catch {
+      setBanks([]);
+    }
+  };
+
   // ── Initial load ──
   useEffect(() => {
     const init = async () => {
       setLoading(true);
       await fetchRider();
+      fetchBanks();
       setLoading(false);
     };
     init();
@@ -931,6 +1011,94 @@ const RiderDashboard = () => {
                 )}
               </div>
             )}
+
+            {/* ── Payout account & history ── */}
+            <div>
+              <button
+                onClick={() => { setShowPayoutAccount(!showPayoutAccount); if (!showPayoutAccount) fetchPayouts(); }}
+                className="w-full flex items-center justify-between text-sm font-bold text-slate-500 uppercase tracking-wider mb-3"
+              >
+                <span className="flex items-center gap-2">
+                  <span className="w-2 h-2 rounded-full bg-slate-300" />
+                  Payout Account
+                </span>
+                <span className={`material-symbols-outlined text-slate-400 transition ${showPayoutAccount ? "rotate-180" : ""}`}>
+                  expand_more
+                </span>
+              </button>
+
+              {showPayoutAccount && (
+                <div className="space-y-3">
+                  {/* Bank details */}
+                  <div className="bg-white rounded-2xl shadow-sm p-5">
+                    <p className="text-xs text-slate-400 mb-3">Your delivery fees are sent here when an order is delivered.</p>
+                    {rider.accountName && !editingBank ? (
+                      <div className="space-y-3">
+                        <div className="rounded-xl bg-emerald-50 border border-emerald-200 px-4 py-3 text-sm">
+                          <p className="font-semibold text-emerald-800">{rider.accountName}</p>
+                          <p className="text-emerald-700">{rider.bankName || "Bank"} ·•••• {rider.accountNumber?.slice(-4)}</p>
+                        </div>
+                        <button type="button" onClick={() => { setEditingBank(true); setResolvedName(rider.accountName); }} className="w-full h-10 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50 font-semibold text-sm transition active:scale-[0.98]">
+                          Edit bank details
+                        </button>
+                      </div>
+                    ) : (
+                    <form onSubmit={handleSaveBank} className="space-y-3">
+                      <div>
+                        <label className="block text-xs font-semibold text-slate-500 mb-1">Account Number</label>
+                        <input value={bankForm.accountNumber} onChange={(e) => { setBankForm({ ...bankForm, accountNumber: e.target.value.replace(/\D/g, "") }); setResolvedName(null); }} inputMode="numeric" maxLength={10} placeholder="10-digit account number" className="w-full h-10 px-3 rounded-lg border border-slate-200 focus:border-amber-500 focus:ring-1 focus:ring-amber-500 outline-none text-sm" />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-semibold text-slate-500 mb-1">Bank</label>
+                        <select value={bankForm.bankCode} onChange={(e) => { const bank = banks.find((b) => b.code === e.target.value); setBankForm({ ...bankForm, bankCode: e.target.value, bankName: bank?.name || "" }); setResolvedName(null); }} className="w-full h-10 px-3 rounded-lg border border-slate-200 focus:border-amber-500 focus:ring-1 focus:ring-amber-500 outline-none text-sm bg-white">
+                          <option value="">{banks.length ? "Select bank" : "Loading banks..."}</option>
+                          {banks.map((b) => (
+                            <option key={b.code} value={b.code}>{b.name}</option>
+                          ))}
+                        </select>
+                      </div>
+                      <button type="button" onClick={handleVerifyAccount} disabled={verifying} className="w-full h-10 rounded-xl border border-amber-300 text-amber-700 hover:bg-amber-50 disabled:opacity-50 font-semibold text-sm transition active:scale-[0.98]">
+                        {verifying ? "Verifying..." : "Verify Account"}
+                      </button>
+                      {resolvedName && (
+                        <div className="rounded-xl bg-emerald-50 border border-emerald-200 px-4 py-3 text-sm">
+                          <p className="text-xs text-emerald-600 mb-0.5">Account name</p>
+                          <p className="font-semibold text-emerald-800">{resolvedName}</p>
+                        </div>
+                      )}
+                      <button type="submit" disabled={savingBank || !resolvedName} className="w-full h-10 rounded-xl bg-slate-900 hover:bg-slate-800 disabled:bg-slate-400 text-white font-bold text-sm transition active:scale-[0.98]">
+                        {savingBank ? "Saving..." : "Save Bank Details"}
+                      </button>
+                    </form>
+                    )}
+                  </div>
+
+                  {/* Payout history */}
+                  {payoutsLoading ? (
+                    <div className="h-16 bg-slate-200 animate-pulse rounded-2xl" />
+                  ) : payouts.length === 0 ? (
+                    <div className="bg-white rounded-2xl shadow-sm p-6 text-center">
+                      <p className="text-xs text-slate-400">No payouts yet. Your earnings appear here once orders are delivered.</p>
+                    </div>
+                  ) : (
+                    <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
+                      {payouts.map((p, idx) => (
+                        <div key={p.id} className={`px-5 py-3 flex items-center justify-between ${idx < payouts.length - 1 ? "border-b border-slate-50" : ""}`}>
+                          <div>
+                            <p className="text-sm font-semibold text-slate-900">Order #{p.orderId}</p>
+                            <p className="text-xs text-slate-400">{new Date(p.createdAt).toLocaleDateString()}</p>
+                          </div>
+                          <div className="flex items-center gap-3">
+                            <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${p.status === "SUCCESS" ? "bg-green-100 text-green-700" : p.status === "FAILED" ? "bg-red-100 text-red-700" : "bg-amber-100 text-amber-700"}`}>{p.status}</span>
+                            <span className="text-sm font-bold text-slate-900">{formatCurrency(p.amount)}</span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
 
             {/* Error state (post-load) */}
             {!dataLoading && dataError && availableOrders.length === 0 && myDeliveries.length === 0 && (
