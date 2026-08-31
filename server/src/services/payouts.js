@@ -4,6 +4,11 @@ import crypto from "crypto";
 
 const newReference = () => `CHOW-TRF-${Date.now()}-${crypto.randomBytes(4).toString("hex")}`;
 
+// Manual payouts by default: record what's owed (PENDING) without firing a
+// transfer. Set AUTO_PAYOUTS=true once the Paystack account is a *Registered*
+// Business to switch back to automatic transfers.
+const AUTO_PAYOUTS = process.env.AUTO_PAYOUTS === "true";
+
 // Create one Payout row and (when bank details exist) fire the transfer.
 // Returns null when there is nothing to pay out (zero/negative amount).
 async function createAndRunPayout({ orderId, type, amountNaira, recipientCode, reason }) {
@@ -11,7 +16,25 @@ async function createAndRunPayout({ orderId, type, amountNaira, recipientCode, r
 
   const reference = newReference();
 
-  // No bank details yet → record the failure so the admin sees it; no transfer.
+  // Manual mode: record as owed (PENDING), no transfer. The admin pays by hand.
+  if (!AUTO_PAYOUTS) {
+    return prisma.payout.create({
+      data: {
+        orderId,
+        type,
+        amount: amountNaira,
+        recipientCode: recipientCode || null,
+        reference,
+        status: "PENDING",
+        gatewayResponse: {
+          mode: "manual",
+          bankDetails: recipientCode ? "complete" : "missing",
+        },
+      },
+    });
+  }
+
+  // Auto mode — no bank details yet → record the failure so the admin sees it.
   if (!recipientCode) {
     return prisma.payout.create({
       data: {
