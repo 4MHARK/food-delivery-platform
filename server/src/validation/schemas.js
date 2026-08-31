@@ -88,10 +88,20 @@ const matricNumberField = z.preprocess(
   z.string().regex(/^[A-Za-z0-9/-]{5,20}$/, "Matric number must be 5-20 alphanumeric characters").optional()
 );
 
+// Rider profile photo — the client shrinks it and sends a base64 `data:image/…`
+// URL. Require it so every rider has a face customers can identify.
+const riderPhotoField = z
+  .string()
+  .trim()
+  .min(1, "Profile photo is required")
+  .startsWith("data:image/", "Profile photo must be a valid image")
+  .max(2_000_000, "Profile photo is too large");
+
 export const riderRegisterSchema = z
   .object({
     vehicleType: z.string().trim().min(1, "vehicleType is required"),
     phone: phoneDigits,
+    photo: riderPhotoField,
     licensePlate: licensePlateField,
     licenseNumber: licenseNumberField,
     matricNumber: matricNumberField,

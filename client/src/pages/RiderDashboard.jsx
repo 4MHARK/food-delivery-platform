@@ -54,6 +54,34 @@ function estimateETA(vehicleType, deliveryStatus) {
   ];
 }
 
+// Shrink a chosen photo client-side to a small JPEG data URL so it fits in a
+// JSON request body (and keeps the DB row light). 600px is plenty for an avatar.
+const MAX_PHOTO_DIM = 600;
+
+function readAndResizePhoto(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error("Could not read file"));
+    reader.onload = () => {
+      const img = new Image();
+      img.onerror = () => reject(new Error("Could not read image"));
+      img.onload = () => {
+        const scale = Math.min(1, MAX_PHOTO_DIM / Math.max(img.width, img.height));
+        const w = Math.round(img.width * scale);
+        const h = Math.round(img.height * scale);
+        const canvas = document.createElement("canvas");
+        canvas.width = w;
+        canvas.height = h;
+        const ctx = canvas.getContext("2d");
+        ctx.drawImage(img, 0, 0, w, h);
+        resolve(canvas.toDataURL("image/jpeg", 0.75));
+      };
+      img.src = reader.result;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
 const RiderDashboard = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
@@ -73,6 +101,8 @@ const RiderDashboard = () => {
   });
   const [idType, setIdType] = useState("license"); // "license" | "matric"
   const [registering, setRegistering] = useState(false);
+  const [photo, setPhoto] = useState(""); // resized base64 data URL
+  const [processingPhoto, setProcessingPhoto] = useState(false);
 
   // Orders & deliveries
   const [availableOrders, setAvailableOrders] = useState([]);
@@ -174,11 +204,34 @@ const RiderDashboard = () => {
     }
   };
 
+  // ── Choose + resize a profile photo ──
+  const handlePhotoChange = async (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = ""; // allow re-selecting the same file
+    if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      showMsg("Please choose an image file.");
+      return;
+    }
+    try {
+      setProcessingPhoto(true);
+      setPhoto(await readAndResizePhoto(file));
+    } catch {
+      showMsg("Could not process that photo. Try a different image.");
+    } finally {
+      setProcessingPhoto(false);
+    }
+  };
+
   // ── Register rider profile ──
   const handleRegister = async (e) => {
     e.preventDefault();
     if (!riderForm.vehicleType || !riderForm.phone) {
       showMsg("Please fill in vehicle type and phone.");
+      return;
+    }
+    if (!photo) {
+      showMsg("Please add a profile photo of yourself.");
       return;
     }
     if (idType === "license" && (!riderForm.licensePlate || !riderForm.licenseNumber)) {
@@ -194,6 +247,7 @@ const RiderDashboard = () => {
       const body = {
         vehicleType: riderForm.vehicleType,
         phone: riderForm.phone,
+        photo,
       };
       if (idType === "license") {
         body.licensePlate = riderForm.licensePlate;
@@ -448,6 +502,40 @@ const RiderDashboard = () => {
 
           <form onSubmit={handleRegister} className="bg-white rounded-2xl shadow-sm p-6 space-y-4">
             <h3 className="text-lg font-bold text-slate-900">Rider Profile</h3>
+            {/* Profile photo — mandatory so customers can identify their rider */}
+            <div>
+              <label className="block text-sm font-semibold text-slate-700 mb-2">
+                Profile Photo <span className="text-red-500">*</span>
+              </label>
+              <div className="flex items-center gap-4">
+                {photo ? (
+                  <img
+                    src={photo}
+                    alt="Profile preview"
+                    className="w-20 h-20 rounded-full object-cover border-2 border-amber-300 shrink-0"
+                  />
+                ) : (
+                  <div className="w-20 h-20 rounded-full bg-slate-100 flex items-center justify-center shrink-0">
+                    <span className="material-symbols-outlined text-4xl text-slate-300">person</span>
+                  </div>
+                )}
+                <div className="flex-1">
+                  <label className="inline-flex items-center gap-2 h-11 px-4 rounded-xl border-2 border-slate-200 text-slate-600 font-semibold text-sm cursor-pointer hover:border-amber-500 hover:text-amber-600 transition">
+                    <span className="material-symbols-outlined text-lg">
+                      {processingPhoto ? "hourglass_top" : "photo_camera"}
+                    </span>
+                    {processingPhoto ? "Processing..." : photo ? "Change photo" : "Take / upload photo"}
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={handlePhotoChange}
+                      className="hidden"
+                    />
+                  </label>
+                  <p className="text-xs text-slate-400 mt-2">A clear photo helps customers identify you at delivery.</p>
+                </div>
+              </div>
+            </div>
             <div>
               <label className="block text-sm font-semibold text-slate-700 mb-1.5">Vehicle Type</label>
               <select

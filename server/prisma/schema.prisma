@@ -116,6 +116,7 @@ model Rider {
   accountNumber String?
   accountName   String?
   recipientCode String?
+  photoUrl      String?
   campusId      Int
   campus        Campus      @relation(fields: [campusId], references: [id])
   user          User        @relation(fields: [userId], references: [id])

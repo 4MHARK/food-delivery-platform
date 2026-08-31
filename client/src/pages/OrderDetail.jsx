@@ -52,6 +52,13 @@ function estimateCustomerETA(deliveryStatus) {
   ];
 }
 
+function formatCountdown(ms) {
+  const totalSec = Math.max(0, Math.floor(ms / 1000));
+  const m = Math.floor(totalSec / 60);
+  const s = totalSec % 60;
+  return `${m}:${String(s).padStart(2, "0")}`;
+}
+
 function RateRider({ riderId, riderName }) {
   const [rating, setRating] = useState(0);
   const [hover, setHover] = useState(0);
@@ -126,6 +133,9 @@ const OrderDetail = () => {
   const [order, setOrder] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [cancelling, setCancelling] = useState(false);
+  const [cancelMsg, setCancelMsg] = useState("");
+  const [now, setNow] = useState(Date.now());
 
   useEffect(() => {
     const fetchOrder = async () => {
@@ -140,6 +150,14 @@ const OrderDetail = () => {
     };
     fetchOrder();
   }, [id]);
+
+  // Tick every second while the order is still cancellable so the refund
+  // countdown stays live for the customer.
+  useEffect(() => {
+    if (order?.status !== "PENDING_RESTAURANT_CONFIRMATION") return;
+    const t = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, [order?.status]);
 
   // ── SSE: real-time status updates ──
   useNotificationPermission();
@@ -213,6 +231,28 @@ const OrderDetail = () => {
     return date.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
   };
 
+  // ── Cancel order (customer) — full refund only inside the free-cancel window ──
+  const refundDeadlineMs = order?.refundDeadline ? new Date(order.refundDeadline).getTime() : null;
+
+  const handleCancel = async () => {
+    const within = refundDeadlineMs != null && Date.now() < refundDeadlineMs;
+    const msg = within
+      ? "Cancel this order? You'll receive a full refund."
+      : "The free-cancellation window has passed — you will NOT be refunded. Cancel anyway?";
+    if (!window.confirm(msg)) return;
+    setCancelling(true);
+    setCancelMsg("");
+    try {
+      const data = await api.post(`/orders/${id}/cancel`);
+      setOrder(data.order);
+      setCancelMsg(data.message);
+    } catch (e) {
+      setCancelMsg(e.message || "Could not cancel order.");
+    } finally {
+      setCancelling(false);
+    }
+  };
+
   // ── LOADING ──
   if (loading) {
     return (
@@ -266,6 +306,8 @@ const OrderDetail = () => {
   const isCancelled = order.status === "CANCELLED";
   const isDelivered = order.status === "DELIVERED";
   const statusColor = STATUS_COLORS[order.status] || STATUS_COLORS.PENDING_PAYMENT;
+  const withinWindow = refundDeadlineMs != null && now < refundDeadlineMs;
+  const remainingMs = withinWindow ? refundDeadlineMs - now : 0;
 
   return (
     <AppLayout backTo="/orders" showUserDropdown={false}>
@@ -291,6 +333,36 @@ const OrderDetail = () => {
           <div className="mb-6 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-center">
             <p className="text-xs font-semibold text-emerald-700">Delivery code — share with your rider</p>
             <p className="mt-1 text-3xl font-black tracking-[0.4em] text-emerald-800">{order.deliveryCode}</p>
+          </div>
+        )}
+
+        {/* Cancel order — available until the restaurant accepts */}
+        {order.status === "PENDING_RESTAURANT_CONFIRMATION" && (
+          <div className="mb-6 rounded-2xl border border-amber-100 bg-white p-5 shadow-sm">
+            <div className="flex items-start gap-3">
+              <div className="w-10 h-10 rounded-full bg-amber-50 flex items-center justify-center shrink-0">
+                <span className="material-symbols-outlined text-amber-500">timer</span>
+              </div>
+              <div className="flex-1">
+                <h3 className="text-sm font-bold text-slate-900 mb-1">Need to cancel?</h3>
+                {withinWindow ? (
+                  <p className="text-xs text-emerald-600 font-semibold mb-3">
+                    ⏱ Full refund available for the next {formatCountdown(remainingMs)}. Cancel now to get your money back.
+                  </p>
+                ) : (
+                  <p className="text-xs text-red-600 font-semibold mb-3">
+                    ⚠ The free-cancellation window has passed. Cancelling now will NOT refund your payment.
+                  </p>
+                )}
+                <button
+                  onClick={handleCancel}
+                  disabled={cancelling}
+                  className="h-10 px-4 rounded-xl border-2 border-red-200 text-red-600 hover:bg-red-50 disabled:opacity-50 font-semibold text-sm transition active:scale-95"
+                >
+                  {cancelling ? "Cancelling..." : "Cancel Order"}
+                </button>
+              </div>
+            </div>
           </div>
         )}
 
@@ -369,7 +441,15 @@ const OrderDetail = () => {
             {/* Rider status — inline under "On the way" (replaces the old separate Delivery Tracker) */}
             {order.delivery && order.status === "OUT_FOR_DELIVERY" && (
               <div className="mt-5 flex items-center gap-3 rounded-xl bg-purple-50 border border-purple-100 px-4 py-3">
-                <span className="material-symbols-outlined text-purple-500 text-xl">two_wheeler</span>
+                {order.delivery.rider?.photoUrl ? (
+                  <img
+                    src={order.delivery.rider.photoUrl}
+                    alt={order.delivery.rider.user?.name || "Your rider"}
+                    className="w-10 h-10 rounded-full object-cover border border-purple-200 shrink-0"
+                  />
+                ) : (
+                  <span className="material-symbols-outlined text-purple-500 text-xl">two_wheeler</span>
+                )}
                 <div className="flex-1 min-w-0">
                   <p className="text-xs text-slate-500 truncate">
                     {order.delivery.rider?.user?.name || "Your rider"}
@@ -400,6 +480,9 @@ const OrderDetail = () => {
             </div>
             <h3 className="text-lg font-bold text-red-700 mb-1">Order Cancelled</h3>
             <p className="text-sm text-red-500">This order has been cancelled and is no longer active.</p>
+            {cancelMsg && (
+              <p className="mt-3 text-sm font-semibold text-slate-700 bg-white/70 rounded-xl px-4 py-2 inline-block">{cancelMsg}</p>
+            )}
           </div>
         )}
 
