@@ -78,7 +78,6 @@ router.post("/orders/checkout", checkoutLimiter, authMiddleware, validate(checko
           subtotal: fees.subtotal,
           deliveryFee: fees.deliveryFee,
           serviceFee: fees.serviceFee,
-          tax: fees.tax,
           totalAmount: fees.totalAmount,
           orderItems: {
             create: validatedItems.map((item) => ({
@@ -269,6 +268,9 @@ router.get("/orders/:id", authMiddleware, async (req, res, next) => {
         message: "You are not allowed to view this order",
       });
     }
+
+    // Only the customer sees their handoff code.
+    if (!isCustomer) delete order.deliveryCode;
 
     res.status(200).json({
       message: "Order fetched successfully",

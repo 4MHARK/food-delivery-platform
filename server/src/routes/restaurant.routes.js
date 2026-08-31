@@ -3,7 +3,8 @@ import prisma from "../config/prisma.js";
 import authMiddleware from "../middleware/auth.middleware.js";
 import ownerMiddleware from "../middleware/owner.middleware.js";
 import { validate } from "../middleware/validate.js";
-import { restaurantSchema } from "../validation/schemas.js";
+import { restaurantSchema, bankDetailsSchema } from "../validation/schemas.js";
+import { createTransferRecipient } from "../services/paystack.js";
 
 const router = express.Router();
 
@@ -177,6 +178,100 @@ router.put("/restaurants/:id", authMiddleware, ownerMiddleware, validate(restaur
 
   } catch (error) {
   next(error)
+  }
+});
+
+// Save the owner's bank account (creates a Paystack transfer recipient)
+router.put("/restaurants/:id/bank", authMiddleware, ownerMiddleware, validate(bankDetailsSchema), async (req, res, next) => {
+  try {
+    const { accountNumber, bankCode, bankName } = req.body;
+
+    const restaurant = await prisma.restaurant.findUnique({
+      where: { id: Number(req.params.id) },
+      include: { owner: { select: { name: true } } },
+    });
+
+    if (!restaurant) {
+      return res.status(404).json({ message: "Restaurant not found" });
+    }
+    if (restaurant.ownerId !== req.user.id) {
+      return res.status(403).json({ message: "You can only edit your restaurant" });
+    }
+
+    const recipient = await createTransferRecipient({
+      name: restaurant.owner.name,
+      accountNumber,
+      bankCode,
+    });
+
+    if (!recipient.ok) {
+      return res.status(400).json({ message: recipient.message || "Invalid bank details" });
+    }
+
+    const updated = await prisma.restaurant.update({
+      where: { id: restaurant.id },
+      data: {
+        bankName: bankName || null,
+        bankCode,
+        accountNumber,
+        accountName: recipient.accountName || restaurant.owner.name,
+        recipientCode: recipient.recipientCode,
+      },
+    });
+
+    res.status(200).json({
+      message: "Bank details saved",
+      restaurant: {
+        id: updated.id,
+        bankName: updated.bankName,
+        accountNumber: updated.accountNumber,
+        accountName: updated.accountName,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// Owner's payout history + earnings summary
+router.get("/restaurants/:id/payouts", authMiddleware, ownerMiddleware, async (req, res, next) => {
+  try {
+    const restaurant = await prisma.restaurant.findUnique({
+      where: { id: Number(req.params.id) },
+    });
+
+    if (!restaurant) {
+      return res.status(404).json({ message: "Restaurant not found" });
+    }
+    if (restaurant.ownerId !== req.user.id) {
+      return res.status(403).json({ message: "You can only view your restaurant's payouts" });
+    }
+
+    const payouts = await prisma.payout.findMany({
+      where: { type: "RESTAURANT", order: { restaurantId: restaurant.id } },
+      include: { order: { select: { id: true, createdAt: true } } },
+      orderBy: { createdAt: "desc" },
+    });
+
+    const sum = (rows) => rows.reduce((acc, p) => acc + Number(p.amount), 0);
+
+    res.status(200).json({
+      message: "Payouts fetched successfully",
+      payouts: payouts.map((p) => ({
+        id: p.id,
+        orderId: p.orderId,
+        amount: Number(p.amount),
+        status: p.status,
+        createdAt: p.createdAt,
+      })),
+      summary: {
+        totalEarned: sum(payouts),
+        paidOut: sum(payouts.filter((p) => p.status === "SUCCESS")),
+        pending: sum(payouts.filter((p) => p.status === "PENDING")),
+      },
+    });
+  } catch (error) {
+    next(error);
   }
 });
 

@@ -5,8 +5,12 @@ import riderMiddleware from "../middleware/rider.middleware.js";
 import { validate } from "../middleware/validate.js";
 import { deliveryStatusSchema } from "../validation/schemas.js";
 import { notify } from "../services/events.js";
+import { settleOrderPayouts } from "../services/payouts.js";
 
 const router = express.Router();
+
+// Remove the handoff code from rider-facing payloads so only the customer sees it.
+const hideDeliveryCode = (order) => { if (order) delete order.deliveryCode; return order; };
 
 // State machine: valid transitions
 const VALID_TRANSITIONS = {
@@ -52,7 +56,7 @@ router.get("/riders/available-orders", authMiddleware, riderMiddleware, async (r
 
     res.status(200).json({
       message: "Available orders fetched successfully",
-      orders,
+      orders: orders.map(hideDeliveryCode),
     });
   } catch (error) {
   next(error)
@@ -199,7 +203,7 @@ router.post("/deliveries/:orderId/accept", authMiddleware, riderMiddleware, asyn
       });
 
       return { delivery, order: updatedOrder };
-    });
+    }, { timeout: 20000, maxWait: 10000 });
 
     // Notify customer their order has been picked up
     notify("order:accepted", [result.order.customerId]);
@@ -207,7 +211,7 @@ router.post("/deliveries/:orderId/accept", authMiddleware, riderMiddleware, asyn
     res.status(201).json({
       message: "Order accepted successfully",
       delivery: result.delivery,
-      order: result.order,
+      order: hideDeliveryCode(result.order),
     });
   } catch (error) {
     // Handle structured throws from the transaction
@@ -305,6 +309,10 @@ router.put("/deliveries/:id/status", authMiddleware, riderMiddleware, validate(d
 
       // When delivery is marked DELIVERED, also update the order
       if (status === "DELIVERED") {
+        const code = String(req.body.code || "").trim();
+        if (!delivery.order.deliveryCode || code !== delivery.order.deliveryCode) {
+          throw { status: 400, message: "Incorrect delivery code. Ask the customer for their 4-digit code." };
+        }
         updatedOrder = await tx.order.update({
           where: { id: delivery.orderId },
           data: { status: "DELIVERED" },
@@ -317,15 +325,23 @@ router.put("/deliveries/:id/status", authMiddleware, riderMiddleware, validate(d
       }
 
       return { delivery: updatedDelivery, order: updatedOrder };
-    });
+    }, { timeout: 20000, maxWait: 10000 });
+
+    // Fire the payout transfers after the transaction commits — non-blocking so a
+    // payout failure never makes the rider's "Delivered" appear to fail.
+    if (status === "DELIVERED") {
+      settleOrderPayouts(result.delivery.orderId).catch((e) => console.error("[payout]", e));
+    }
 
     const response = {
       message: "Delivery status updated successfully",
       delivery: result.delivery,
     };
 
+    hideDeliveryCode(result.delivery.order);
+
     if (result.order) {
-      response.order = result.order;
+      response.order = hideDeliveryCode(result.order);
     }
 
     // Notify customer of delivery progress
@@ -371,6 +387,7 @@ router.get("/riders/my-deliveries", authMiddleware, riderMiddleware, async (req,
       orderBy: { createdAt: "desc" },
     });
 
+    deliveries.forEach((d) => hideDeliveryCode(d.order));
     res.status(200).json({
       message: "Deliveries fetched successfully",
       deliveries,

@@ -118,11 +118,20 @@ export const riderUpdateSchema = z.object({
   isAvailable: z.boolean().optional(),
 });
 
+// ── Bank details (payout account) ──
+
+export const bankDetailsSchema = z.object({
+  accountNumber: z.string().trim().regex(/^\d{10}$/, "Account number must be 10 digits"),
+  bankCode: z.string().trim().min(3, "Bank code is required").max(10),
+  bankName: z.string().trim().max(100).optional(),
+});
+
 // ── Delivery ──
 
 export const deliveryStatusSchema = z.object({
   status: z.enum(["ZILLA_ON_IT", "AT_KITCHEN", "BAGGED", "MOVING", "CLOSE_BY", "DELIVERED", "FAILED"]),
   reason: z.string().trim().max(500, "Reason must be 500 characters or less").optional(),
+  code: z.string().trim().max(10, "Code must be 10 characters or less").optional(),
 });
 
 // ── Password reset ──

@@ -255,10 +255,6 @@ const Cart = () => {
                         <span>Service fee</span>
                         <span>{fees ? formatCurrency(fees.serviceFee) : "—"}</span>
                       </div>
-                      <div className="flex justify-between text-slate-500">
-                        <span>Tax</span>
-                        <span>{fees ? formatCurrency(fees.tax) : "—"}</span>
-                      </div>
                       <div className="flex justify-between font-bold text-slate-900 pt-1.5 border-t border-slate-200">
                         <span>Total</span>
                         <span>{fees ? formatCurrency(fees.totalAmount) : "—"}</span>

@@ -1,8 +1,9 @@
 import express from "express";
 import prisma from "../config/prisma.js";
 import authMiddleware from "../middleware/auth.middleware.js";
-import { verifyPayment } from "../services/paystack.js";
+import { verifyPayment, resolveAccount, listBanks } from "../services/paystack.js";
 import { notify } from "../services/events.js";
+import crypto from "node:crypto";
 
 const router = express.Router();
 
@@ -74,7 +75,10 @@ router.post("/payments/verify", authMiddleware, async (req, res, next) => {
       }),
       prisma.order.update({
         where: { id: payment.orderId },
-        data: { status: "PENDING_RESTAURANT_CONFIRMATION" },
+        data: {
+          status: "PENDING_RESTAURANT_CONFIRMATION",
+          deliveryCode: crypto.randomInt(0, 10000).toString().padStart(4, "0"),
+        },
         include: {
           orderItems: {
             include: {
@@ -96,6 +100,52 @@ router.post("/payments/verify", authMiddleware, async (req, res, next) => {
     });
   } catch (error) {
    next(error)
+  }
+});
+
+// Resolve an account number + bank code to the account holder's name, so the
+// owner/rider can confirm the name before saving bank details. Read-only —
+// this does NOT create a transfer recipient, it just returns the name.
+router.get("/payments/resolve-account", authMiddleware, async (req, res, next) => {
+  try {
+    const accountNumber = String(req.query.account_number || "");
+    const bankCode = String(req.query.bank_code || "");
+
+    if (!accountNumber || !bankCode) {
+      return res.status(400).json({ message: "Account number and bank code are required" });
+    }
+    if (!/^\d{10}$/.test(accountNumber)) {
+      return res.status(400).json({ message: "Account number must be 10 digits" });
+    }
+
+    const result = await resolveAccount({ accountNumber, bankCode });
+
+    if (!result.ok) {
+      return res.status(400).json({ message: result.message || "Could not resolve account" });
+    }
+
+    res.status(200).json({
+      accountName: result.accountName,
+      accountNumber,
+      bankCode,
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// List banks for the bank-details dropdown (fetched from Paystack, not hardcoded).
+router.get("/payments/banks", authMiddleware, async (req, res, next) => {
+  try {
+    const result = await listBanks();
+
+    if (!result.ok) {
+      return res.status(502).json({ message: result.message || "Could not load banks" });
+    }
+
+    res.status(200).json({ banks: result.banks });
+  } catch (error) {
+    next(error);
   }
 });
 

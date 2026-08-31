@@ -15,6 +15,7 @@ const SECTIONS = [
   { key: "customers", label: "Customers", icon: "group" },
   { key: "orders", label: "Orders", icon: "receipt_long" },
   { key: "payments", label: "Payments", icon: "payments" },
+  { key: "payouts", label: "Payouts", icon: "account_balance" },
 ];
 
 const AdminDashboard = () => {
@@ -118,6 +119,7 @@ const AdminDashboard = () => {
             {activeSection === "customers" && <CustomersSection />}
             {activeSection === "orders" && <OrdersSection />}
             {activeSection === "payments" && <PaymentsSection />}
+            {activeSection === "payouts" && <PayoutsSection />}
             {activeSection === "campuses" && <CampusesSection />}
           </div>
         </main>
@@ -202,7 +204,7 @@ const OverviewSection = () => {
             <>
               <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
                 <StatCard label="Revenue (GMV)" value={formatCurrency(analytics.revenue)} color="bg-amber-50 text-amber-700" />
-                <StatCard label="Commission" value={formatCurrency(analytics.commission)} color="bg-purple-50 text-purple-700" />
+                <StatCard label="Platform Fees" value={formatCurrency(analytics.serviceFee)} color="bg-purple-50 text-purple-700" />
                 <StatCard label="Avg Delivery" value={`${analytics.avgDeliveryTimeMinutes} min`} color="bg-blue-50 text-blue-700" />
                 <StatCard label="Payment Success" value={`${analytics.paymentSuccessRate}%`} color="bg-green-50 text-green-700" />
               </div>
@@ -1218,6 +1220,127 @@ const PaymentsSection = () => {
                     </span>
                   </div>
                   <p className="text-xs text-slate-400">Order #{p.orderId} · {p.provider} · {new Date(p.createdAt).toLocaleDateString()}</p>
+                </div>
+                <span className="text-sm font-bold text-slate-900 shrink-0">{formatCurrency(p.amount)}</span>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
+
+// ══════════════════════════════════════════════
+//  PAYOUTS SECTION (view-only, campus-scoped)
+// ══════════════════════════════════════════════
+const PAYOUT_STATUS_STYLE = {
+  PENDING: "bg-amber-100 text-amber-700",
+  SUCCESS: "bg-green-100 text-green-700",
+  FAILED: "bg-red-100 text-red-700",
+};
+
+const PayoutsSection = () => {
+  const [payouts, setPayouts] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [reconciling, setReconciling] = useState(false);
+  const [reconcileMsg, setReconcileMsg] = useState("");
+
+  const fetchPayouts = async () => {
+    try {
+      setLoading(true);
+      setError("");
+      const data = await api.get("/admin/payouts");
+      setPayouts(data.payouts);
+    } catch (err) {
+      setError(err.message || "Failed to load payouts.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => { fetchPayouts(); }, []);
+
+  const handleReconcile = async () => {
+    try {
+      setReconciling(true);
+      setReconcileMsg("");
+      const data = await api.post("/admin/payouts/reconcile");
+      setReconcileMsg(`Reconciled ${data.processed} order${data.processed !== 1 ? "s" : ""}.`);
+      await fetchPayouts();
+    } catch (err) {
+      setReconcileMsg(err.message || "Reconciliation failed.");
+    } finally {
+      setReconciling(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="animate-pulse space-y-4">
+        <div className="h-8 w-40 bg-slate-200 rounded" />
+        {[1, 2, 3].map((i) => (
+          <div key={i} className="h-20 bg-slate-200 rounded-2xl" />
+        ))}
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="text-center py-16">
+        <div className="w-16 h-16 rounded-full bg-red-100 flex items-center justify-center mx-auto mb-4">
+          <span className="material-symbols-outlined text-3xl text-red-400">error_outline</span>
+        </div>
+        <p className="text-slate-900 font-semibold mb-2">Failed to load payouts</p>
+        <p className="text-slate-500 text-sm mb-4">{error}</p>
+        <button onClick={fetchPayouts} className="text-amber-500 font-semibold text-sm hover:text-amber-600">Try again</button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h2 className="text-xl font-bold text-slate-900">Payouts</h2>
+          <p className="text-sm text-slate-500 mt-1">
+            {payouts.length} payout{payouts.length !== 1 ? "s" : ""} · Money sent to restaurants and riders on delivery.
+          </p>
+        </div>
+        <button onClick={handleReconcile} disabled={reconciling} className="shrink-0 h-10 px-4 rounded-xl bg-slate-900 hover:bg-slate-800 disabled:bg-slate-400 text-white font-bold text-sm transition active:scale-[0.98]">
+          {reconciling ? "Reconciling..." : "Reconcile"}
+        </button>
+      </div>
+      {reconcileMsg && (
+        <p className="text-sm text-amber-600">{reconcileMsg}</p>
+      )}
+
+      {payouts.length === 0 ? (
+        <div className="text-center py-16">
+          <div className="w-16 h-16 rounded-full bg-slate-100 flex items-center justify-center mx-auto mb-3">
+            <span className="material-symbols-outlined text-3xl text-slate-300">account_balance</span>
+          </div>
+          <p className="text-slate-500 text-sm font-medium">No payouts yet.</p>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {payouts.map((p) => (
+            <div key={p.id} className="bg-white rounded-2xl shadow-sm p-5">
+              <div className="flex items-start justify-between gap-4">
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 mb-1 flex-wrap">
+                    <h3 className="text-sm font-bold text-slate-900 truncate">#{p.orderId} · {p.restaurant}</h3>
+                    <span className="inline-flex items-center text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-600">
+                      {p.type}
+                    </span>
+                    <span className={`inline-flex items-center text-[10px] font-bold px-2 py-0.5 rounded-full ${PAYOUT_STATUS_STYLE[p.status] || "bg-slate-100 text-slate-600"}`}>
+                      {p.status}
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-400">{p.customer} · {new Date(p.createdAt).toLocaleDateString()}</p>
+                  <p className="text-[11px] text-slate-300 mt-1 font-mono truncate">{p.reference}</p>
                 </div>
                 <span className="text-sm font-bold text-slate-900 shrink-0">{formatCurrency(p.amount)}</span>
               </div>

@@ -37,15 +37,6 @@ const DELIVERY_STEPS = [
   { key: "DELIVERED", label: "Delivered", icon: "done_all" },
 ];
 
-const DELIVERY_COLORS = {
-  ZILLA_ON_IT: "border-blue-400 text-blue-600 bg-blue-50",
-  AT_KITCHEN: "border-yellow-400 text-yellow-600 bg-yellow-50",
-  BAGGED: "border-orange-400 text-orange-600 bg-orange-50",
-  MOVING: "border-purple-400 text-purple-600 bg-purple-50",
-  CLOSE_BY: "border-pink-400 text-pink-600 bg-pink-50",
-  DELIVERED: "border-green-500 text-green-600 bg-green-50",
-};
-
 // Estimated delivery time in minutes. Scaled down as rider progresses.
 // Placeholder until maps integration provides real ETAs.
 const CUSTOMER_ETA_RANGE = [5, 25];
@@ -190,20 +181,25 @@ const OrderDetail = () => {
   const getStepState = (stepKey) => {
     if (!order) return "upcoming";
     if (order.status === "CANCELLED") return "cancelled";
+
+    // "On the way" spans the whole delivery. It only ticks once the rider is
+    // actually MOVING (or closer); before that they're still picking up the food.
+    if (stepKey === "OUT_FOR_DELIVERY") {
+      if (order.status === "DELIVERED") return "completed";
+      if (order.status === "OUT_FOR_DELIVERY") {
+        return ["MOVING", "CLOSE_BY", "DELIVERED"].includes(order.delivery?.status)
+          ? "completed"
+          : "current";
+      }
+      return "upcoming";
+    }
+
     const currentIdx = STATUS_FLOW.findIndex((s) => s.key === order.status);
     const stepIdx = STATUS_FLOW.findIndex((s) => s.key === stepKey);
     if (stepIdx < currentIdx) return "completed";
-    if (stepIdx === currentIdx) return "current";
-    return "upcoming";
-  };
-
-  const getDeliveryStepState = (stepKey) => {
-    if (!order?.delivery) return "upcoming";
-    if (order.delivery.status === "FAILED") return "upcoming";
-    const currentIdx = DELIVERY_STEPS.findIndex((s) => s.key === order.delivery.status);
-    const stepIdx = DELIVERY_STEPS.findIndex((s) => s.key === stepKey);
-    if (stepIdx < currentIdx) return "completed";
-    if (stepIdx === currentIdx) return "current";
+    // The final "Delivered" step should render as checked (completed), not just
+    // highlighted, so the tracker ends fully checked once the order is delivered.
+    if (stepIdx === currentIdx) return order.status === "DELIVERED" ? "completed" : "current";
     return "upcoming";
   };
 
@@ -290,6 +286,14 @@ const OrderDetail = () => {
           </span>
         </div>
 
+        {/* Delivery code — customer shares this with the rider at handoff */}
+        {order.deliveryCode && !isDelivered && !isCancelled && (
+          <div className="mb-6 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-center">
+            <p className="text-xs font-semibold text-emerald-700">Delivery code — share with your rider</p>
+            <p className="mt-1 text-3xl font-black tracking-[0.4em] text-emerald-800">{order.deliveryCode}</p>
+          </div>
+        )}
+
         {/* Status Timeline — always shown so the current stage is derived directly
             from order.status (including "On the way"); the Delivery Tracker below
             adds granular detail while en route. */}
@@ -361,6 +365,30 @@ const OrderDetail = () => {
                 );
               })}
             </div>
+
+            {/* Rider status — inline under "On the way" (replaces the old separate Delivery Tracker) */}
+            {order.delivery && order.status === "OUT_FOR_DELIVERY" && (
+              <div className="mt-5 flex items-center gap-3 rounded-xl bg-purple-50 border border-purple-100 px-4 py-3">
+                <span className="material-symbols-outlined text-purple-500 text-xl">two_wheeler</span>
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs text-slate-500 truncate">
+                    {order.delivery.rider?.user?.name || "Your rider"}
+                    {order.delivery.rider?.user?.phone && (
+                      <span className="text-slate-400"> · {order.delivery.rider.user.phone}</span>
+                    )}
+                  </p>
+                  <p className="text-sm font-semibold text-slate-800">
+                    {DELIVERY_STEPS.find((s) => s.key === order.delivery.status)?.label || order.delivery.status}
+                  </p>
+                </div>
+                <span className="text-xs text-slate-400 font-medium shrink-0">
+                  {(() => {
+                    const [lo, hi] = estimateCustomerETA(order.delivery.status);
+                    return `~${lo}–${hi} min`;
+                  })()}
+                </span>
+              </div>
+            )}
           </div>
         )}
 
@@ -391,105 +419,6 @@ const OrderDetail = () => {
             <p className="text-xs text-amber-500 mt-2">
               A new rider is being assigned — your order is still being prepared.
             </p>
-          </div>
-        )}
-
-        {/* ── Delivery Tracker (visible when order is out for delivery) ── */}
-        {order.delivery && order.status === "OUT_FOR_DELIVERY" && (
-          <div className="bg-white rounded-2xl shadow-sm p-6 mb-6 border border-purple-100">
-            <div className="flex items-center gap-3 mb-5">
-              <div className="w-10 h-10 rounded-full bg-purple-100 flex items-center justify-center">
-                <span className="material-symbols-outlined text-purple-600 text-xl">two_wheeler</span>
-              </div>
-              <div>
-                <h3 className="text-sm font-bold text-slate-900">Delivery Tracker</h3>
-                <p className="text-xs text-slate-500">
-                  Rider: <span className="font-semibold text-slate-700">{order.delivery.rider?.user?.name || "Assigned"}</span>
-                  {order.delivery.rider?.user?.phone && (
-                    <span className="text-slate-400"> · {order.delivery.rider.user.phone}</span>
-                  )}
-                </p>
-              </div>
-              <div className="ml-auto flex items-center gap-2">
-                {(() => {
-                  const [etaMin, etaMax] = estimateCustomerETA(order.delivery.status);
-                  return (
-                    <span className="text-[10px] text-slate-400 font-medium">
-                      ~{etaMin}–{etaMax} min
-                    </span>
-                  );
-                })()}
-                <span className={`inline-flex items-center gap-1.5 text-[10px] font-bold px-2.5 py-1.5 rounded-full border ${DELIVERY_COLORS[order.delivery.status] || "border-slate-300 text-slate-500 bg-slate-50"}`}>
-                  <span className="material-symbols-outlined text-sm">{DELIVERY_STEPS.find((s) => s.key === order.delivery.status)?.icon || "local_shipping"}</span>
-                  {DELIVERY_STEPS.find((s) => s.key === order.delivery.status)?.label || order.delivery.status}
-                </span>
-              </div>
-            </div>
-
-            {/* Desktop: horizontal steps */}
-            <div className="hidden sm:flex items-start justify-between">
-              {DELIVERY_STEPS.map((step, idx) => {
-                const state = getDeliveryStepState(step.key);
-                return (
-                  <div key={step.key} className="flex flex-col items-center flex-1 relative">
-                    {idx > 0 && (
-                      <div className="absolute right-1/2 top-4 w-full h-0.5 -translate-y-1/2">
-                        <div className={`h-full transition-colors ${state === "completed" ? "bg-purple-400" : "bg-slate-200"}`} />
-                      </div>
-                    )}
-                    <div
-                      className={`relative z-10 w-8 h-8 rounded-full flex items-center justify-center transition ${
-                        state === "completed" ? "bg-purple-500 text-white"
-                        : state === "current" ? "bg-white border-2 border-purple-500 text-purple-500 animate-pulse"
-                        : "bg-slate-100 text-slate-300"
-                      }`}
-                    >
-                      {state === "completed" ? (
-                        <span className="material-symbols-outlined text-sm font-bold">check</span>
-                      ) : (
-                        <span className="material-symbols-outlined text-sm">{step.icon}</span>
-                      )}
-                    </div>
-                    <span className={`text-[10px] font-semibold mt-2 text-center leading-tight transition ${
-                      state === "completed" ? "text-purple-600" : state === "current" ? "text-slate-900" : "text-slate-400"
-                    }`}>
-                      {step.label}
-                    </span>
-                  </div>
-                );
-              })}
-            </div>
-
-            {/* Mobile: vertical steps */}
-            <div className="sm:hidden space-y-0">
-              {DELIVERY_STEPS.map((step, idx) => {
-                const state = getDeliveryStepState(step.key);
-                const isLast = idx === DELIVERY_STEPS.length - 1;
-                return (
-                  <div key={step.key} className="flex gap-3">
-                    <div className="flex flex-col items-center">
-                      <div className={`w-6 h-6 rounded-full flex items-center justify-center shrink-0 transition ${
-                        state === "completed" ? "bg-purple-500 text-white"
-                        : state === "current" ? "bg-white border-2 border-purple-500 text-purple-500 animate-pulse"
-                        : "bg-slate-100 text-slate-300"
-                      }`}>
-                        {state === "completed" ? (
-                          <span className="material-symbols-outlined text-sm font-bold">check</span>
-                        ) : (
-                          <span className="material-symbols-outlined text-sm">{step.icon}</span>
-                        )}
-                      </div>
-                      {!isLast && <div className={`w-0.5 h-5 transition ${state === "completed" ? "bg-purple-400" : "bg-slate-200"}`} />}
-                    </div>
-                    <span className={`text-xs font-semibold pt-0.5 transition ${
-                      state === "completed" ? "text-purple-600" : state === "current" ? "text-slate-900" : "text-slate-400"
-                    }`}>
-                      {step.label}
-                    </span>
-                  </div>
-                );
-              })}
-            </div>
           </div>
         )}
 
@@ -571,10 +500,6 @@ const OrderDetail = () => {
               <span className="text-slate-500">Service Fee</span>
               <span className="text-slate-700 font-medium">{formatCurrency(Number(order.serviceFee))}</span>
             </div>
-            {/* <div className="flex items-center justify-between text-sm">
-              <span className="text-slate-500">Tax</span>
-              <span className="text-slate-700 font-medium">{formatCurrency(Number(order.tax))}</span>
-            </div> */}
             <div className="flex items-center justify-between pt-2 border-t border-slate-200">
               <span className="text-sm font-bold text-slate-900">Total</span>
               <span className="text-lg font-extrabold text-slate-900">{formatCurrency(Number(order.totalAmount))}</span>

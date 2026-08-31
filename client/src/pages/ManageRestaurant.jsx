@@ -56,6 +56,17 @@ const Dashboard = () => {
   const [updatingOrderId, setUpdatingOrderId] = useState(null);
   const [lastUpdated, setLastUpdated] = useState(null);
 
+  // Bank / payouts
+  const [bankForm, setBankForm] = useState({ accountNumber: "", bankCode: "", bankName: "" });
+  const [savingBank, setSavingBank] = useState(false);
+  const [verifying, setVerifying] = useState(false);
+  const [resolvedName, setResolvedName] = useState(null); // account name from Paystack
+  const [editingBank, setEditingBank] = useState(false);
+  const [banks, setBanks] = useState([]); // fetched from Paystack
+  const [payouts, setPayouts] = useState([]);
+  const [payoutSummary, setPayoutSummary] = useState(null);
+  const [payoutsLoading, setPayoutsLoading] = useState(false);
+
   const showMsg = (msg) => { setMessage(msg); setTimeout(() => setMessage(""), 10000); };
 
   // ── Fetch restaurant ──
@@ -66,6 +77,8 @@ const Dashboard = () => {
       setRestaurant(r);
       if (r) {
         setRestForm({ name: r.name || "", description: r.description || "", address: r.address || "", phone: r.phone || "", imageUrl: r.imageUrl || "" });
+        setBankForm({ accountNumber: r.accountNumber || "", bankCode: r.bankCode || "", bankName: r.bankName || "" });
+        setResolvedName(r.accountName || null);
       }
       return r;
     } catch (err) {
@@ -97,6 +110,27 @@ const Dashboard = () => {
     }
   }, []);
 
+  // ── Fetch payouts ──
+  const fetchPayouts = useCallback(async (restaurantId) => {
+    try {
+      setPayoutsLoading(true);
+      const data = await api.get(`/restaurants/${restaurantId}/payouts`);
+      setPayouts(data.payouts || []);
+      setPayoutSummary(data.summary || null);
+    } catch { /* silent */ } finally {
+      setPayoutsLoading(false);
+    }
+  }, []);
+
+  const fetchBanks = async () => {
+    try {
+      const data = await api.get("/payments/banks");
+      setBanks(data.banks || []);
+    } catch {
+      setBanks([]);
+    }
+  };
+
   // ── Initial load ──
   useEffect(() => {
     const init = async () => {
@@ -105,6 +139,7 @@ const Dashboard = () => {
       if (r) {
         await Promise.all([fetchMenu(r.id), fetchOrders(r.id)]);
       }
+      fetchBanks();
       setLoading(false);
     };
     init();
@@ -209,6 +244,48 @@ const Dashboard = () => {
       setError(e.message || "Failed to update restaurant");
     } finally {
       setSavingRest(false);
+    }
+  };
+
+  // ── Save bank details (creates a Paystack transfer recipient) ──
+  const handleSaveBank = async (e) => {
+    e.preventDefault();
+    if (!bankForm.accountNumber || !bankForm.bankCode) {
+      showMsg("Account number and bank code are required");
+      return;
+    }
+    try {
+      setSavingBank(true);
+      const data = await api.put(`/restaurants/${restaurant.id}/bank`, bankForm);
+      setRestaurant((prev) => ({ ...prev, ...data.restaurant }));
+      setEditingBank(false);
+      showMsg("Bank details saved");
+    } catch (e) {
+      showMsg(e.message || "Failed to save bank details");
+    } finally {
+      setSavingBank(false);
+    }
+  };
+
+  // ── Verify account number + bank → show the account name before saving ──
+  const handleVerifyAccount = async () => {
+    if (bankForm.accountNumber.length !== 10 || !bankForm.bankCode) {
+      showMsg("Enter the 10-digit account number and pick a bank first.");
+      return;
+    }
+    try {
+      setVerifying(true);
+      setResolvedName(null);
+      const data = await api.get(
+        `/payments/resolve-account?account_number=${bankForm.accountNumber}&bank_code=${bankForm.bankCode}`
+      );
+      setResolvedName(data.accountName);
+      showMsg("Account verified.");
+    } catch (e) {
+      setResolvedName(null);
+      showMsg(e.message || "Could not resolve account.");
+    } finally {
+      setVerifying(false);
     }
   };
 
@@ -490,6 +567,15 @@ const Dashboard = () => {
                 {pendingOrders.length}
               </span>
             )}
+          </button>
+          <button
+            onClick={() => { setActiveTab("payouts"); fetchPayouts(restaurant.id); }}
+            className={`flex-1 py-2.5 px-4 rounded-lg text-sm font-bold transition ${
+              activeTab === "payouts" ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-700"
+            }`}
+          >
+            <span className="material-symbols-outlined text-sm mr-1.5 align-middle">account_balance</span>
+            Payouts
           </button>
         </div>
 
@@ -877,6 +963,106 @@ const Dashboard = () => {
                     </div>
                   </div>
                 )}
+              </div>
+            )}
+          </section>
+        )}
+
+        {/* ══════════════ PAYOUTS TAB ══════════════ */}
+        {activeTab === "payouts" && (
+          <section>
+            <h3 className="text-lg font-bold text-slate-900 mb-4">Payouts</h3>
+
+            {/* Bank details */}
+            <div className="bg-white rounded-2xl shadow-sm p-5 mb-4">
+              <h4 className="text-sm font-bold text-slate-900 mb-1">Payout bank account</h4>
+              <p className="text-xs text-slate-400 mb-4">Your restaurant's share is sent here when an order is delivered.</p>
+              {restaurant.accountName && !editingBank ? (
+                <div className="space-y-3">
+                  <div className="rounded-xl bg-emerald-50 border border-emerald-200 px-4 py-3 text-sm">
+                    <p className="font-semibold text-emerald-800">{restaurant.accountName}</p>
+                    <p className="text-emerald-700">{restaurant.bankName || "Bank"} ·•••• {restaurant.accountNumber?.slice(-4)}</p>
+                  </div>
+                  <button type="button" onClick={() => { setEditingBank(true); setResolvedName(restaurant.accountName); }} className="w-full h-10 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50 font-semibold text-sm transition active:scale-[0.98]">
+                    Edit bank details
+                  </button>
+                </div>
+              ) : (
+              <form onSubmit={handleSaveBank} className="space-y-3">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-500 mb-1">Account Number</label>
+                  <input value={bankForm.accountNumber} onChange={(e) => { setBankForm({ ...bankForm, accountNumber: e.target.value.replace(/\D/g, "") }); setResolvedName(null); }} inputMode="numeric" maxLength={10} placeholder="10-digit account number" className="w-full h-10 px-3 rounded-lg border border-slate-200 focus:border-amber-500 focus:ring-1 focus:ring-amber-500 outline-none text-sm" />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-500 mb-1">Bank</label>
+                  <select value={bankForm.bankCode} onChange={(e) => { const bank = banks.find((b) => b.code === e.target.value); setBankForm({ ...bankForm, bankCode: e.target.value, bankName: bank?.name || "" }); setResolvedName(null); }} className="w-full h-10 px-3 rounded-lg border border-slate-200 focus:border-amber-500 focus:ring-1 focus:ring-amber-500 outline-none text-sm bg-white">
+                    <option value="">{banks.length ? "Select bank" : "Loading banks..."}</option>
+                    {banks.map((b) => (
+                      <option key={b.code} value={b.code}>{b.name}</option>
+                    ))}
+                  </select>
+                </div>
+                <button type="button" onClick={handleVerifyAccount} disabled={verifying} className="w-full h-10 rounded-xl border border-amber-300 text-amber-700 hover:bg-amber-50 disabled:opacity-50 font-semibold text-sm transition active:scale-[0.98]">
+                  {verifying ? "Verifying..." : "Verify Account"}
+                </button>
+                {resolvedName && (
+                  <div className="rounded-xl bg-emerald-50 border border-emerald-200 px-4 py-3 text-sm">
+                    <p className="text-xs text-emerald-600 mb-0.5">Account name</p>
+                    <p className="font-semibold text-emerald-800">{resolvedName}</p>
+                  </div>
+                )}
+                <button type="submit" disabled={savingBank || !resolvedName} className="w-full h-10 rounded-xl bg-slate-900 hover:bg-slate-800 disabled:bg-slate-400 text-white font-bold text-sm transition active:scale-[0.98]">
+                  {savingBank ? "Saving..." : "Save Bank Details"}
+                </button>
+              </form>
+              )}
+            </div>
+
+            {/* Earnings summary */}
+            {payoutSummary && (
+              <div className="grid grid-cols-3 gap-3 mb-4">
+                <div className="bg-white rounded-2xl shadow-sm p-4 text-center">
+                  <p className="text-xl font-extrabold text-slate-900">{formatCurrency(payoutSummary.totalEarned)}</p>
+                  <p className="text-xs text-slate-400 mt-0.5">Total Earned</p>
+                </div>
+                <div className="bg-white rounded-2xl shadow-sm p-4 text-center">
+                  <p className="text-xl font-extrabold text-green-600">{formatCurrency(payoutSummary.paidOut)}</p>
+                  <p className="text-xs text-slate-400 mt-0.5">Paid Out</p>
+                </div>
+                <div className="bg-white rounded-2xl shadow-sm p-4 text-center">
+                  <p className="text-xl font-extrabold text-amber-600">{formatCurrency(payoutSummary.pending)}</p>
+                  <p className="text-xs text-slate-400 mt-0.5">Pending</p>
+                </div>
+              </div>
+            )}
+
+            {/* Payout history */}
+            {payoutsLoading ? (
+              <div className="space-y-3">
+                {[1, 2].map((i) => <div key={i} className="h-16 bg-slate-200 animate-pulse rounded-2xl" />)}
+              </div>
+            ) : payouts.length === 0 ? (
+              <div className="bg-white rounded-2xl shadow-sm p-8 text-center">
+                <div className="w-16 h-16 rounded-full bg-slate-100 flex items-center justify-center mx-auto mb-3">
+                  <span className="material-symbols-outlined text-3xl text-slate-300">account_balance</span>
+                </div>
+                <h4 className="text-sm font-bold text-slate-900 mb-1">No payouts yet</h4>
+                <p className="text-xs text-slate-400">Your earnings appear here once orders are delivered.</p>
+              </div>
+            ) : (
+              <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
+                {payouts.map((p, idx) => (
+                  <div key={p.id} className={`px-5 py-3 flex items-center justify-between ${idx < payouts.length - 1 ? "border-b border-slate-50" : ""}`}>
+                    <div>
+                      <p className="text-sm font-semibold text-slate-900">Order #{p.orderId}</p>
+                      <p className="text-xs text-slate-400">{new Date(p.createdAt).toLocaleDateString()}</p>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${p.status === "SUCCESS" ? "bg-green-100 text-green-700" : p.status === "FAILED" ? "bg-red-100 text-red-700" : "bg-amber-100 text-amber-700"}`}>{p.status}</span>
+                      <span className="text-sm font-bold text-slate-900">{formatCurrency(p.amount)}</span>
+                    </div>
+                  </div>
+                ))}
               </div>
             )}
           </section>

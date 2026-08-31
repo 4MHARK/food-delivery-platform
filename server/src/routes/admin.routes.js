@@ -7,6 +7,7 @@ import adminMiddleware from "../middleware/admin.middleware.js";
 import superAdminMiddleware from "../middleware/superAdmin.middleware.js";
 import { validate } from "../middleware/validate.js";
 import { adminRegisterSchema } from "../validation/schemas.js";
+import { settleOrderPayouts } from "../services/payouts.js";
 
 const router = express.Router();
 
@@ -312,6 +313,7 @@ router.get("/admin/analytics", async (req, res, next) => {
           id: true,
           status: true,
           totalAmount: true,
+          serviceFee: true,
           createdAt: true,
           restaurant: { select: { name: true } },
         },
@@ -341,9 +343,11 @@ router.get("/admin/analytics", async (req, res, next) => {
     // Revenue = GMV: total value of every order placed (all statuses).
     const revenue = orders.reduce((sum, o) => sum + Number(o.totalAmount), 0);
 
-    // Commission: flat 10% of GMV for now (per-campus configurable rates are a follow-up).
-    const commissionRate = 10;
-    const commission = revenue * (commissionRate / 100);
+    // Platform fees = the serviceFee (5% of subtotal) collected on delivered
+    // orders. This is what the platform keeps — it never leaves the balance.
+    const serviceFee = orders
+      .filter((o) => o.status === "DELIVERED")
+      .reduce((sum, o) => sum + Number(o.serviceFee), 0);
 
     const completed = orders.filter((o) => o.status === "DELIVERED").length;
     const cancelled = orders.filter((o) => o.status === "CANCELLED").length;
@@ -382,8 +386,7 @@ router.get("/admin/analytics", async (req, res, next) => {
 
     res.status(200).json({
       revenue,
-      commission,
-      commissionRate,
+      serviceFee,
       orderBreakdown: { completed, cancelled, pending },
       avgDeliveryTimeMinutes: Math.round(avgDeliveryMs / 60000),
       paymentSuccessRate,
@@ -570,6 +573,84 @@ router.get("/admin/payments", async (req, res, next) => {
     res.status(200).json({
       message: "Payments fetched successfully",
       payments: formatted,
+    });
+  } catch (error) {
+    next(error)
+  }
+});
+
+// ── Payouts: list all (latest 100) ──
+router.get("/admin/payouts", async (req, res, next) => {
+  try {
+    // School admins see only payouts for their campus's orders.
+    const where =
+      req.user.role === "SUPER_ADMIN"
+        ? {}
+        : { order: { restaurant: { campusId: req.user.campusId } } };
+
+    const payouts = await prisma.payout.findMany({
+      where,
+      include: {
+        order: {
+          select: {
+            id: true,
+            restaurant: { select: { name: true } },
+            customer: { select: { name: true } },
+          },
+        },
+      },
+      orderBy: { createdAt: "desc" },
+      take: 100,
+    });
+
+    const formatted = payouts.map((p) => ({
+      id: p.id,
+      orderId: p.orderId,
+      type: p.type,
+      amount: Number(p.amount),
+      status: p.status,
+      reference: p.reference,
+      restaurant: p.order.restaurant.name,
+      customer: p.order.customer.name,
+      createdAt: p.createdAt,
+    }));
+
+    res.status(200).json({
+      message: "Payouts fetched successfully",
+      payouts: formatted,
+    });
+  } catch (error) {
+    next(error)
+  }
+});
+
+// ── Payout reconciliation: backfill any DELIVERED order with no payout rows ──
+// Also the safety net for a crash between "delivered" and "payout created".
+// For each order it settles to whatever bank the restaurant/rider has linked
+// *now* — so old orders pay out once they add their bank details.
+router.post("/admin/payouts/reconcile", async (req, res, next) => {
+  try {
+    const where = {
+      status: "DELIVERED",
+      payouts: { none: {} },
+      ...(req.user.role === "SUPER_ADMIN" ? {} : { restaurant: { campusId: req.user.campusId } }),
+    };
+
+    const orders = await prisma.order.findMany({
+      where,
+      select: { id: true },
+    });
+
+    const processed = [];
+    for (const order of orders) {
+      await settleOrderPayouts(order.id);
+      processed.push(order.id);
+    }
+
+    res.status(200).json({
+      message: "Payout reconciliation complete",
+      processed: processed.length,
+      orderIds: processed,
     });
   } catch (error) {
     next(error)
