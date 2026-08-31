@@ -500,10 +500,6 @@ const OrderDetail = () => {
               <span className="text-slate-500">Service Fee</span>
               <span className="text-slate-700 font-medium">{formatCurrency(Number(order.serviceFee))}</span>
             </div>
-            {/* <div className="flex items-center justify-between text-sm">
-              <span className="text-slate-500">Tax</span>
-              <span className="text-slate-700 font-medium">{formatCurrency(Number(order.tax))}</span>
-            </div> */}
             <div className="flex items-center justify-between pt-2 border-t border-slate-200">
               <span className="text-sm font-bold text-slate-900">Total</span>
               <span className="text-lg font-extrabold text-slate-900">{formatCurrency(Number(order.totalAmount))}</span>

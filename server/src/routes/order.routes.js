@@ -78,7 +78,6 @@ router.post("/orders/checkout", checkoutLimiter, authMiddleware, validate(checko
           subtotal: fees.subtotal,
           deliveryFee: fees.deliveryFee,
           serviceFee: fees.serviceFee,
-          tax: fees.tax,
           totalAmount: fees.totalAmount,
           orderItems: {
             create: validatedItems.map((item) => ({
