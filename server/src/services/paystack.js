@@ -172,10 +172,18 @@ export async function listBanks() {
     return { ok: false, message: body.message };
   }
 
-  const banks = (body.data || [])
-    .filter((b) => b.active !== false)
-    .map((b) => ({ name: b.name, code: b.code }))
-    .sort((a, b) => a.name.localeCompare(b.name));
+  // Paystack returns some bank codes more than once (same bank, different
+  // entry). De-duplicate by code so the dropdown has unique options — and so
+  // the React `key={b.code}` stays unique.
+  const banks = [];
+  const seen = new Set();
+  for (const b of body.data || []) {
+    if (b.active === false) continue;
+    if (seen.has(b.code)) continue;
+    seen.add(b.code);
+    banks.push({ name: b.name, code: b.code });
+  }
+  banks.sort((a, b) => a.name.localeCompare(b.name));
 
   return { ok: true, banks };
 }
