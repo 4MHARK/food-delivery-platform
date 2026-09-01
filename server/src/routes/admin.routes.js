@@ -657,6 +657,106 @@ router.post("/admin/payouts/reconcile", async (req, res, next) => {
   }
 });
 
+// ── Manual payouts: unpaid balances grouped per recipient ──
+// Groups PENDING + FAILED payouts by the person owed (restaurant or rider),
+// with their *current* bank details and a total. The admin pays each person
+// manually from their own bank app, then marks them paid via /mark-paid.
+router.get("/admin/payouts/unpaid", async (req, res, next) => {
+  try {
+    const campusWhere =
+      req.user.role === "SUPER_ADMIN"
+        ? {}
+        : { order: { restaurant: { campusId: req.user.campusId } } };
+
+    const payouts = await prisma.payout.findMany({
+      where: { ...campusWhere, status: { in: ["PENDING", "FAILED"] } },
+      include: {
+        order: {
+          select: {
+            restaurant: {
+              select: { id: true, name: true, bankName: true, accountNumber: true, accountName: true },
+            },
+            delivery: {
+              select: {
+                rider: {
+                  select: { id: true, user: { select: { name: true } }, bankName: true, accountNumber: true, accountName: true },
+                },
+              },
+            },
+          },
+        },
+      },
+      orderBy: { createdAt: "asc" },
+    });
+
+    const groups = new Map();
+    for (const p of payouts) {
+      const isRestaurant = p.type === "RESTAURANT";
+      const recipient = isRestaurant ? p.order.restaurant : p.order.delivery?.rider;
+      const key = `${p.type}-${recipient?.id ?? "unknown"}`;
+      const existing = groups.get(key);
+
+      if (existing) {
+        existing.total += Number(p.amount);
+        existing.deliveries += 1;
+        existing.payoutIds.push(p.id);
+      } else {
+        groups.set(key, {
+          type: p.type,
+          name: isRestaurant ? recipient?.name : recipient?.user?.name,
+          bankName: recipient?.bankName || null,
+          accountNumber: recipient?.accountNumber || null,
+          accountName: recipient?.accountName || null,
+          total: Number(p.amount),
+          deliveries: 1,
+          payoutIds: [p.id],
+        });
+      }
+    }
+
+    const unpaid = Array.from(groups.values()).sort(
+      (a, b) => a.type.localeCompare(b.type) || a.name.localeCompare(b.name)
+    );
+
+    res.status(200).json({ unpaid });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// Mark unpaid payouts as paid manually (the admin sent the money from their own
+// bank). Body: { payoutIds: number[] }. Only flips PENDING/FAILED rows.
+router.post("/admin/payouts/mark-paid", async (req, res, next) => {
+  try {
+    const { payoutIds } = req.body;
+    if (!Array.isArray(payoutIds) || payoutIds.length === 0) {
+      return res.status(400).json({ message: "payoutIds is required" });
+    }
+
+    const ids = payoutIds.map((id) => Number(id)).filter((n) => Number.isInteger(n));
+    const campusWhere =
+      req.user.role === "SUPER_ADMIN"
+        ? {}
+        : { order: { restaurant: { campusId: req.user.campusId } } };
+
+    const result = await prisma.payout.updateMany({
+      where: { id: { in: ids }, status: { in: ["PENDING", "FAILED"] }, ...campusWhere },
+      data: {
+        status: "SUCCESS",
+        gatewayResponse: {
+          method: "manual",
+          paidBy: req.user.name,
+          paidAt: new Date().toISOString(),
+        },
+      },
+    });
+
+    res.status(200).json({ message: "Payouts marked as paid", count: result.count });
+  } catch (error) {
+    next(error);
+  }
+});
+
 // ── Campuses: super admin only ──
 router.get("/admin/campuses", superAdminMiddleware, async (req, res, next) => {
   try {

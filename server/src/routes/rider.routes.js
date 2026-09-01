@@ -11,7 +11,7 @@ const router = express.Router();
 // Register a rider profile
 router.post("/riders/register", authMiddleware, validate(riderRegisterSchema), async (req, res, next) => {
   try {
-    const { vehicleType, licensePlate, licenseNumber, matricNumber, phone } = req.body;
+    const { vehicleType, licensePlate, licenseNumber, matricNumber, phone, photo } = req.body;
 
     // Only RIDER role users can register a rider profile
     if (req.user.role !== "RIDER") {
@@ -74,6 +74,7 @@ router.post("/riders/register", authMiddleware, validate(riderRegisterSchema), a
         licensePlate: licensePlate || null,
         licenseNumber: licenseNumber || null,
         matricNumber: matricNumber || null,
+        photoUrl: photo,
         campusId: campus.id,
       },
       include: {

@@ -1242,17 +1242,29 @@ const PAYOUT_STATUS_STYLE = {
 
 const PayoutsSection = () => {
   const [payouts, setPayouts] = useState([]);
+  const [unpaid, setUnpaid] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [reconciling, setReconciling] = useState(false);
   const [reconcileMsg, setReconcileMsg] = useState("");
+  const [markingKey, setMarkingKey] = useState(null);
+  const [markMsg, setMarkMsg] = useState("");
 
   const fetchPayouts = async () => {
+    const data = await api.get("/admin/payouts");
+    setPayouts(data.payouts);
+  };
+
+  const fetchUnpaid = async () => {
+    const data = await api.get("/admin/payouts/unpaid");
+    setUnpaid(data.unpaid);
+  };
+
+  const loadAll = async () => {
     try {
       setLoading(true);
       setError("");
-      const data = await api.get("/admin/payouts");
-      setPayouts(data.payouts);
+      await Promise.all([fetchPayouts(), fetchUnpaid()]);
     } catch (err) {
       setError(err.message || "Failed to load payouts.");
     } finally {
@@ -1260,7 +1272,22 @@ const PayoutsSection = () => {
     }
   };
 
-  useEffect(() => { fetchPayouts(); }, []);
+  useEffect(() => { loadAll(); }, []);
+
+  const handleMarkPaid = async (group) => {
+    try {
+      const key = `${group.type}-${group.name}`;
+      setMarkingKey(key);
+      setMarkMsg("");
+      await api.post("/admin/payouts/mark-paid", { payoutIds: group.payoutIds });
+      setMarkMsg(`Marked ${group.name} as paid.`);
+      await Promise.all([fetchPayouts(), fetchUnpaid()]);
+    } catch (err) {
+      setMarkMsg(err.message || "Failed to mark as paid.");
+    } finally {
+      setMarkingKey(null);
+    }
+  };
 
   const handleReconcile = async () => {
     try {
@@ -1268,7 +1295,7 @@ const PayoutsSection = () => {
       setReconcileMsg("");
       const data = await api.post("/admin/payouts/reconcile");
       setReconcileMsg(`Reconciled ${data.processed} order${data.processed !== 1 ? "s" : ""}.`);
-      await fetchPayouts();
+      await Promise.all([fetchPayouts(), fetchUnpaid()]);
     } catch (err) {
       setReconcileMsg(err.message || "Reconciliation failed.");
     } finally {
@@ -1295,7 +1322,7 @@ const PayoutsSection = () => {
         </div>
         <p className="text-slate-900 font-semibold mb-2">Failed to load payouts</p>
         <p className="text-slate-500 text-sm mb-4">{error}</p>
-        <button onClick={fetchPayouts} className="text-amber-500 font-semibold text-sm hover:text-amber-600">Try again</button>
+        <button onClick={loadAll} className="text-amber-500 font-semibold text-sm hover:text-amber-600">Try again</button>
       </div>
     );
   }
@@ -1306,7 +1333,7 @@ const PayoutsSection = () => {
         <div>
           <h2 className="text-xl font-bold text-slate-900">Payouts</h2>
           <p className="text-sm text-slate-500 mt-1">
-            {payouts.length} payout{payouts.length !== 1 ? "s" : ""} · Money sent to restaurants and riders on delivery.
+            {payouts.length} payout{payouts.length !== 1 ? "s" : ""} · Unpaid balances to settle, plus payout history.
           </p>
         </div>
         <button onClick={handleReconcile} disabled={reconciling} className="shrink-0 h-10 px-4 rounded-xl bg-slate-900 hover:bg-slate-800 disabled:bg-slate-400 text-white font-bold text-sm transition active:scale-[0.98]">
@@ -1316,6 +1343,58 @@ const PayoutsSection = () => {
       {reconcileMsg && (
         <p className="text-sm text-amber-600">{reconcileMsg}</p>
       )}
+
+      {/* Manual payout: unpaid balances grouped per person */}
+      <div className="rounded-2xl border border-amber-200 bg-amber-50/50 p-5">
+        <div className="flex items-center gap-2 mb-1">
+          <span className="material-symbols-outlined text-amber-600">paid</span>
+          <h3 className="text-sm font-bold text-slate-900">Manual payouts</h3>
+        </div>
+        <p className="text-xs text-slate-500 mb-4">
+          Settle restaurants daily and riders weekly from your bank app, then mark each as paid. Below is everything not yet settled.
+        </p>
+        {markMsg && <p className="text-sm text-amber-700 mb-3">{markMsg}</p>}
+        {unpaid.length === 0 ? (
+          <p className="text-sm text-slate-500">Nothing owed — you're all settled up. 🎉</p>
+        ) : (
+          <div className="space-y-3">
+            {unpaid.map((g) => {
+              const key = `${g.type}-${g.name}`;
+              const hasBank = g.accountNumber && g.bankName;
+              return (
+                <div key={key} className="bg-white rounded-xl p-4 flex items-start justify-between gap-4">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap mb-1">
+                      <h4 className="text-sm font-bold text-slate-900">{g.name}</h4>
+                      <span className={`inline-flex items-center text-[10px] font-bold px-2 py-0.5 rounded-full ${g.type === "RESTAURANT" ? "bg-purple-100 text-purple-700" : "bg-sky-100 text-sky-700"}`}>
+                        {g.type}
+                      </span>
+                      <span className="text-[11px] text-slate-400">{g.deliveries} {g.deliveries === 1 ? "delivery" : "deliveries"}</span>
+                    </div>
+                    {hasBank ? (
+                      <p className="text-xs text-slate-500">
+                        {g.bankName} · {g.accountNumber} · <span className="text-slate-700 font-medium">{g.accountName}</span>
+                      </p>
+                    ) : (
+                      <p className="text-xs text-red-500 font-medium">⚠ No bank details yet — ask them to add it before you pay.</p>
+                    )}
+                  </div>
+                  <div className="shrink-0 flex flex-col items-end gap-2">
+                    <span className="text-base font-bold text-slate-900">{formatCurrency(g.total)}</span>
+                    <button
+                      onClick={() => handleMarkPaid(g)}
+                      disabled={markingKey === key || !hasBank}
+                      className="h-9 px-3 rounded-lg bg-slate-900 hover:bg-slate-800 disabled:bg-slate-300 text-white text-xs font-bold transition active:scale-[0.98]"
+                    >
+                      {markingKey === key ? "Marking..." : "Mark paid"}
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
 
       {payouts.length === 0 ? (
         <div className="text-center py-16">

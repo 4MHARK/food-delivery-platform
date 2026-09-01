@@ -37,6 +37,7 @@ if(!userId){
   bus.on("delivery:updated", handler);
   bus.on("order:updated", handler);
   bus.on("order:accepted", handler);
+  bus.on("review:created", handler);
 
   // Keep-alive ping every 30s to prevent proxy timeouts
   const keepAlive = setInterval(() => {
@@ -49,6 +50,7 @@ if(!userId){
     bus.off("delivery:updated", handler);
     bus.off("order:updated", handler);
     bus.off("order:accepted", handler);
+    bus.off("review:created", handler);
   });
 });
 

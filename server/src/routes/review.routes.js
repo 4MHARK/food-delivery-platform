@@ -3,6 +3,7 @@ import prisma from "../config/prisma.js";
 import authMiddleware from "../middleware/auth.middleware.js";
 import { validate } from "../middleware/validate.js";
 import { reviewSchema } from "../validation/schemas.js";
+import { notify } from "../services/events.js";
 
 const router = express.Router();
 
@@ -51,6 +52,11 @@ router.post("/restaurants/:id/reviews", authMiddleware, validate(reviewSchema), 
       });
     }
 
+    const restaurant = await prisma.restaurant.findUnique({
+      where: { id: restaurantId },
+      select: { ownerId: true },
+    });
+
     const review = await prisma.restaurantReview.upsert({
       where: {
         authorId_restaurantId: {
@@ -73,6 +79,10 @@ router.post("/restaurants/:id/reviews", authMiddleware, validate(reviewSchema), 
       },
     });
 
+    if (restaurant?.ownerId) {
+      notify("review:created", [restaurant.ownerId]);
+    }
+
     res.status(200).json({
       message: "Review saved successfully",
       review,
@@ -83,6 +93,28 @@ router.post("/restaurants/:id/reviews", authMiddleware, validate(reviewSchema), 
 });
 
 // ── Rider reviews ──
+
+// List reviews for a rider (public)
+router.get("/riders/:id/reviews", async (req, res, next) => {
+  try {
+    const riderId = Number(req.params.id);
+
+    const reviews = await prisma.riderReview.findMany({
+      where: { riderId },
+      include: {
+        author: { select: { id: true, name: true } },
+      },
+      orderBy: { createdAt: "desc" },
+    });
+
+    res.status(200).json({
+      message: "Reviews fetched successfully",
+      reviews,
+    });
+  } catch (error) {
+    next(error);
+  }
+});
 
 // Create / update the caller's review for a rider (verified customers only)
 router.post("/riders/:id/reviews", authMiddleware, validate(reviewSchema), async (req, res, next) => {
@@ -107,6 +139,11 @@ router.post("/riders/:id/reviews", authMiddleware, validate(reviewSchema), async
       });
     }
 
+    const rider = await prisma.rider.findUnique({
+      where: { id: riderId },
+      select: { userId: true },
+    });
+
     const review = await prisma.riderReview.upsert({
       where: {
         authorId_riderId: {
@@ -128,6 +165,10 @@ router.post("/riders/:id/reviews", authMiddleware, validate(reviewSchema), async
         author: { select: { id: true, name: true } },
       },
     });
+
+    if (rider?.userId) {
+      notify("review:created", [rider.userId]);
+    }
 
     res.status(200).json({
       message: "Review saved successfully",

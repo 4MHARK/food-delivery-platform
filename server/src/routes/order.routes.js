@@ -9,6 +9,7 @@ import { notify } from "../services/events.js";
 import { refundPayment } from "../services/paystack.js";
 import crypto from "crypto";
 import { checkoutLimiter } from "../middleware/rate-limiter.js";
+import { getRefundWindowMinutes } from "../utils/refund.js";
 
 const router = express.Router();
 
@@ -242,6 +243,9 @@ router.get("/orders/:id", authMiddleware, async (req, res, next) => {
             },
           },
         },
+        payment: {
+          select: { status: true, paidAt: true },
+        },
         delivery: {
           include: {
             rider: {
@@ -271,6 +275,15 @@ router.get("/orders/:id", authMiddleware, async (req, res, next) => {
 
     // Only the customer sees their handoff code.
     if (!isCustomer) delete order.deliveryCode;
+
+    // Expose the free-cancellation deadline (same window as the cancel endpoint)
+    // so the customer UI can show exactly when a cancel stops being refundable.
+    if (order.payment?.paidAt) {
+      const windowMinutes = getRefundWindowMinutes();
+      order.refundDeadline = new Date(
+        new Date(order.payment.paidAt).getTime() + windowMinutes * 60 * 1000
+      ).toISOString();
+    }
 
     res.status(200).json({
       message: "Order fetched successfully",
@@ -350,6 +363,71 @@ router.put("/orders/:id/status", authMiddleware, ownerMiddleware, async (req, re
     });
   } catch (error) {
   next(error)
+  }
+});
+
+// ── Customer cancel: full refund within a short window after payment ──
+router.post("/orders/:id/cancel", authMiddleware, async (req, res, next) => {
+  try {
+    const order = await prisma.order.findUnique({
+      where: { id: Number(req.params.id) },
+      include: { restaurant: true },
+    });
+
+    if (!order) {
+      return res.status(404).json({ message: "Order not found" });
+    }
+
+    if (order.customerId !== req.user.id) {
+      return res.status(403).json({ message: "You can only cancel your own order" });
+    }
+
+    if (order.status === "CANCELLED") {
+      return res.status(400).json({ message: "Order is already cancelled" });
+    }
+
+    // The customer can only cancel before the restaurant accepts. Once the
+    // kitchen is working, only the owner can cancel (via the status endpoint).
+    if (!["PENDING_PAYMENT", "PENDING_RESTAURANT_CONFIRMATION"].includes(order.status)) {
+      return res.status(400).json({ message: "Order can no longer be cancelled" });
+    }
+
+    // Refund paid orders — but only while they're still inside the free-cancel
+    // window. After it lapses the customer still cancels, just without a refund.
+    const payment = await prisma.payment.findUnique({ where: { orderId: order.id } });
+    let refunded = false;
+
+    if (payment && payment.status === "SUCCESS" && payment.paidAt) {
+      const windowMinutes = getRefundWindowMinutes();
+      const elapsed = Date.now() - new Date(payment.paidAt).getTime();
+
+      if (elapsed <= windowMinutes * 60 * 1000) {
+        const { refunded: ok } = await refundPayment(payment.reference);
+        if (!ok) {
+          return res.status(502).json({
+            message: "Refund failed — order was NOT cancelled. Please try again.",
+          });
+        }
+        refunded = true;
+      }
+    }
+
+    const updated = await prisma.order.update({
+      where: { id: order.id },
+      data: { status: "CANCELLED" },
+    });
+
+    notify("order:updated", [order.customerId, order.restaurant.ownerId]);
+
+    res.status(200).json({
+      message: refunded
+        ? "Order cancelled — your payment has been refunded."
+        : "Order cancelled. The free-cancellation window has passed, so no refund was issued.",
+      order: updated,
+      refunded,
+    });
+  } catch (error) {
+    next(error);
   }
 });
 

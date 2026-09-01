@@ -20,6 +20,7 @@ import ProtectedRoute from "./components/ProtectedRoute";
 import OwnerRoute from "./components/OwnerRoute";
 import RiderRoute from "./components/RiderRoute";
 import AdminRoute from "./components/AdminRoute";
+import PushRegistrar from "./components/PushRegistrar";
 
 function HomeRedirect() {
   const { user, isAuthenticated } = useAuth();
@@ -42,6 +43,7 @@ function App() {
   return (
     <BrowserRouter>
       <AuthProvider>
+        <PushRegistrar />
         <CartProvider>
           <Routes>
             <Route path="/" element={<HomeRedirect />} />
