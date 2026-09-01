@@ -20,6 +20,16 @@ const ORDER_STATUS = {
 const ACTIVE_STATUSES = ["ACCEPTED", "PREPARING", "READY_FOR_PICKUP", "OUT_FOR_DELIVERY"];
 const TERMINAL_STATUSES = ["DELIVERED", "CANCELLED"];
 
+function StarRating({ rating }) {
+  return (
+    <span className="inline-flex items-center gap-0.5">
+      {[1, 2, 3, 4, 5].map((n) => (
+        <span key={n} className={`material-symbols-outlined text-amber-500 text-sm ${n <= rating ? "filled-icon" : ""}`}>star</span>
+      ))}
+    </span>
+  );
+}
+
 const initialRestForm = { name: "", description: "", address: "", phone: "", imageUrl: "" };
 const initialMenuForm = { name: "", description: "", price: "", category: "", imageUrl: "" };
 
@@ -27,6 +37,7 @@ const Dashboard = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
   const prevPendingRef = useRef(0);
+  const prevReviewCountRef = useRef(0);
 
   // ── Core state ──
   const [loading, setLoading] = useState(true);
@@ -66,6 +77,11 @@ const Dashboard = () => {
   const [payouts, setPayouts] = useState([]);
   const [payoutSummary, setPayoutSummary] = useState(null);
   const [payoutsLoading, setPayoutsLoading] = useState(false);
+
+  // Reviews
+  const [reviews, setReviews] = useState([]);
+  const [reviewsLoading, setReviewsLoading] = useState(false);
+  const [reviewsError, setReviewsError] = useState("");
 
   const showMsg = (msg) => { setMessage(msg); setTimeout(() => setMessage(""), 10000); };
 
@@ -122,6 +138,20 @@ const Dashboard = () => {
     }
   }, []);
 
+  // ── Fetch reviews ──
+  const fetchReviews = useCallback(async (restaurantId) => {
+    try {
+      setReviewsLoading(true);
+      setReviewsError("");
+      const data = await api.get(`/restaurants/${restaurantId}/reviews`);
+      setReviews(data.reviews || []);
+    } catch (e) {
+      setReviewsError(e.message || "Failed to load reviews");
+    } finally {
+      setReviewsLoading(false);
+    }
+  }, []);
+
   const fetchBanks = async () => {
     try {
       const data = await api.get("/payments/banks");
@@ -137,7 +167,7 @@ const Dashboard = () => {
       setLoading(true);
       const r = await fetchRestaurant();
       if (r) {
-        await Promise.all([fetchMenu(r.id), fetchOrders(r.id)]);
+        await Promise.all([fetchMenu(r.id), fetchOrders(r.id), fetchReviews(r.id)]);
       }
       fetchBanks();
       setLoading(false);
@@ -154,6 +184,10 @@ const Dashboard = () => {
   useEffect(() => {
     prevPendingRef.current = orders.filter((o) => o.status === "PENDING_RESTAURANT_CONFIRMATION").length;
   }, [orders]);
+
+  useEffect(() => {
+    prevReviewCountRef.current = reviews.length;
+  }, [reviews]);
 
   useSSE(
     async () => {
@@ -175,6 +209,19 @@ const Dashboard = () => {
           });
         }
         prevPendingRef.current = currentPending;
+
+        const revData = await api.get(`/restaurants/${restaurant.id}/reviews`).catch(() => null);
+        const freshReviews = revData?.reviews || [];
+        if (freshReviews.length > prevReviewCountRef.current) {
+          const diff = freshReviews.length - prevReviewCountRef.current;
+          showMsg(`⭐ ${diff} new review${diff > 1 ? "s" : ""} received!`);
+          setReviews(freshReviews);
+          notify("New Review!", {
+            body: `${diff} new review${diff > 1 ? "s" : ""} on your restaurant.`,
+            icon: "/favicon.svg",
+          });
+        }
+        prevReviewCountRef.current = freshReviews.length;
       } catch { /* silent — an SSE refresh shouldn't disturb the user */ }
     },
     { enabled: !!restaurant, deps: [restaurant?.id] }
@@ -576,6 +623,15 @@ const Dashboard = () => {
           >
             <span className="material-symbols-outlined text-sm mr-1.5 align-middle">account_balance</span>
             Payouts
+          </button>
+          <button
+            onClick={() => { setActiveTab("reviews"); fetchReviews(restaurant.id); }}
+            className={`flex-1 py-2.5 px-4 rounded-lg text-sm font-bold transition ${
+              activeTab === "reviews" ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-700"
+            }`}
+          >
+            <span className="material-symbols-outlined text-sm mr-1.5 align-middle">star</span>
+            Reviews
           </button>
         </div>
 
@@ -1061,6 +1117,74 @@ const Dashboard = () => {
                       <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${p.status === "SUCCESS" ? "bg-green-100 text-green-700" : p.status === "FAILED" ? "bg-red-100 text-red-700" : "bg-amber-100 text-amber-700"}`}>{p.status}</span>
                       <span className="text-sm font-bold text-slate-900">{formatCurrency(p.amount)}</span>
                     </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </section>
+        )}
+
+        {/* ══════════════ REVIEWS TAB ══════════════ */}
+        {activeTab === "reviews" && (
+          <section>
+            <h3 className="text-lg font-bold text-slate-900 mb-4">Reviews</h3>
+
+            {/* Summary */}
+            {reviews.length > 0 && (
+              <div className="bg-white rounded-2xl shadow-sm p-5 mb-4 flex items-center gap-5">
+                <div className="text-center">
+                  <p className="text-4xl font-extrabold text-slate-900">
+                    {(reviews.reduce((s, r) => s + r.rating, 0) / reviews.length).toFixed(1)}
+                  </p>
+                  <StarRating rating={Math.round(reviews.reduce((s, r) => s + r.rating, 0) / reviews.length)} />
+                </div>
+                <p className="text-sm text-slate-500">
+                  Based on {reviews.length} customer review{reviews.length === 1 ? "" : "s"}.
+                </p>
+              </div>
+            )}
+
+            {/* Loading */}
+            {reviewsLoading && (
+              <div className="space-y-3">
+                {[1, 2, 3].map((i) => <div key={i} className="h-20 bg-slate-200 animate-pulse rounded-2xl" />)}
+              </div>
+            )}
+
+            {/* Error */}
+            {reviewsError && !reviewsLoading && (
+              <div className="bg-red-50 rounded-2xl p-6 text-center mb-4">
+                <p className="text-sm text-red-600 font-medium mb-3">{reviewsError}</p>
+                <button onClick={() => fetchReviews(restaurant.id)} className="text-sm font-semibold text-red-600 hover:text-red-700 underline transition">Try again</button>
+              </div>
+            )}
+
+            {/* Empty */}
+            {!reviewsLoading && !reviewsError && reviews.length === 0 && (
+              <div className="bg-white rounded-2xl shadow-sm p-8 text-center">
+                <div className="w-16 h-16 rounded-full bg-slate-100 flex items-center justify-center mx-auto mb-3">
+                  <span className="material-symbols-outlined text-3xl text-slate-300">star</span>
+                </div>
+                <h4 className="text-sm font-bold text-slate-900 mb-1">No reviews yet</h4>
+                <p className="text-xs text-slate-400">Customer reviews appear here once orders are delivered.</p>
+              </div>
+            )}
+
+            {/* List */}
+            {!reviewsLoading && !reviewsError && reviews.length > 0 && (
+              <div className="space-y-3">
+                {reviews.map((r) => (
+                  <div key={r.id} className="bg-white rounded-2xl shadow-sm p-5">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-sm font-semibold text-slate-900">{r.author?.name || "Customer"}</span>
+                      <span className="text-xs text-slate-400">
+                        {new Date(r.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+                      </span>
+                    </div>
+                    <div className="mb-2">
+                      <StarRating rating={r.rating} />
+                    </div>
+                    {r.comment && <p className="text-sm text-slate-600">{r.comment}</p>}
                   </div>
                 ))}
               </div>

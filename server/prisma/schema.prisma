@@ -299,6 +299,7 @@ model RestaurantReview {
   updatedAt    DateTime   @updatedAt
 
   @@unique([authorId, restaurantId])
+  @@index([restaurantId, createdAt])
 }
 
 model RiderReview {
@@ -313,4 +314,5 @@ model RiderReview {
   updatedAt DateTime @updatedAt
 
   @@unique([authorId, riderId])
+  @@index([riderId, createdAt])
 }

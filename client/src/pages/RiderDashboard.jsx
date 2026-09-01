@@ -133,12 +133,18 @@ const RiderDashboard = () => {
   const [payoutsLoading, setPayoutsLoading] = useState(false);
   const [showPayoutAccount, setShowPayoutAccount] = useState(false);
 
+  // Reviews
+  const [reviews, setReviews] = useState([]);
+  const [reviewsLoading, setReviewsLoading] = useState(false);
+  const [showReviews, setShowReviews] = useState(false);
+
   // Toast
   const [message, setMessage] = useState("");
   const messageTimer = useRef(null);
 
   // Polling
   const prevAvailableRef = useRef(0);
+  const prevReviewCountRef = useRef(0);
   const [lastUpdated, setLastUpdated] = useState(null);
 
   const showMsg = (msg) => {
@@ -360,6 +366,18 @@ const RiderDashboard = () => {
     }
   };
 
+  // ── Fetch my reviews ──
+  const fetchReviews = async () => {
+    if (!rider?.id) return;
+    try {
+      setReviewsLoading(true);
+      const data = await api.get(`/riders/${rider.id}/reviews`);
+      setReviews(data.reviews || []);
+    } catch { /* silent */ } finally {
+      setReviewsLoading(false);
+    }
+  };
+
   // ── Save bank details (creates a Paystack transfer recipient) ──
   const handleSaveBank = async (e) => {
     e.preventDefault();
@@ -426,8 +444,13 @@ const RiderDashboard = () => {
   useEffect(() => {
     if (rider) {
       fetchData();
+      fetchReviews();
     }
   }, [rider]);
+
+  useEffect(() => {
+    prevReviewCountRef.current = reviews.length;
+  }, [reviews]);
 
   // ── SSE: real-time updates ──
   useNotificationPermission(!!rider);
@@ -445,6 +468,21 @@ const RiderDashboard = () => {
       }
       prevAvailableRef.current = currentAvailable;
     }
+
+    // Detect new reviews
+    const revData = await api.get(`/riders/${rider.id}/reviews`).catch(() => null);
+    const freshReviews = revData?.reviews || [];
+    if (freshReviews.length > prevReviewCountRef.current) {
+      const diff = freshReviews.length - prevReviewCountRef.current;
+      showMsg(`⭐ ${diff} new review${diff > 1 ? "s" : ""} received!`);
+      notify("New Review!", {
+        body: `You received ${diff} new review${diff > 1 ? "s" : ""}.`,
+        icon: "/favicon.svg",
+      });
+      setReviews(freshReviews);
+      fetchRider();
+    }
+    prevReviewCountRef.current = freshReviews.length;
   }, { enabled: !!rider, deps: [rider] });
 
   // Derive sections
@@ -1183,6 +1221,49 @@ const RiderDashboard = () => {
                         </div>
                       ))}
                     </div>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* ── Reviews ── */}
+            <div>
+              <button
+                onClick={() => { setShowReviews(!showReviews); if (!showReviews) fetchReviews(); }}
+                className="w-full flex items-center justify-between text-sm font-bold text-slate-500 uppercase tracking-wider mb-3"
+              >
+                <span className="flex items-center gap-2">
+                  <span className="w-2 h-2 rounded-full bg-slate-300" />
+                  Reviews ({reviews.length})
+                </span>
+                <span className={`material-symbols-outlined text-slate-400 transition ${showReviews ? "rotate-180" : ""}`}>
+                  expand_more
+                </span>
+              </button>
+
+              {showReviews && (
+                <div className="space-y-3">
+                  {reviewsLoading ? (
+                    <div className="h-16 bg-slate-200 animate-pulse rounded-2xl" />
+                  ) : reviews.length === 0 ? (
+                    <div className="bg-white rounded-2xl shadow-sm p-6 text-center">
+                      <p className="text-xs text-slate-400">No reviews yet. Customers can review you after you complete their delivery.</p>
+                    </div>
+                  ) : (
+                    reviews.map((r) => (
+                      <div key={r.id} className="bg-white rounded-2xl shadow-sm p-4">
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="text-sm font-semibold text-slate-900">{r.author?.name || "Customer"}</span>
+                          <span className="text-xs text-slate-400">{new Date(r.createdAt).toLocaleDateString()}</span>
+                        </div>
+                        <div className="flex items-center gap-0.5 mb-1.5">
+                          {[1, 2, 3, 4, 5].map((n) => (
+                            <span key={n} className={`material-symbols-outlined text-amber-500 text-sm ${n <= r.rating ? "filled-icon" : ""}`}>star</span>
+                          ))}
+                        </div>
+                        {r.comment && <p className="text-sm text-slate-600">{r.comment}</p>}
+                      </div>
+                    ))
                   )}
                 </div>
               )}
