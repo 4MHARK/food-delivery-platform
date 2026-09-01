@@ -5,6 +5,7 @@ import ownerMiddleware from "../middleware/owner.middleware.js";
 import { validate } from "../middleware/validate.js";
 import { restaurantSchema, bankDetailsSchema } from "../validation/schemas.js";
 import { createTransferRecipient } from "../services/paystack.js";
+import { cacheGet, cacheSet, cacheClear } from "../services/cache.js";
 
 const router = express.Router();
 
@@ -32,6 +33,11 @@ async function attachRatings(restaurants) {
 router.get("/restaurants", async (req, res, next) => {
   try {
     const { category } = req.query;
+    const cacheKey = category ? `restaurants:${category}` : "restaurants";
+
+    const cached = cacheGet(cacheKey);
+    if (cached) return res.status(200).json(cached);
+
     // Only approved restaurants are visible to customers.
     const where = {
       approvalStatus: "APPROVED",
@@ -45,10 +51,12 @@ router.get("/restaurants", async (req, res, next) => {
         },
       },
     });
-    res.status(200).json({
+    const body = {
       message: "Restaurants fetched successfully",
       restaurants: await attachRatings(restaurants),
-    });
+    };
+    cacheSet(cacheKey, body);
+    res.status(200).json(body);
   } catch (error) {
   next(error)
   }
@@ -132,6 +140,7 @@ router.post("/restaurants", authMiddleware, ownerMiddleware, validate(restaurant
       },
     });
 
+    cacheClear();
     res.status(201).json({
       message: "restaurant created successfully",
       restaurant: newRestaurant,
@@ -171,6 +180,7 @@ router.put("/restaurants/:id", authMiddleware, ownerMiddleware, validate(restaur
       }
     });
 
+    cacheClear();
     res.status(200).json({
       message: "restaurant updated successfully",
       update
