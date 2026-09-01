@@ -91,6 +91,7 @@ model User {
   restaurantReviews RestaurantReview[]
   riderReviews      RiderReview[]
   favorites         CustomerFavorite[]
+  pushSubscriptions PushSubscription[]
   campusId          Int?
   campus            Campus?  @relation(fields: [campusId], references: [id])
   resetTokenHash      String?
@@ -315,4 +316,16 @@ model RiderReview {
 
   @@unique([authorId, riderId])
   @@index([riderId, createdAt])
+}
+
+model PushSubscription {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  endpoint  String   @unique
+  p256dh    String
+  auth      String
+  createdAt DateTime @default(now())
+
+  @@index([userId])
 }
