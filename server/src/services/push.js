@@ -1,6 +1,7 @@
 import webPush from "web-push";
 import prisma from "../config/prisma.js";
 import { bus } from "./events.js";
+import { sendFcmToUsers } from "./fcm.js";
 
 // Configure VAPID once, lazily — so importing this module is safe before env is ready.
 let vapidReady = false;
@@ -71,9 +72,9 @@ const EVENT_MESSAGES = {
 export function startPushListener() {
   for (const [event, message] of Object.entries(EVENT_MESSAGES)) {
     bus.on(event, (recipientIds) => {
-      sendPushToUsers(recipientIds, { ...message, url: "/" }).catch((e) =>
-        console.error("[push]", e)
-      );
+      const payload = { ...message, url: "/" };
+      sendPushToUsers(recipientIds, payload).catch((e) => console.error("[push]", e));
+      sendFcmToUsers(recipientIds, payload).catch((e) => console.error("[fcm]", e));
     });
   }
 }

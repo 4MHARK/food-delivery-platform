@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "464140689268",
+    "project_id": "chowzilla-ee10f",
+    "storage_bucket": "chowzilla-ee10f.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:464140689268:android:4ee201927185c199ff9621",
+        "android_client_info": {
+          "package_name": "com.chowzilla.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCTYsqrPl-6A2rxVtAVu1rRAZdQwd0CNO8"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
