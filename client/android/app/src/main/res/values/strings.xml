@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">ChowZilla</string>
+    <string name="title_activity_main">ChowZilla</string>
+    <string name="package_name">com.chowzilla.app</string>
+    <string name="custom_url_scheme">com.chowzilla.app</string>
+</resources>
