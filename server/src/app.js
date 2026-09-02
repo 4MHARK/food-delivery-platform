@@ -10,7 +10,13 @@ const app = express();
 app.use(helmet());
 app.use(morgan("dev"));
 app.use(cors({
-  origin: process.env.CLIENT_URL || "http://localhost:5173",
+  origin: [
+    process.env.CLIENT_URL,      // deployed web app
+    "http://localhost:5173",     // local web dev (Vite)
+    "http://localhost",          // Capacitor Android (androidScheme http)
+    "https://localhost",         // Capacitor Android (androidScheme https)
+    "capacitor://localhost",     // Capacitor iOS
+  ].filter(Boolean),
 }));
 
 // Rider profile photos are sent as base64 data URLs, so raise the default
