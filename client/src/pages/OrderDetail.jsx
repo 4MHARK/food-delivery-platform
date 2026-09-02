@@ -129,11 +129,13 @@ function RateRider({ riderId, riderName }) {
 const OrderDetail = () => {
   const { id } = useParams();
   const navigate = useNavigate();
+  const { user } = useAuth();
 
   const [order, setOrder] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [cancelling, setCancelling] = useState(false);
+  const [paying, setPaying] = useState(false);
   const [cancelMsg, setCancelMsg] = useState("");
   const [now, setNow] = useState(Date.now());
 
@@ -236,9 +238,12 @@ const OrderDetail = () => {
 
   const handleCancel = async () => {
     const within = refundDeadlineMs != null && Date.now() < refundDeadlineMs;
-    const msg = within
-      ? "Cancel this order? You'll receive a full refund."
-      : "The free-cancellation window has passed — you will NOT be refunded. Cancel anyway?";
+    const msg =
+      order.status === "PENDING_PAYMENT"
+        ? "Cancel this order?"
+        : within
+        ? "Cancel this order? You'll receive a full refund."
+        : "The free-cancellation window has passed — you will NOT be refunded. Cancel anyway?";
     if (!window.confirm(msg)) return;
     setCancelling(true);
     setCancelMsg("");
@@ -251,6 +256,43 @@ const OrderDetail = () => {
     } finally {
       setCancelling(false);
     }
+  };
+
+  // ── Pay now (unpaid order) — re-open Paystack for the existing reference ──
+  const handlePayNow = async () => {
+    const payment = order?.payment;
+    if (!payment?.reference) {
+      setError("This order can't be paid for right now.");
+      return;
+    }
+    if (typeof window.PaystackPop === "undefined") {
+      setError("Payment system is unavailable. Please try again.");
+      return;
+    }
+
+    setPaying(true);
+    const handler = window.PaystackPop.setup({
+      key: import.meta.env.VITE_PAYSTACK_PUBLIC_KEY,
+      email: user?.email,
+      amount: Math.round(Number(payment.amount) * 100), // Naira → kobo
+      currency: "NGN",
+      ref: payment.reference,
+      onSuccess: async () => {
+        try {
+          const data = await api.post("/payments/verify", {
+            reference: payment.reference,
+          });
+          setOrder(data.order);
+        } catch (e) {
+          setError(e.message || "Payment received, but we couldn't confirm it.");
+        } finally {
+          setPaying(false);
+        }
+      },
+      onCancel: () => setPaying(false),
+      onClose: () => setPaying(false),
+    });
+    handler.openIframe();
   };
 
   // ── LOADING ──
@@ -333,6 +375,39 @@ const OrderDetail = () => {
           <div className="mb-6 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-center">
             <p className="text-xs font-semibold text-emerald-700">Delivery code — share with your rider</p>
             <p className="mt-1 text-3xl font-black tracking-[0.4em] text-emerald-800">{order.deliveryCode}</p>
+          </div>
+        )}
+
+        {/* Unpaid order — pay now or cancel (Chowdeck-style) */}
+        {order.status === "PENDING_PAYMENT" && (
+          <div className="mb-6 rounded-2xl border border-amber-200 bg-amber-50 p-5 shadow-sm">
+            <div className="flex items-start gap-3">
+              <div className="w-10 h-10 rounded-full bg-amber-100 flex items-center justify-center shrink-0">
+                <span className="material-symbols-outlined text-amber-600">hourglass_empty</span>
+              </div>
+              <div className="flex-1">
+                <h3 className="text-sm font-bold text-slate-900 mb-1">Payment pending</h3>
+                <p className="text-xs text-slate-500 mb-3">
+                  This order hasn't been paid for yet. Pay now to send it to the restaurant, or cancel it.
+                </p>
+                <div className="flex flex-wrap gap-3">
+                  <button
+                    onClick={handlePayNow}
+                    disabled={paying}
+                    className="h-10 px-5 rounded-xl bg-amber-500 hover:bg-amber-600 disabled:bg-amber-300 text-white font-semibold text-sm transition active:scale-95"
+                  >
+                    {paying ? "Opening payment..." : "Pay now"}
+                  </button>
+                  <button
+                    onClick={handleCancel}
+                    disabled={cancelling}
+                    className="h-10 px-5 rounded-xl border-2 border-red-200 text-red-600 hover:bg-red-50 disabled:opacity-50 font-semibold text-sm transition active:scale-95"
+                  >
+                    {cancelling ? "Cancelling..." : "Cancel order"}
+                  </button>
+                </div>
+              </div>
+            </div>
           </div>
         )}
 
