@@ -4,6 +4,36 @@ import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { api, ApiError } from "../lib/api";
 import auth from "../assets/auth-bg.jpg";
+import { Capacitor } from "@capacitor/core";
+import { SecureStorage } from "@aparajita/capacitor-secure-storage";
+
+const EMAIL_KEY = "rememberedEmail";
+const PASSWORD_KEY = "rememberedPassword";
+
+// On a real device the password is stored encrypted in the OS keystore.
+// The web build has no keystore, so we fall back to localStorage there.
+async function savePassword(password) {
+  if (Capacitor.isNativePlatform()) {
+    await SecureStorage.setItem(PASSWORD_KEY, password);
+  } else {
+    localStorage.setItem(PASSWORD_KEY, password);
+  }
+}
+
+async function loadPassword() {
+  if (Capacitor.isNativePlatform()) {
+    return SecureStorage.getItem(PASSWORD_KEY);
+  }
+  return localStorage.getItem(PASSWORD_KEY);
+}
+
+async function clearPassword() {
+  if (Capacitor.isNativePlatform()) {
+    await SecureStorage.removeItem(PASSWORD_KEY);
+  } else {
+    localStorage.removeItem(PASSWORD_KEY);
+  }
+}
 
 const Login = () => {
 
@@ -12,10 +42,26 @@ const Login = () => {
   const [formData, setFormData] = useState({email: "", password: ""});
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [rememberMe, setRememberMe] = useState(false);
 
   // Wake up the Render server on page load (cold start workaround)
   useEffect(() => {
     api.get("/", { auth: false }).catch(() => {});
+  }, []);
+
+  // Prefill saved credentials (remember me) so the user can just tap Sign in
+  useEffect(() => {
+    const savedEmail = localStorage.getItem(EMAIL_KEY);
+    if (!savedEmail) return;
+    (async () => {
+      const savedPassword = await loadPassword();
+      setFormData((prev) => ({
+        ...prev,
+        email: savedEmail,
+        password: savedPassword || "",
+      }));
+      setRememberMe(true);
+    })();
   }, []);
 
   const handleChange = (e) => {
@@ -49,6 +95,15 @@ const Login = () => {
       clearTimeout(timeoutId);
 
       login(data.token, data.user);
+
+      // Remember credentials across logouts (only when the box is checked)
+      if (rememberMe) {
+        localStorage.setItem(EMAIL_KEY, formData.email);
+        await savePassword(formData.password);
+      } else {
+        localStorage.removeItem(EMAIL_KEY);
+        await clearPassword();
+      }
 
       if (data.user.role === "OWNER") {
         navigate("/dashboard");
@@ -171,6 +226,17 @@ const Login = () => {
                 className="w-full h-12 px-4 rounded-xl border-2 border-slate-200 focus:border-amber-500 focus:ring-1 focus:ring-amber-500 outline-none transition-shadow placeholder:text-slate-400 text-base"
               />
             </div>
+
+            {/* Remember me */}
+            <label className="flex items-center gap-2 text-sm text-slate-600 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={rememberMe}
+                onChange={(e) => setRememberMe(e.target.checked)}
+                className="h-4 w-4 rounded accent-amber-500"
+              />
+              Remember me
+            </label>
 
             {/* Submit Button */}
             <button
