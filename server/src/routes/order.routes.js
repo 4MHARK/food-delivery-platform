@@ -244,7 +244,7 @@ router.get("/orders/:id", authMiddleware, async (req, res, next) => {
           },
         },
         payment: {
-          select: { status: true, paidAt: true },
+          select: { status: true, paidAt: true, reference: true, amount: true },
         },
         delivery: {
           include: {
