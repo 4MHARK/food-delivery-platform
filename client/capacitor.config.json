@@ -1,0 +1,13 @@
+{
+  "appId": "com.chowzilla.app",
+  "appName": "ChowZilla",
+  "webDir": "dist",
+  "server": {
+    "androidScheme": "http"
+  },
+  "plugins": {
+    "PushNotifications": {
+      "presentationOptions": ["badge", "sound", "alert"]
+    }
+  }
+}
