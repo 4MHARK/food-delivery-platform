@@ -197,7 +197,7 @@ router.post("/deliveries/:orderId/accept", authMiddleware, riderMiddleware, asyn
         data: { status: "OUT_FOR_DELIVERY" },
         include: {
           orderItems: { include: { menuItem: true } },
-          restaurant: { select: { id: true, name: true, address: true, phone: true } },
+          restaurant: { select: { id: true, name: true, address: true, phone: true, ownerId: true } },
           customer: { select: { id: true, name: true, phone: true } },
         },
       });
@@ -205,8 +205,13 @@ router.post("/deliveries/:orderId/accept", authMiddleware, riderMiddleware, asyn
       return { delivery, order: updatedOrder };
     }, { timeout: 20000, maxWait: 10000 });
 
-    // Notify customer their order has been picked up
-    notify("order:accepted", [result.order.customerId]);
+    // Notify the customer (rider on the way) and the restaurant (rider assigned).
+    notify("order:updated", [result.order.customerId, result.order.restaurant.ownerId], {
+      status: "OUT_FOR_DELIVERY",
+      customerId: result.order.customerId,
+      ownerId: result.order.restaurant.ownerId,
+      orderId: result.order.id,
+    });
 
     res.status(201).json({
       message: "Order accepted successfully",
@@ -279,7 +284,7 @@ router.put("/deliveries/:id/status", authMiddleware, riderMiddleware, validate(d
           order: {
             include: {
               orderItems: { include: { menuItem: true } },
-              restaurant: { select: { id: true, name: true, address: true } },
+              restaurant: { select: { id: true, name: true, address: true, ownerId: true } },
               customer: { select: { id: true, name: true, phone: true } },
             },
           },
@@ -344,10 +349,18 @@ router.put("/deliveries/:id/status", authMiddleware, riderMiddleware, validate(d
       response.order = hideDeliveryCode(result.order);
     }
 
-    // Notify customer of delivery progress
-    const customerId = result.delivery.order?.customer?.id;
-    if (customerId) {
-      notify("delivery:updated", [customerId]);
+    // Notify the customer and restaurant of delivery progress. Micro-transitions
+    // (AT_KITCHEN, MOVING, CLOSE_BY) still refresh the live tracker via SSE but
+    // intentionally don't push — only the milestones below have a push message.
+    const order = result.delivery.order;
+    const customerId = order?.customer?.id;
+    const ownerId = order?.restaurant?.ownerId;
+    if (customerId || ownerId) {
+      notify(
+        "order:updated",
+        [customerId, ownerId].filter(Boolean),
+        { status, customerId, ownerId, orderId: order?.id }
+      );
     }
 
     res.status(200).json(response);

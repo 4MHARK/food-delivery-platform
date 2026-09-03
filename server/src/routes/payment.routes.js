@@ -90,8 +90,13 @@ router.post("/payments/verify", authMiddleware, async (req, res, next) => {
       }),
     ]);
 
-    // Notify the restaurant owner that a new paid order just arrived (SSE).
-    notify("order:updated", [updatedOrder.restaurant.ownerId]);
+    // Notify the customer (payment received) and the restaurant (new paid order).
+    notify("order:updated", [updatedOrder.customerId, updatedOrder.restaurant.ownerId], {
+      status: "PENDING_RESTAURANT_CONFIRMATION",
+      customerId: updatedOrder.customerId,
+      ownerId: updatedOrder.restaurant.ownerId,
+      orderId: updatedOrder.id,
+    });
 
     res.status(200).json({
       message: "Payment verified successfully",

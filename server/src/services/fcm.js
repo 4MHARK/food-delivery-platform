@@ -47,6 +47,8 @@ export async function sendFcmToUsers(userIds, payload) {
 
   const tokens = userIds.includes("*")
     ? await prisma.pushToken.findMany()
+    : userIds.includes("riders")
+    ? await prisma.pushToken.findMany({ where: { user: { role: "RIDER" } } })
     : await prisma.pushToken.findMany({ where: { userId: { in: userIds } } });
 
   if (tokens.length === 0) return;

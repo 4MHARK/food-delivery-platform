@@ -309,7 +309,10 @@ router.put("/orders/:id/status", authMiddleware, ownerMiddleware, async (req, re
 
     const order = await prisma.order.findUnique({
       where: { id: Number(req.params.id) },
-      include: { restaurant: true },
+      include: {
+        restaurant: true,
+        delivery: { include: { rider: { select: { userId: true } } } },
+      },
     });
 
     if (!order) {
@@ -349,12 +352,29 @@ router.put("/orders/:id/status", authMiddleware, ownerMiddleware, async (req, re
       },
     });
 
-    // Notify customer of order status change
-    notify("order:updated", [order.customerId]);
+    // Notify everyone who should know about this change. `order.delivery?.rider`
+    // only exists once a rider has been assigned (e.g. a mid-delivery cancel).
+    const riderUserId = order.delivery?.rider?.userId || null;
 
-    // When the food is ready for pickup, also notify all riders (new available order)
     if (status === "READY_FOR_PICKUP") {
-      notify("order:updated", ["*"]);
+      // Customer gets "order ready"; every available rider gets a "new order" ping.
+      notify("order:updated", [order.customerId, "*"], {
+        status,
+        customerId: order.customerId,
+        riderIds: ["riders"],
+        orderId: order.id,
+      });
+    } else {
+      notify(
+        "order:updated",
+        riderUserId ? [order.customerId, riderUserId] : [order.customerId],
+        {
+          status,
+          customerId: order.customerId,
+          riderIds: riderUserId ? [riderUserId] : null,
+          orderId: order.id,
+        }
+      );
     }
 
     res.status(200).json({
@@ -417,7 +437,13 @@ router.post("/orders/:id/cancel", authMiddleware, async (req, res, next) => {
       data: { status: "CANCELLED" },
     });
 
-    notify("order:updated", [order.customerId, order.restaurant.ownerId]);
+    // The customer initiated this, so only the owner needs a push. SSE still
+    // refreshes both sides (customer's other devices + the owner's dashboard).
+    notify("order:updated", [order.customerId, order.restaurant.ownerId], {
+      status: "CANCELLED",
+      ownerId: order.restaurant.ownerId,
+      orderId: order.id,
+    });
 
     res.status(200).json({
       message: refunded
