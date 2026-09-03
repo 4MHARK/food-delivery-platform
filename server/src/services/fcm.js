@@ -57,6 +57,8 @@ export async function sendFcmToUsers(userIds, payload) {
     tokens: tokens.map((t) => t.token),
     notification: { title: payload.title, body: payload.body },
     data: { url: payload.url || "/" },
+    // High priority = delivered immediately (even in Doze/background).
+    android: { priority: "high" },
   });
 
   // Drop tokens FCM reports as invalid so they don't accumulate.
