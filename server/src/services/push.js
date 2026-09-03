@@ -39,6 +39,8 @@ export async function sendPushToUsers(userIds, payload) {
 
   const subs = userIds.includes("*")
     ? await prisma.pushSubscription.findMany()
+    : userIds.includes("riders")
+    ? await prisma.pushSubscription.findMany({ where: { user: { role: "RIDER" } } })
     : await prisma.pushSubscription.findMany({ where: { userId: { in: userIds } } });
 
   if (subs.length === 0) return;
@@ -61,20 +63,69 @@ export async function sendPushToUsers(userIds, payload) {
   });
 }
 
-const EVENT_MESSAGES = {
-  "order:updated": { title: "Order update", body: "Your order status has changed." },
-  "order:accepted": { title: "Order accepted", body: "The restaurant accepted your order." },
-  "delivery:updated": { title: "Delivery update", body: "Your delivery status has changed." },
-  "review:created": { title: "New review ⭐", body: "You received a new review." },
+// One message set per transition; each role (customer / owner / rider) gets its
+// own title+body. A role omitted from the set simply receives no push for that
+// transition. riderIds may hold real user ids or the literal "riders" (all riders).
+const STATUS_MESSAGES = {
+  PENDING_RESTAURANT_CONFIRMATION: {
+    customer: { title: "Payment received", body: "Your order is on its way to the restaurant." },
+    owner: { title: "New order 🛎️", body: "You have a new paid order to confirm." },
+  },
+  ACCEPTED: {
+    customer: { title: "Order confirmed", body: "The restaurant accepted your order." },
+  },
+  PREPARING: {
+    customer: { title: "Preparing your food 👨‍🍳", body: "The kitchen has started your order." },
+  },
+  READY_FOR_PICKUP: {
+    customer: { title: "Order ready 🍱", body: "Your food is ready and waiting for a rider." },
+    rider: { title: "New order available 🛵", body: "A new order is ready for pickup." },
+  },
+  OUT_FOR_DELIVERY: {
+    customer: { title: "Out for delivery 🛵", body: "Your rider is on the way with your food." },
+    owner: { title: "Out for delivery", body: "Your order has been picked up by a rider." },
+  },
+  DELIVERED: {
+    customer: { title: "Delivered 🎉", body: "Your order has been delivered. Enjoy!" },
+    owner: { title: "Order delivered", body: "Your order has been delivered to the customer." },
+  },
+  CANCELLED: {
+    customer: { title: "Order cancelled", body: "Your order has been cancelled." },
+    owner: { title: "Order cancelled", body: "An order has been cancelled." },
+    rider: { title: "Order cancelled", body: "An order you were assigned has been cancelled." },
+  },
+  BAGGED: {
+    customer: { title: "Order picked up 🛵", body: "Your rider has picked up your food." },
+    owner: { title: "Order picked up", body: "A rider has picked up your order." },
+  },
+  FAILED: {
+    customer: { title: "Delivery issue", body: "Your delivery hit a snag — we're reassigning a rider." },
+    owner: { title: "Delivery failed", body: "The rider reported a problem — reassign the order." },
+  },
 };
 
-// Mirror the SSE listener: the same bus events also fire a web push.
+// Mirror the SSE listener: the same bus event also fires web + native push.
 export function startPushListener() {
-  for (const [event, message] of Object.entries(EVENT_MESSAGES)) {
-    bus.on(event, (recipientIds) => {
-      const payload = { ...message, url: "/" };
-      sendPushToUsers(recipientIds, payload).catch((e) => console.error("[push]", e));
-      sendFcmToUsers(recipientIds, payload).catch((e) => console.error("[fcm]", e));
+  bus.on("order:updated", (recipientIds, data) => {
+    const { status, customerId, ownerId, riderIds, orderId } = data || {};
+    const messages = STATUS_MESSAGES[status];
+    if (!messages) return;
+
+    const jobs = [];
+    if (customerId && messages.customer) jobs.push([[customerId], messages.customer]);
+    if (ownerId && messages.owner) jobs.push([[ownerId], messages.owner]);
+    if (riderIds && messages.rider) jobs.push([riderIds, messages.rider]);
+
+    jobs.forEach(([ids, msg]) => {
+      const payload = { ...msg, url: orderId ? `/orders/${orderId}` : "/orders" };
+      sendPushToUsers(ids, payload).catch((e) => console.error("[push]", e));
+      sendFcmToUsers(ids, payload).catch((e) => console.error("[fcm]", e));
     });
-  }
+  });
+
+  bus.on("review:created", (recipientIds) => {
+    const payload = { title: "New review ⭐", body: "You received a new review.", url: "/" };
+    sendPushToUsers(recipientIds, payload).catch((e) => console.error("[push]", e));
+    sendFcmToUsers(recipientIds, payload).catch((e) => console.error("[fcm]", e));
+  });
 }
