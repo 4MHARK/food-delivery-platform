@@ -576,3 +576,6 @@ order payments, 2 separate files
 | **TOTAL** | **3** | **14** | **13** | **7** | **37** |
 
 **Time to fix all P0 + critical P1 (FIX FIRST TODAY + FIX NEXT): ~2 hours.**
+
+
+riders should place picture at sign up as mandatory
