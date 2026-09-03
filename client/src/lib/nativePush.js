@@ -8,23 +8,9 @@ import { api } from "./api";
 export async function registerNativePush() {
   if (!Capacitor.isNativePlatform()) return;
 
-  try {
-    await PushNotifications.requestPermissions();
-    await PushNotifications.register();
-  } catch (error) {
-    console.error("Native push setup failed:", error);
-  }
-
-  // Android 8+ requires a channel before any foreground notification can show.
-  await PushNotifications.createChannel({
-    id: "chowzilla",
-    name: "Orders & updates",
-    description: "Order status, delivery and review notifications",
-    importance: 5, // MAX — heads-up banner
-    visibility: 1, // PUBLIC — also on the lock screen
-  });
-
-  // The FCM token arrives asynchronously via the 'registration' event.
+  // Listeners go FIRST — the FCM token event can fire as soon as register()
+  // resolves, and a listener attached after that would miss it (the server would
+  // never learn the token, so no push could ever arrive).
   PushNotifications.addListener("registration", async (token) => {
     try {
       await api.post("/push/register-token", { token: token.value });
@@ -52,4 +38,24 @@ export async function registerNativePush() {
       ],
     });
   });
+
+  // Android 8+ requires a channel before any foreground notification can show.
+  try {
+    await PushNotifications.createChannel({
+      id: "chowzilla",
+      name: "Orders & updates",
+      description: "Order status, delivery and review notifications",
+      importance: 5, // MAX — heads-up banner
+      visibility: 1, // PUBLIC — also on the lock screen
+    });
+  } catch (error) {
+    console.error("Notification channel creation failed:", error);
+  }
+
+  try {
+    await PushNotifications.requestPermissions();
+    await PushNotifications.register();
+  } catch (error) {
+    console.error("Native push setup failed:", error);
+  }
 }
