@@ -29,6 +29,8 @@ const orderItems = z
 export const checkoutSchema = z.object({
   restaurantId: z.coerce.number().int("Restaurant id must be a whole number").positive("Restaurant id must be positive"),
   deliveryAddress: z.string().trim().min(1, "Delivery address is required"),
+  deliveryLat: z.coerce.number().min(-90).max(90),
+  deliveryLng: z.coerce.number().min(-180).max(180),
   idempotencyKey: z.string().trim().min(1, "Idempotency key is required"),
   items: orderItems,
 });
@@ -46,6 +48,8 @@ export const restaurantSchema = z.object({
   address: z.string().trim().min(1, "Address is required").max(200, "Address must be 200 characters or less"),
   phone: z.string().trim().min(1, "Phone is required").max(20, "Phone must be 20 characters or less"),
   imageUrl: z.string().trim().max(500, "Image URL must be 500 characters or less").optional(),
+  lat: z.coerce.number().min(-90).max(90).optional(),
+  lng: z.coerce.number().min(-180).max(180).optional(),
 });
 
 // ── Menu item ──

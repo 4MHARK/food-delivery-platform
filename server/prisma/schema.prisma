@@ -82,7 +82,8 @@ model User {
   id        Int      @id @default(autoincrement())
   name      String
   email     String   @unique
-  password  String
+  password  String?
+  googleId  String? @unique
   phone     String?
   role      UserRole @default(CUSTOMER)
   restaurants Restaurant[]
@@ -151,6 +152,8 @@ model Restaurant {
   accountNumber String?
   accountName   String?
   recipientCode String?
+  lat  Float?
+lng  Float?
   approvalStatus RestaurantApprovalStatus @default(PENDING)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -203,6 +206,8 @@ model Order {
   deliveryAddress String
   customerId      Int
   restaurantId    Int
+  deliveryLat Float?
+deliveryLng Float?
   customer        User        @relation(fields: [customerId], references: [id])
   restaurant      Restaurant  @relation(fields: [restaurantId], references: [id])
   orderItems      OrderItem[]

@@ -29,10 +29,16 @@ export function useSSE(onMessage, { enabled = true, deps = [] } = {}) {
       );
 
       es.onmessage = () => handlerRef.current();
-      es.onerror = () => {
+
+           es.onerror = () => {
         if (!failSince) failSince = Date.now();
-        if (Date.now() - failSince > 30_000) es.close();
+        if (Date.now() - failSince > 30_000) {
+          es.close();
+          failSince = null;
+          connect();
+        }
       };
+
       es.onopen = () => {
         failSince = null;
       };

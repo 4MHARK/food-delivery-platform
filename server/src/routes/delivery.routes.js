@@ -44,9 +44,9 @@ router.get("/riders/available-orders", authMiddleware, riderMiddleware, async (r
             menuItem: true,
           },
         },
-        restaurant: {
-          select: { id: true, name: true, address: true, phone: true },
-        },
+       restaurant: {
+  select: { id: true, name: true, address: true, phone: true, lat: true, lng: true },
+},
         customer: {
           select: { id: true, name: true, phone: true },
         },
@@ -197,7 +197,7 @@ router.post("/deliveries/:orderId/accept", authMiddleware, riderMiddleware, asyn
         data: { status: "OUT_FOR_DELIVERY" },
         include: {
           orderItems: { include: { menuItem: true } },
-          restaurant: { select: { id: true, name: true, address: true, phone: true, ownerId: true } },
+          restaurant: { select: { id: true, name: true, address: true, phone: true, ownerId: true, lat: true, lng: true } },
           customer: { select: { id: true, name: true, phone: true } },
         },
       });
@@ -222,7 +222,7 @@ router.post("/deliveries/:orderId/accept", authMiddleware, riderMiddleware, asyn
     // Handle structured throws from the transaction
     if (error.status) {
       
-     next(error)
+     return next(error)
     }
    next(error)
   }
@@ -284,7 +284,7 @@ router.put("/deliveries/:id/status", authMiddleware, riderMiddleware, validate(d
           order: {
             include: {
               orderItems: { include: { menuItem: true } },
-              restaurant: { select: { id: true, name: true, address: true, ownerId: true } },
+              restaurant: { select: { id: true, name: true, address: true, ownerId: true, lat: true, lng: true } },
               customer: { select: { id: true, name: true, phone: true } },
             },
           },
@@ -392,7 +392,7 @@ router.get("/riders/my-deliveries", authMiddleware, riderMiddleware, async (req,
         order: {
           include: {
             orderItems: { include: { menuItem: true } },
-            restaurant: { select: { id: true, name: true, address: true, phone: true } },
+            restaurant: { select: { id: true, name: true, address: true, phone: true, lat: true, lng: true } },
             customer: { select: { id: true, name: true, phone: true } },
           },
         },

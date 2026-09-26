@@ -58,7 +58,7 @@ router.get("/restaurants", async (req, res, next) => {
     cacheSet(cacheKey, body);
     res.status(200).json(body);
   } catch (error) {
-  next(error)
+    next(error)
   }
 });
 
@@ -85,7 +85,7 @@ router.get("/restaurants/:id", async (req, res, next) => {
       restaurant: (await attachRatings([restaurant]))[0],
     });
   } catch (error) {
- next(error)
+    next(error)
   }
 });
 
@@ -98,62 +98,88 @@ router.get("/my-restaurant", authMiddleware, async (req, res, next) => {
     });
     res.status(200).json({ restaurant: restaurant || null });
   } catch (error) {
-  next(error)
+    next(error)
   }
 });
 
 // creates a new restaurant
-router.post("/restaurants", authMiddleware, ownerMiddleware, validate(restaurantSchema), async (req, res, next) => {
-  try {
-    const { name, description, address, phone, imageUrl } = req.body;
-
-    // Enforce 1 restaurant per owner
-    const existing = await prisma.restaurant.findFirst({ where: { ownerId: req.user.id } });
-    if (existing) {
-      return res.status(400).json({ message: "You already have a restaurant. Each owner can only have one restaurant." });
-    }
-
-    // Default new restaurants to the Main Campus (explicit campus picker is a follow-up).
-    const campus = await prisma.campus.findFirst({ where: { name: "Main Campus" } });
-    if (!campus) {
-      return res.status(500).json({ message: "Default campus not found. Run the migration first." });
-    }
-
-    const newRestaurant = await prisma.restaurant.create({
-      data: {
+router.post(
+  "/restaurants",
+  authMiddleware,
+  ownerMiddleware,
+  validate(restaurantSchema),
+  async (req, res, next) => {
+    try {
+      const {
         name,
         description,
         address,
         phone,
         imageUrl,
-        ownerId: req.user.id,
-        campusId: campus.id,
-      },
-      include: {
-        owner: {
-          select: {
-            id: true,
-            name: true,
-            email: true,
+        lat,
+        lng,
+      } = req.body;
+
+      // Enforce 1 restaurant per owner
+      const existing = await prisma.restaurant.findFirst({
+        where: { ownerId: req.user.id },
+      });
+
+      if (existing) {
+        return res.status(400).json({
+          message:
+            "You already have a restaurant. Each owner can only have one restaurant.",
+        });
+      }
+
+      // Find the default campus
+     const campus = await prisma.campus.findFirst({ orderBy: { id: "asc" } });
+
+      if (!campus) {
+        return res.status(500).json({
+          message: "Default campus not found. Run the migration first.",
+        });
+      }
+
+      // Create the restaurant
+      const newRestaurant = await prisma.restaurant.create({
+        data: {
+          name,
+          description,
+          address,
+          phone,
+          imageUrl,
+          lat: lat ?? null,
+          lng: lng ?? null,
+          ownerId: req.user.id,
+          campusId: campus.id,
+        },
+        include: {
+          owner: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+            },
           },
         },
-      },
-    });
+      });
 
-    cacheClear();
-    res.status(201).json({
-      message: "restaurant created successfully",
-      restaurant: newRestaurant,
-    });
-  } catch (error) {
-  next(error)
+      cacheClear();
+
+      return res.status(201).json({
+        message: "restaurant created successfully",
+        restaurant: newRestaurant,
+      });
+    } catch (error) {
+      next(error);
+    }
   }
-});
-
+);
 //Updates restaurants per ID
 router.put("/restaurants/:id", authMiddleware, ownerMiddleware, validate(restaurantSchema), async (req, res, next) => {
   try {
-     const { name, description, address, phone, imageUrl } = req.body;
+    const { name, description, address, phone, imageUrl } = req.body;
     const restaurant = await prisma.restaurant.findUnique({
       where: {
         id: Number(req.params.id),
@@ -168,13 +194,13 @@ router.put("/restaurants/:id", authMiddleware, ownerMiddleware, validate(restaur
         message: "You can only edit your restaurant",
       });
     }
-      const update = await prisma.restaurant.update({
+    const update = await prisma.restaurant.update({
       where: { id: Number(req.params.id) },
       data: { name, description, address, phone, imageUrl },
-      include:{
-        owner:{
-          select:{
-            id: true, name: true, email: true 
+      include: {
+        owner: {
+          select: {
+            id: true, name: true, email: true
           }
         }
       }
@@ -187,7 +213,7 @@ router.put("/restaurants/:id", authMiddleware, ownerMiddleware, validate(restaur
     });
 
   } catch (error) {
-  next(error)
+    next(error)
   }
 });
 

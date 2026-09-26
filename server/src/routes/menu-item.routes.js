@@ -190,4 +190,45 @@ router.delete("/menu-items/:id", authMiddleware,ownerMiddleware ,async (req, res
      next(error)
     }
 })
+// Search menu items AND restaurants by name in one query
+router.get("/search", async (req, res, next) => {
+  try {
+    const q = String(req.query.q || "").trim();
+    if (!q) {
+      return res.status(400).json({ message: "Search query 'q' is required" });
+    }
+
+    const [menuItems, restaurants] = await Promise.all([
+      prisma.menuItem.findMany({
+        where: {
+          isAvailable: true,
+          name: { contains: q, mode: "insensitive" },
+          restaurant: { approvalStatus: "APPROVED" },
+        },
+        include: {
+          restaurant: {
+            select: { id: true, name: true, imageUrl: true, address: true },
+          },
+        },
+        take: 30,
+      }),
+      prisma.restaurant.findMany({
+        where: {
+          approvalStatus: "APPROVED",
+          name: { contains: q, mode: "insensitive" },
+        },
+        select: { id: true, name: true, imageUrl: true, address: true, description: true },
+        take: 10,
+      }),
+    ]);
+
+    res.status(200).json({
+      message: "Search results fetched successfully",
+      menuItems,
+      restaurants,
+    });
+  } catch (error) {
+    next(error);
+  }
+});
 export default router;

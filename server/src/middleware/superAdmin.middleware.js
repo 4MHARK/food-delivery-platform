@@ -8,3 +8,4 @@ const superAdminMiddleware = (req, res, next) => {
 };
 
 export default superAdminMiddleware;
+  

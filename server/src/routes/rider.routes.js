@@ -62,9 +62,11 @@ router.post("/riders/register", authMiddleware, validate(riderRegisterSchema), a
     });
 
     // Default new riders to the Main Campus (explicit campus picker is a follow-up).
-    const campus = await prisma.campus.findFirst({ where: { name: "Main Campus" } });
+    const { campusId } = req.body;
+    // const campusId = await prisma.campus.findUnique({where: { id: campusId}})
+    const campus = await prisma.campus.findFirst({ orderBy: { id: "asc" } });
     if (!campus) {
-      return res.status(500).json({ message: "Default campus not found. Run the migration first." });
+      return res.status(400).json({message: "Invalid campus select"})
     }
 
     const rider = await prisma.rider.create({

@@ -22,6 +22,10 @@ const RestaurantList = () => {
   const [search, setSearch] = useState("");
   const [activeFilter, setActiveFilter] = useState("All");
 
+  // ── Search results (menu items + restaurants) ──
+  const [searchResults, setSearchResults] = useState(null); // null = not searching
+  const [searchLoading, setSearchLoading] = useState(false);
+
   useEffect(() => {
     const fetchCategories = async () => {
       try {
@@ -53,6 +57,31 @@ const RestaurantList = () => {
     fetchRestaurants();
   }, [activeFilter]);
 
+  // ── Debounced search — hits the new /search endpoint (food items + restaurants) ──
+  useEffect(() => {
+    const query = search.trim();
+    if (!query) {
+      setSearchResults(null);
+      return;
+    }
+
+    setSearchLoading(true);
+    const timeout = setTimeout(async () => {
+      try {
+        const data = await api.get(`/search?q=${encodeURIComponent(query)}`, { auth: false });
+        setSearchResults({ menuItems: data.menuItems || [], restaurants: data.restaurants || [] });
+      } catch {
+        setSearchResults({ menuItems: [], restaurants: [] });
+      } finally {
+        setSearchLoading(false);
+      }
+    }, 300);
+
+    return () => clearTimeout(timeout);
+  }, [search]);
+
+  const isSearching = search.trim().length > 0;
+
   const filtered = restaurants.filter((r) =>
     r.name.toLowerCase().includes(search.toLowerCase())
   );
@@ -63,26 +92,133 @@ const RestaurantList = () => {
       <div className="relative mb-3">
         <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">search</span>
         <input
-          type="text" placeholder="Search restaurants, cuisines..."
+          type="text" placeholder="Search food, restaurants, cuisines..."
           value={search} onChange={(e) => setSearch(e.target.value)}
           className="w-full bg-slate-100 text-slate-900 rounded-xl pl-10 pr-4 py-3 border-none focus:ring-2 focus:ring-amber-500 outline-none text-sm transition-shadow"
         />
       </div>
-      <div className="overflow-x-auto flex gap-2 no-scrollbar">
-        {["All", ...categories].map((f) => (
-          <button
-            key={f}
-            onClick={() => setActiveFilter(f)}
-            className={`rounded-full px-4 py-2 text-xs font-semibold whitespace-nowrap transition active:scale-95 ${
-              activeFilter === f ? "bg-slate-900 text-white" : "bg-slate-200 text-slate-700 hover:bg-slate-300"
-            }`}
-          >
-            {f}
-          </button>
-        ))}
-      </div>
+      {!isSearching && (
+        <div className="overflow-x-auto flex gap-2 no-scrollbar">
+          {["All", ...categories].map((f) => (
+            <button
+              key={f}
+              onClick={() => setActiveFilter(f)}
+              className={`rounded-full px-4 py-2 text-xs font-semibold whitespace-nowrap transition active:scale-95 ${
+                activeFilter === f ? "bg-slate-900 text-white" : "bg-slate-200 text-slate-700 hover:bg-slate-300"
+              }`}
+            >
+              {f}
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
+
+  // ── SEARCH RESULTS VIEW ──
+  if (isSearching) {
+    const { menuItems = [], restaurants: matchedRestaurants = [] } = searchResults || {};
+    const noResults = !searchLoading && menuItems.length === 0 && matchedRestaurants.length === 0;
+
+    return (
+      <AppLayout extraHeader={SearchBar}>
+        <div className="px-4 lg:px-8 max-w-7xl mx-auto pt-8 pb-24 md:pb-8">
+          {searchLoading ? (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+              {[1, 2, 3].map((i) => (
+                <div key={i} className="bg-white rounded-2xl overflow-hidden shadow-sm">
+                  <div className="w-full h-[160px] bg-slate-200 animate-pulse" />
+                  <div className="p-4 space-y-2">
+                    <div className="h-5 w-3/4 bg-slate-200 animate-pulse rounded" />
+                    <div className="h-4 w-1/2 bg-slate-200 animate-pulse rounded" />
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : noResults ? (
+            <div className="flex items-center justify-center pt-16">
+              <div className="text-center max-w-md">
+                <div className="w-28 h-28 rounded-full bg-slate-100 flex items-center justify-center mx-auto mb-6">
+                  <span className="material-symbols-outlined text-slate-300" style={{ fontSize: "56px" }}>search_off</span>
+                </div>
+                <h2 className="text-2xl font-bold text-slate-900 mb-3">No results for "{search}"</h2>
+                <p className="text-slate-500 mb-8 leading-relaxed">Try a different dish or restaurant name.</p>
+                <button
+                  onClick={() => setSearch("")}
+                  className="rounded-full bg-amber-500 text-white font-semibold py-3 px-8 shadow-md hover:bg-amber-600 transition active:scale-95"
+                >
+                  Clear Search
+                </button>
+              </div>
+            </div>
+          ) : (
+            <>
+              {menuItems.length > 0 && (
+                <div className="mb-10">
+                  <h2 className="text-lg font-bold text-slate-900 mb-4">Dishes</h2>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+                    {menuItems.map((item) => (
+                      <article
+                        key={item.id}
+                        onClick={() => navigate(`/restaurants/${item.restaurant.id}`)}
+                        className="bg-white rounded-2xl shadow-sm overflow-hidden transition hover:-translate-y-1 hover:shadow-lg cursor-pointer flex flex-col group"
+                      >
+                        <div className="relative w-full h-40 bg-slate-200 overflow-hidden">
+                          {item.imageUrl ? (
+                            <img alt={item.name} src={item.imageUrl} className="w-full h-full object-cover group-hover:scale-105 transition duration-500" />
+                          ) : (
+                            <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-amber-50 to-amber-100">
+                              <span className="material-symbols-outlined text-5xl text-amber-300">restaurant_menu</span>
+                            </div>
+                          )}
+                        </div>
+                        <div className="p-4 flex-1 flex flex-col justify-between">
+                          <div>
+                            <h3 className="text-base font-bold text-slate-900 group-hover:text-amber-600 transition-colors">{item.name}</h3>
+                            <p className="text-xs text-slate-500 mt-0.5">from {item.restaurant.name}</p>
+                          </div>
+                          <p className="text-sm font-semibold text-slate-900 mt-2">₦{Number(item.price).toLocaleString()}</p>
+                        </div>
+                      </article>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {matchedRestaurants.length > 0 && (
+                <div>
+                  <h2 className="text-lg font-bold text-slate-900 mb-4">Restaurants</h2>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+                    {matchedRestaurants.map((r) => (
+                      <article
+                        key={r.id}
+                        onClick={() => navigate(`/restaurants/${r.id}`)}
+                        className="bg-white rounded-2xl shadow-sm overflow-hidden transition hover:-translate-y-1 hover:shadow-lg cursor-pointer flex flex-col group"
+                      >
+                        <div className="relative w-full h-40 bg-slate-200 overflow-hidden">
+                          {r.imageUrl ? (
+                            <img alt={r.name} src={r.imageUrl} className="w-full h-full object-cover group-hover:scale-105 transition duration-500" />
+                          ) : (
+                            <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-amber-50 to-amber-100">
+                              <span className="material-symbols-outlined text-5xl text-amber-300">restaurant</span>
+                            </div>
+                          )}
+                        </div>
+                        <div className="p-4">
+                          <h3 className="text-base font-bold text-slate-900 group-hover:text-amber-600 transition-colors">{r.name}</h3>
+                          <p className="text-xs text-slate-500 mt-0.5 truncate">{r.address}</p>
+                        </div>
+                      </article>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      </AppLayout>
+    );
+  }
 
   // ── LOADING ──
   if (loading) {
@@ -139,7 +275,7 @@ const RestaurantList = () => {
   }
 
   // ── EMPTY ──
-  if (filtered.length === 0) {
+  if (restaurants.length === 0) {
     return (
       <AppLayout extraHeader={SearchBar}>
         <div className="flex items-center justify-center px-4 pt-16">
@@ -149,10 +285,10 @@ const RestaurantList = () => {
             </div>
             <h2 className="text-2xl font-bold text-slate-900 mb-3">No restaurants found</h2>
             <p className="text-slate-500 mb-8 leading-relaxed">
-              Try adjusting your filters or search query to discover delicious food nearby.
+              Try adjusting your filters to discover delicious food nearby.
             </p>
             <button
-              onClick={() => { setSearch(""); setActiveFilter("All"); }}
+              onClick={() => setActiveFilter("All")}
               className="rounded-full bg-amber-500 text-white font-semibold py-3 px-8 shadow-md hover:bg-amber-600 transition active:scale-95"
             >
               Clear Filters
@@ -173,13 +309,13 @@ const RestaurantList = () => {
               {activeFilter === "All" ? "All Restaurants" : activeFilter}
             </h2>
             <p className="text-sm text-slate-500">
-              {filtered.length} {filtered.length === 1 ? "restaurant" : "restaurants"} found
+              {restaurants.length} {restaurants.length === 1 ? "restaurant" : "restaurants"} found
             </p>
           </div>
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-          {filtered.map((r) => (
+          {restaurants.map((r) => (
             <article
               key={r.id}
               onClick={() => navigate(`/restaurants/${r.id}`)}

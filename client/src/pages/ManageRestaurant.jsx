@@ -20,6 +20,54 @@ const ORDER_STATUS = {
 const ACTIVE_STATUSES = ["ACCEPTED", "PREPARING", "READY_FOR_PICKUP", "OUT_FOR_DELIVERY"];
 const TERMINAL_STATUSES = ["DELIVERED", "CANCELLED"];
 
+// ── Date helpers (replace repeated inline toLocaleDateString/toLocaleTimeString calls) ──
+const fmtDate = (d) => new Date(d).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+const fmtDateYear = (d) => new Date(d).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+const fmtTime = (d) => new Date(d).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
+
+// ── Small reusable field components (kills repeated label+input markup) ──
+const SmallField = ({ label, textarea, className = "", ...props }) => (
+  <div className={className}>
+    <label className="block text-xs font-semibold text-slate-500 mb-1">{label}</label>
+    {textarea ? (
+      <textarea rows={2} className="w-full px-3 py-2 rounded-lg border border-slate-200 focus:border-amber-500 focus:ring-1 focus:ring-amber-500 outline-none text-sm resize-none" {...props} />
+    ) : (
+      <input className="w-full h-10 px-3 rounded-lg border border-slate-200 focus:border-amber-500 focus:ring-1 focus:ring-amber-500 outline-none text-sm" {...props} />
+    )}
+  </div>
+);
+
+const LargeField = ({ label, textarea, className = "", ...props }) => (
+  <div className={className}>
+    <label className="block text-sm font-semibold text-slate-700 mb-1.5">{label}</label>
+    {textarea ? (
+      <textarea rows={3} className="w-full px-4 py-3 rounded-xl border-2 border-slate-200 focus:border-amber-500 focus:ring-1 focus:ring-amber-500 outline-none text-sm resize-none" {...props} />
+    ) : (
+      <input className="w-full h-12 px-4 rounded-xl border-2 border-slate-200 focus:border-amber-500 focus:ring-1 focus:ring-amber-500 outline-none text-sm" {...props} />
+    )}
+  </div>
+);
+
+// ── Captures real coordinates via the browser, same pattern as checkout ──
+function LocationButton({ status, onClick }) {
+  return (
+    <div className="mt-2">
+      <button
+        type="button"
+        onClick={onClick}
+        disabled={status === "loading"}
+        className={`flex items-center gap-2 text-sm font-semibold rounded-xl px-4 py-2.5 transition active:scale-95 ${
+          status === "success" ? "bg-green-50 text-green-700" : "bg-amber-50 text-amber-600 hover:bg-amber-100"
+        }`}
+      >
+        <span className="material-symbols-outlined text-lg">{status === "success" ? "check_circle" : "my_location"}</span>
+        {status === "loading" ? "Getting your location..." : status === "success" ? "Location captured" : "Use my current location"}
+      </button>
+      <p className="text-xs text-slate-400 mt-1.5">Recommended — helps riders find you accurately.</p>
+    </div>
+  );
+}
+
 function StarRating({ rating }) {
   return (
     <span className="inline-flex items-center gap-0.5">
@@ -27,6 +75,52 @@ function StarRating({ rating }) {
         <span key={n} className={`material-symbols-outlined text-amber-500 text-sm ${n <= rating ? "filled-icon" : ""}`}>star</span>
       ))}
     </span>
+  );
+}
+
+// ── One card for all three order sections (pending/active/past). Cuts ~150
+//    lines of near-duplicate markup down to this + the call sites below. ──
+function OrderCard({ order, statusInfo, highlight, muted, actions, rightSlot, showItems = true, showFooter = true }) {
+  const bg = highlight ? "bg-amber-50 border-2 border-amber-200" : "bg-white";
+  const divider = highlight ? "border-amber-200/50" : "border-slate-50";
+  const footerBg = highlight ? "bg-amber-50/50" : "bg-slate-50/30";
+
+  return (
+    <div className={`${bg} rounded-2xl shadow-sm overflow-hidden ${muted ? "opacity-60 hover:opacity-100 transition" : ""}`}>
+      <div className="px-5 py-4 flex items-center justify-between gap-4 flex-wrap">
+        <div className="min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-xs text-slate-400 font-semibold uppercase tracking-wider">Order #{order.id}</span>
+            <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${statusInfo.color}`}>{statusInfo.label}</span>
+          </div>
+          <p className={`text-xs mt-1 ${muted ? "text-slate-400" : "text-slate-500"}`}>
+            {order.customer?.name || "Customer"} · {fmtDate(order.createdAt)}{!muted && ` at ${fmtTime(order.createdAt)}`}
+          </p>
+        </div>
+        {rightSlot ?? (actions && <div className="flex items-center gap-2 shrink-0">{actions}</div>)}
+      </div>
+
+      {showItems && (
+        <div className={`border-t ${divider} px-5 py-3 space-y-1.5`}>
+          {order.orderItems?.map((item) => (
+            <div key={item.id} className="flex items-center justify-between text-sm">
+              <span className="text-slate-600">{item.quantity}&times; {item.menuItem?.name || `Item #${item.menuItemId}`}</span>
+              <span className="text-slate-400 text-xs">{formatCurrency(item.unitPrice * item.quantity)}</span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {showFooter && (
+        <div className={`border-t ${divider} px-5 py-3 flex items-center justify-between ${footerBg}`}>
+          <div className="flex items-center gap-1.5 text-xs text-slate-400 min-w-0">
+            <span className="material-symbols-outlined text-sm shrink-0">location_on</span>
+            <span className="truncate">{order.deliveryAddress}</span>
+          </div>
+          <span className="text-sm font-bold text-slate-900 shrink-0 ml-2">{formatCurrency(Number(order.totalAmount))}</span>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -47,6 +141,7 @@ const Dashboard = () => {
   // Restaurant
   const [restaurant, setRestaurant] = useState(null);
   const [restForm, setRestForm] = useState(initialRestForm);
+  const [locationStatus, setLocationStatus] = useState("idle"); // idle | loading | success | error
   const [creating, setCreating] = useState(false);
   const [savingRest, setSavingRest] = useState(false);
   const [showCreate, setShowCreate] = useState(false);
@@ -92,7 +187,12 @@ const Dashboard = () => {
       const r = data.restaurant;
       setRestaurant(r);
       if (r) {
-        setRestForm({ name: r.name || "", description: r.description || "", address: r.address || "", phone: r.phone || "", imageUrl: r.imageUrl || "" });
+        setRestForm({
+          name: r.name || "", description: r.description || "", address: r.address || "",
+          phone: r.phone || "", imageUrl: r.imageUrl || "",
+          lat: r.lat ?? undefined, lng: r.lng ?? undefined,
+        });
+        setLocationStatus(r.lat != null ? "success" : "idle");
         setBankForm({ accountNumber: r.accountNumber || "", bankCode: r.bankCode || "", bankName: r.bankName || "" });
         setResolvedName(r.accountName || null);
       }
@@ -161,6 +261,29 @@ const Dashboard = () => {
     }
   };
 
+  // ── Capture real coordinates for the restaurant, same pattern as checkout.
+  //    Only ever writes real numbers into state — never null — so an unset
+  //    location is omitted from the request instead of coercing to (0,0). ──
+  const handleUseLocation = () => {
+    if (!("geolocation" in navigator)) {
+      setLocationStatus("error");
+      showMsg("Your browser doesn't support location.");
+      return;
+    }
+    setLocationStatus("loading");
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        setRestForm((f) => ({ ...f, lat: pos.coords.latitude, lng: pos.coords.longitude }));
+        setLocationStatus("success");
+      },
+      () => {
+        setLocationStatus("error");
+        showMsg("Couldn't get your location. You can still save without it.");
+      },
+      { enableHighAccuracy: true, timeout: 10000 }
+    );
+  };
+
   // ── Initial load ──
   useEffect(() => {
     const init = async () => {
@@ -189,43 +312,48 @@ const Dashboard = () => {
     prevReviewCountRef.current = reviews.length;
   }, [reviews]);
 
-  useSSE(
-    async () => {
-      if (!restaurant) return;
-      try {
-        const data = await api.get(`/restaurants/${restaurant.id}/orders`);
-        const freshOrders = data.orders || [];
-        const currentPending = freshOrders.filter(
-          (o) => o.status === "PENDING_RESTAURANT_CONFIRMATION"
-        ).length;
-        if (currentPending > prevPendingRef.current) {
-          const diff = currentPending - prevPendingRef.current;
-          showMsg(`🔔 ${diff} new order${diff > 1 ? "s" : ""} received!`);
-          setOrders(freshOrders);
-          setLastUpdated(new Date());
-          notify("New Order!", {
-            body: `${diff} new order${diff > 1 ? "s" : ""} received!`,
-            icon: "/favicon.svg",
-          });
-        }
-        prevPendingRef.current = currentPending;
+useSSE(
+  async () => {
+    if (!restaurant) return;
+    try {
+      const data = await api.get(`/restaurants/${restaurant.id}/orders`);
+      const freshOrders = data.orders || [];
+      const currentPending = freshOrders.filter(
+        (o) => o.status === "PENDING_RESTAURANT_CONFIRMATION"
+      ).length;
 
-        const revData = await api.get(`/restaurants/${restaurant.id}/reviews`).catch(() => null);
-        const freshReviews = revData?.reviews || [];
-        if (freshReviews.length > prevReviewCountRef.current) {
-          const diff = freshReviews.length - prevReviewCountRef.current;
-          showMsg(`⭐ ${diff} new review${diff > 1 ? "s" : ""} received!`);
-          setReviews(freshReviews);
-          notify("New Review!", {
-            body: `${diff} new review${diff > 1 ? "s" : ""} on your restaurant.`,
-            icon: "/favicon.svg",
-          });
-        }
-        prevReviewCountRef.current = freshReviews.length;
-      } catch { /* silent — an SSE refresh shouldn't disturb the user */ }
-    },
-    { enabled: !!restaurant, deps: [restaurant?.id] }
-  );
+      // Always sync the UI to the server's real state — the toast below is
+      // just an extra notification for new orders specifically, not a gate
+      // on whether the order list itself gets updated.
+      setOrders(freshOrders);
+      setLastUpdated(new Date());
+
+      if (currentPending > prevPendingRef.current) {
+        const diff = currentPending - prevPendingRef.current;
+        showMsg(`🔔 ${diff} new order${diff > 1 ? "s" : ""} received!`);
+        notify("New Order!", {
+          body: `${diff} new order${diff > 1 ? "s" : ""} received!`,
+          icon: "/favicon.svg",
+        });
+      }
+      prevPendingRef.current = currentPending;
+
+      const revData = await api.get(`/restaurants/${restaurant.id}/reviews`).catch(() => null);
+      const freshReviews = revData?.reviews || [];
+      if (freshReviews.length > prevReviewCountRef.current) {
+        const diff = freshReviews.length - prevReviewCountRef.current;
+        showMsg(`⭐ ${diff} new review${diff > 1 ? "s" : ""} received!`);
+        setReviews(freshReviews);
+        notify("New Review!", {
+          body: `${diff} new review${diff > 1 ? "s" : ""} on your restaurant.`,
+          icon: "/favicon.svg",
+        });
+      }
+      prevReviewCountRef.current = freshReviews.length;
+    } catch { /* silent — an SSE refresh shouldn't disturb the user */ }
+  },
+  { enabled: !!restaurant, deps: [restaurant?.id] }
+);
 
   // ── Order actions ──
   const advanceOrder = async (orderId, status, label) => {
@@ -266,12 +394,17 @@ const Dashboard = () => {
       setCreating(true);
       setError("");
       const data = await api.post("/restaurants", restForm);
-      setRestaurant(data.restaurant);
-      setRestForm({ name: data.restaurant.name || "", description: data.restaurant.description || "", address: data.restaurant.address || "", phone: data.restaurant.phone || "", imageUrl: data.restaurant.imageUrl || "" });
+      const r = data.restaurant;
+      setRestaurant(r);
+      setRestForm({
+        name: r.name || "", description: r.description || "", address: r.address || "",
+        phone: r.phone || "", imageUrl: r.imageUrl || "",
+        lat: r.lat ?? undefined, lng: r.lng ?? undefined,
+      });
       setShowCreate(false);
       showMsg("Restaurant created! Start building your menu.");
-      fetchMenu(data.restaurant.id);
-      fetchOrders(data.restaurant.id);
+      fetchMenu(r.id);
+      fetchOrders(r.id);
     } catch (e) {
       setError(e.message || "Failed to create restaurant");
     } finally {
@@ -423,35 +556,14 @@ const Dashboard = () => {
 
           <form onSubmit={handleCreateRestaurant} className="bg-white rounded-2xl shadow-sm p-6 space-y-4">
             <h3 className="text-lg font-bold text-slate-900">Create Your Restaurant</h3>
-            <div>
-              <label className="block text-sm font-semibold text-slate-700 mb-1.5">Name</label>
-              <input required placeholder="e.g. Taste Haven Grill" value={restForm.name} onChange={(e) => setRestForm({ ...restForm, name: e.target.value })}
-                className="w-full h-12 px-4 rounded-xl border-2 border-slate-200 focus:border-amber-500 focus:ring-1 focus:ring-amber-500 outline-none transition text-sm" />
-            </div>
-            <div>
-              <label className="block text-sm font-semibold text-slate-700 mb-1.5">Description</label>
-              <textarea required rows={3} placeholder="Tell customers what makes your restaurant special..." value={restForm.description} onChange={(e) => setRestForm({ ...restForm, description: e.target.value })}
-                className="w-full px-4 py-3 rounded-xl border-2 border-slate-200 focus:border-amber-500 focus:ring-1 focus:ring-amber-500 outline-none transition text-sm resize-none" />
-            </div>
+            <LargeField label="Name" required placeholder="e.g. Taste Haven Grill" value={restForm.name} onChange={(e) => setRestForm({ ...restForm, name: e.target.value })} />
+            <LargeField label="Description" textarea required placeholder="Tell customers what makes your restaurant special..." value={restForm.description} onChange={(e) => setRestForm({ ...restForm, description: e.target.value })} />
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-semibold text-slate-700 mb-1.5">Address</label>
-                <input required placeholder="e.g. 15 Admiralty Way, Lekki" value={restForm.address} onChange={(e) => setRestForm({ ...restForm, address: e.target.value })}
-                  className="w-full h-12 px-4 rounded-xl border-2 border-slate-200 focus:border-amber-500 focus:ring-1 focus:ring-amber-500 outline-none transition text-sm" />
-              </div>
-              <div>
-                <label className="block text-sm font-semibold text-slate-700 mb-1.5">Phone</label>
-                <input required placeholder="e.g. +234 812 345 6789" value={restForm.phone} onChange={(e) => setRestForm({ ...restForm, phone: e.target.value })}
-                  className="w-full h-12 px-4 rounded-xl border-2 border-slate-200 focus:border-amber-500 focus:ring-1 focus:ring-amber-500 outline-none transition text-sm" />
-              </div>
+              <LargeField label="Address" required placeholder="e.g. 15 Admiralty Way, Lekki" value={restForm.address} onChange={(e) => setRestForm({ ...restForm, address: e.target.value })} />
+              <LargeField label="Phone" required placeholder="e.g. +234 812 345 6789" value={restForm.phone} onChange={(e) => setRestForm({ ...restForm, phone: e.target.value })} />
             </div>
-            <div>
-              <label className="block text-sm font-semibold text-slate-700 mb-1.5">
-                Image URL <span className="text-slate-400 font-normal">(optional)</span>
-              </label>
-              <input placeholder="https://example.com/image.jpg" value={restForm.imageUrl} onChange={(e) => setRestForm({ ...restForm, imageUrl: e.target.value })}
-                className="w-full h-12 px-4 rounded-xl border-2 border-slate-200 focus:border-amber-500 focus:ring-1 focus:ring-amber-500 outline-none transition text-sm" />
-            </div>
+            <LocationButton status={locationStatus} onClick={handleUseLocation} />
+            <LargeField label={<>Image URL <span className="text-slate-400 font-normal">(optional)</span></>} placeholder="https://example.com/image.jpg" value={restForm.imageUrl} onChange={(e) => setRestForm({ ...restForm, imageUrl: e.target.value })} />
             <button type="submit" disabled={creating}
               className="w-full h-12 rounded-xl bg-slate-900 hover:bg-slate-800 disabled:bg-slate-400 text-white font-bold text-sm transition active:scale-[0.98]">
               {creating ? "Creating..." : "Create Restaurant"}
@@ -527,61 +639,41 @@ const Dashboard = () => {
                 <p className="text-sm text-slate-500">{restaurant.address} · {restaurant.phone}</p>
               </div>
             </div>
-            <div className="flex items-center gap-3">
-              <button
-                onClick={() => setShowCreate(!showCreate)}
-                className={`text-xs font-bold px-4 py-2 rounded-full transition ${
-                  showCreate ? "bg-slate-100 text-slate-600" : "bg-slate-900 text-white hover:bg-slate-800"
-                }`}
-              >
-                {showCreate ? "Cancel" : "Edit Restaurant"}
-              </button>
-            </div>
+            <button
+              onClick={() => setShowCreate(!showCreate)}
+              className={`text-xs font-bold px-4 py-2 rounded-full transition ${
+                showCreate ? "bg-slate-100 text-slate-600" : "bg-slate-900 text-white hover:bg-slate-800"
+              }`}
+            >
+              {showCreate ? "Cancel" : "Edit Restaurant"}
+            </button>
           </div>
 
           {/* Quick stats row */}
           <div className="grid grid-cols-3 gap-3 mt-5 pt-5 border-t border-slate-100">
-            <div className="text-center">
-              <p className="text-2xl font-bold text-slate-900">{menuItems.length}</p>
-              <p className="text-xs text-slate-400 mt-0.5">Menu Items</p>
-            </div>
-            <div className="text-center">
-              <p className={`text-2xl font-bold ${pendingOrders.length > 0 ? "text-amber-500" : "text-slate-900"}`}>
-                {pendingOrders.length}
-              </p>
-              <p className="text-xs text-slate-400 mt-0.5">New Orders</p>
-            </div>
-            <div className="text-center">
-              <p className="text-2xl font-bold text-slate-900">{orders.length}</p>
-              <p className="text-xs text-slate-400 mt-0.5">Total Orders</p>
-            </div>
+            {[
+              { label: "Menu Items", value: menuItems.length },
+              { label: "New Orders", value: pendingOrders.length, highlight: pendingOrders.length > 0 },
+              { label: "Total Orders", value: orders.length },
+            ].map((s) => (
+              <div key={s.label} className="text-center">
+                <p className={`text-2xl font-bold ${s.highlight ? "text-amber-500" : "text-slate-900"}`}>{s.value}</p>
+                <p className="text-xs text-slate-400 mt-0.5">{s.label}</p>
+              </div>
+            ))}
           </div>
 
           {/* Edit restaurant form */}
           {showCreate && (
             <form onSubmit={handleUpdateRestaurant} className="space-y-4 border-t border-slate-100 pt-4 mt-4">
-              <div>
-                <label className="block text-xs font-semibold text-slate-500 mb-1">Name</label>
-                <input value={restForm.name} onChange={(e) => setRestForm({ ...restForm, name: e.target.value })} className="w-full h-10 px-3 rounded-lg border border-slate-200 focus:border-amber-500 focus:ring-1 focus:ring-amber-500 outline-none text-sm" />
-              </div>
-              <div>
-                <label className="block text-xs font-semibold text-slate-500 mb-1">Description</label>
-                <textarea value={restForm.description} onChange={(e) => setRestForm({ ...restForm, description: e.target.value })} rows={2} className="w-full px-3 py-2 rounded-lg border border-slate-200 focus:border-amber-500 focus:ring-1 focus:ring-amber-500 outline-none text-sm resize-none" />
-              </div>
+              <SmallField label="Name" value={restForm.name} onChange={(e) => setRestForm({ ...restForm, name: e.target.value })} />
+              <SmallField label="Description" textarea value={restForm.description} onChange={(e) => setRestForm({ ...restForm, description: e.target.value })} />
               <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-semibold text-slate-500 mb-1">Address</label>
-                  <input value={restForm.address} onChange={(e) => setRestForm({ ...restForm, address: e.target.value })} className="w-full h-10 px-3 rounded-lg border border-slate-200 focus:border-amber-500 focus:ring-1 focus:ring-amber-500 outline-none text-sm" />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-500 mb-1">Phone</label>
-                  <input value={restForm.phone} onChange={(e) => setRestForm({ ...restForm, phone: e.target.value })} className="w-full h-10 px-3 rounded-lg border border-slate-200 focus:border-amber-500 focus:ring-1 focus:ring-amber-500 outline-none text-sm" />
-                </div>
+                <SmallField label="Address" value={restForm.address} onChange={(e) => setRestForm({ ...restForm, address: e.target.value })} />
+                <SmallField label="Phone" value={restForm.phone} onChange={(e) => setRestForm({ ...restForm, phone: e.target.value })} />
               </div>
-              <div>
-                <label className="block text-xs font-semibold text-slate-500 mb-1">Image URL</label>
-                <input value={restForm.imageUrl} onChange={(e) => setRestForm({ ...restForm, imageUrl: e.target.value })} className="w-full h-10 px-3 rounded-lg border border-slate-200 focus:border-amber-500 focus:ring-1 focus:ring-amber-500 outline-none text-sm" />
-              </div>
+              <LocationButton status={locationStatus} onClick={handleUseLocation} />
+              <SmallField label="Image URL" value={restForm.imageUrl} onChange={(e) => setRestForm({ ...restForm, imageUrl: e.target.value })} />
               <button type="submit" disabled={savingRest} className="w-full h-10 rounded-xl bg-slate-900 hover:bg-slate-800 disabled:bg-slate-400 text-white font-bold text-sm transition active:scale-[0.98]">
                 {savingRest ? "Saving..." : "Save Changes"}
               </button>
@@ -656,29 +748,14 @@ const Dashboard = () => {
             {showAddMenu && (
               <form onSubmit={handleAddMenuItem} className="bg-white rounded-2xl shadow-sm p-5 space-y-4 mb-4">
                 <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-500 mb-1">Name *</label>
-                    <input value={menuForm.name} onChange={(e) => setMenuForm({ ...menuForm, name: e.target.value })} placeholder="e.g. Pepperoni Pizza" className="w-full h-10 px-3 rounded-lg border border-slate-200 focus:border-amber-500 focus:ring-1 focus:ring-amber-500 outline-none text-sm" />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-500 mb-1">Category *</label>
-                    <input value={menuForm.category} onChange={(e) => setMenuForm({ ...menuForm, category: e.target.value })} placeholder="e.g. Main Course" className="w-full h-10 px-3 rounded-lg border border-slate-200 focus:border-amber-500 focus:ring-1 focus:ring-amber-500 outline-none text-sm" />
-                  </div>
+                  <SmallField label="Name *" value={menuForm.name} onChange={(e) => setMenuForm({ ...menuForm, name: e.target.value })} placeholder="e.g. Pepperoni Pizza" />
+                  <SmallField label="Category *" value={menuForm.category} onChange={(e) => setMenuForm({ ...menuForm, category: e.target.value })} placeholder="e.g. Main Course" />
                 </div>
                 <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-500 mb-1">Price (₦) *</label>
-                    <input type="number" step="0.01" value={menuForm.price} onChange={(e) => setMenuForm({ ...menuForm, price: e.target.value })} placeholder="e.g. 3500" className="w-full h-10 px-3 rounded-lg border border-slate-200 focus:border-amber-500 focus:ring-1 focus:ring-amber-500 outline-none text-sm" />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-500 mb-1">Image URL</label>
-                    <input value={menuForm.imageUrl} onChange={(e) => setMenuForm({ ...menuForm, imageUrl: e.target.value })} placeholder="Optional" className="w-full h-10 px-3 rounded-lg border border-slate-200 focus:border-amber-500 focus:ring-1 focus:ring-amber-500 outline-none text-sm" />
-                  </div>
+                  <SmallField label="Price (₦) *" type="number" step="0.01" value={menuForm.price} onChange={(e) => setMenuForm({ ...menuForm, price: e.target.value })} placeholder="e.g. 3500" />
+                  <SmallField label="Image URL" value={menuForm.imageUrl} onChange={(e) => setMenuForm({ ...menuForm, imageUrl: e.target.value })} placeholder="Optional" />
                 </div>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-500 mb-1">Description</label>
-                  <textarea value={menuForm.description} onChange={(e) => setMenuForm({ ...menuForm, description: e.target.value })} rows={2} placeholder="Describe the dish..." className="w-full px-3 py-2 rounded-lg border border-slate-200 focus:border-amber-500 focus:ring-1 focus:ring-amber-500 outline-none text-sm resize-none" />
-                </div>
+                <SmallField label="Description" textarea value={menuForm.description} onChange={(e) => setMenuForm({ ...menuForm, description: e.target.value })} placeholder="Describe the dish..." />
                 <button type="submit" disabled={savingMenu} className="w-full h-10 rounded-xl bg-slate-900 hover:bg-slate-800 disabled:bg-slate-400 text-white font-bold text-sm transition active:scale-[0.98]">
                   {savingMenu ? "Adding..." : "Add to Menu"}
                 </button>
@@ -690,29 +767,14 @@ const Dashboard = () => {
               <form onSubmit={handleUpdateMenuItem} className="bg-white rounded-2xl shadow-sm p-5 space-y-4 mb-4 border-l-4 border-amber-500">
                 <p className="text-xs font-bold text-amber-600 uppercase tracking-wider">Editing: {editingItem.name}</p>
                 <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-500 mb-1">Name</label>
-                    <input value={editingItem.name} onChange={(e) => setEditingItem({ ...editingItem, name: e.target.value })} className="w-full h-10 px-3 rounded-lg border border-slate-200 focus:border-amber-500 focus:ring-1 focus:ring-amber-500 outline-none text-sm" />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-500 mb-1">Category</label>
-                    <input value={editingItem.category} onChange={(e) => setEditingItem({ ...editingItem, category: e.target.value })} className="w-full h-10 px-3 rounded-lg border border-slate-200 focus:border-amber-500 focus:ring-1 focus:ring-amber-500 outline-none text-sm" />
-                  </div>
+                  <SmallField label="Name" value={editingItem.name} onChange={(e) => setEditingItem({ ...editingItem, name: e.target.value })} />
+                  <SmallField label="Category" value={editingItem.category} onChange={(e) => setEditingItem({ ...editingItem, category: e.target.value })} />
                 </div>
                 <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-500 mb-1">Price (₦)</label>
-                    <input type="number" step="0.01" value={editingItem.price} onChange={(e) => setEditingItem({ ...editingItem, price: e.target.value })} className="w-full h-10 px-3 rounded-lg border border-slate-200 focus:border-amber-500 focus:ring-1 focus:ring-amber-500 outline-none text-sm" />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-500 mb-1">Image URL</label>
-                    <input value={editingItem.imageUrl || ""} onChange={(e) => setEditingItem({ ...editingItem, imageUrl: e.target.value })} className="w-full h-10 px-3 rounded-lg border border-slate-200 focus:border-amber-500 focus:ring-1 focus:ring-amber-500 outline-none text-sm" />
-                  </div>
+                  <SmallField label="Price (₦)" type="number" step="0.01" value={editingItem.price} onChange={(e) => setEditingItem({ ...editingItem, price: e.target.value })} />
+                  <SmallField label="Image URL" value={editingItem.imageUrl || ""} onChange={(e) => setEditingItem({ ...editingItem, imageUrl: e.target.value })} />
                 </div>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-500 mb-1">Description</label>
-                  <textarea value={editingItem.description || ""} onChange={(e) => setEditingItem({ ...editingItem, description: e.target.value })} rows={2} className="w-full px-3 py-2 rounded-lg border border-slate-200 focus:border-amber-500 focus:ring-1 focus:ring-amber-500 outline-none text-sm resize-none" />
-                </div>
+                <SmallField label="Description" textarea value={editingItem.description || ""} onChange={(e) => setEditingItem({ ...editingItem, description: e.target.value })} />
                 <div className="flex gap-2">
                   <button type="submit" disabled={savingMenu} className="flex-1 h-10 rounded-xl bg-amber-500 hover:bg-amber-600 disabled:bg-amber-300 text-white font-bold text-sm transition active:scale-95">
                     {savingMenu ? "Saving..." : "Save"}
@@ -780,9 +842,7 @@ const Dashboard = () => {
               <h3 className="text-lg font-bold text-slate-900">Orders</h3>
               <div className="flex items-center gap-3">
                 {lastUpdated && (
-                  <span className="text-xs text-slate-400">
-                    Updated {lastUpdated.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}
-                  </span>
+                  <span className="text-xs text-slate-400">Updated {fmtTime(lastUpdated)}</span>
                 )}
                 <button
                   onClick={() => restaurant && fetchOrders(restaurant.id)}
@@ -797,7 +857,6 @@ const Dashboard = () => {
               </div>
             </div>
 
-            {/* Error */}
             {ordersError && !ordersLoading && (
               <div className="bg-red-50 rounded-2xl p-6 text-center mb-4">
                 <p className="text-sm text-red-600 font-medium mb-3">{ordersError}</p>
@@ -805,7 +864,6 @@ const Dashboard = () => {
               </div>
             )}
 
-            {/* Loading */}
             {ordersLoading && (
               <div className="space-y-4">
                 {[1, 2, 3].map((i) => (
@@ -821,7 +879,6 @@ const Dashboard = () => {
               </div>
             )}
 
-            {/* Empty */}
             {!ordersLoading && !ordersError && orders.length === 0 && (
               <div className="bg-white rounded-2xl shadow-sm p-8 text-center">
                 <div className="w-16 h-16 rounded-full bg-slate-100 flex items-center justify-center mx-auto mb-3">
@@ -832,7 +889,6 @@ const Dashboard = () => {
               </div>
             )}
 
-            {/* Order sections */}
             {!ordersLoading && !ordersError && orders.length > 0 && (
               <div className="space-y-6">
                 {/* ── NEW (PENDING) ── */}
@@ -844,58 +900,31 @@ const Dashboard = () => {
                     </h4>
                     <div className="space-y-3">
                       {pendingOrders.map((order) => (
-                        <div key={order.id} className="bg-amber-50 border-2 border-amber-200 rounded-2xl shadow-sm overflow-hidden">
-                          <div className="px-5 py-4">
-                            <div className="flex items-center justify-between gap-4 flex-wrap">
-                              <div className="min-w-0">
-                                <div className="flex items-center gap-2 flex-wrap">
-                                  <span className="text-xs text-slate-400 font-semibold uppercase tracking-wider">Order #{order.id}</span>
-                                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${ORDER_STATUS.PENDING_RESTAURANT_CONFIRMATION.color}`}>New</span>
-                                </div>
-                                <p className="text-xs text-slate-500 mt-1">
-                                  {order.customer?.name || "Customer"} ·{" "}
-                                  {new Date(order.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric" })}{" "}
-                                  at{" "}
-                                  {new Date(order.createdAt).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}
-                                </p>
-                              </div>
-                              <div className="flex items-center gap-2 shrink-0">
-                                <button
-                                  onClick={() => advanceOrder(order.id, "ACCEPTED", "accepted")}
-                                  disabled={updatingOrderId === order.id}
-                                  className="px-4 py-2 rounded-full bg-emerald-500 hover:bg-emerald-600 disabled:bg-emerald-300 text-white text-xs font-bold transition active:scale-95 flex items-center gap-1"
-                                >
-                                  <span className="material-symbols-outlined text-sm">check</span>
-                                  Accept
-                                </button>
-                                <button
-                                  onClick={() => handleRejectOrder(order.id)}
-                                  disabled={updatingOrderId === order.id}
-                                  className="px-4 py-2 rounded-full bg-white border border-slate-200 hover:bg-red-50 hover:border-red-200 hover:text-red-600 text-slate-500 text-xs font-bold transition active:scale-95"
-                                >
-                                  Decline
-                                </button>
-                              </div>
-                            </div>
-                          </div>
-                          <div className="border-t border-amber-200/50 px-5 py-3 space-y-1.5">
-                            {order.orderItems?.map((item) => (
-                              <div key={item.id} className="flex items-center justify-between text-sm">
-                                <span className="text-slate-600">
-                                  {item.quantity}&times; {item.menuItem?.name || `Item #${item.menuItemId}`}
-                                </span>
-                                <span className="text-slate-400 text-xs">{formatCurrency((item.unitPrice * item.quantity))}</span>
-                              </div>
-                            ))}
-                          </div>
-                          <div className="border-t border-amber-200/50 px-5 py-3 flex items-center justify-between bg-amber-50/50">
-                            <div className="flex items-center gap-1.5 text-xs text-slate-400 min-w-0">
-                              <span className="material-symbols-outlined text-sm shrink-0">location_on</span>
-                              <span className="truncate">{order.deliveryAddress}</span>
-                            </div>
-                            <span className="text-sm font-bold text-slate-900 shrink-0 ml-2">{formatCurrency(Number(order.totalAmount))}</span>
-                          </div>
-                        </div>
+                        <OrderCard
+                          key={order.id}
+                          order={order}
+                          highlight
+                          statusInfo={{ color: ORDER_STATUS.PENDING_RESTAURANT_CONFIRMATION.color, label: "New" }}
+                          actions={
+                            <>
+                              <button
+                                onClick={() => advanceOrder(order.id, "ACCEPTED", "accepted")}
+                                disabled={updatingOrderId === order.id}
+                                className="px-4 py-2 rounded-full bg-emerald-500 hover:bg-emerald-600 disabled:bg-emerald-300 text-white text-xs font-bold transition active:scale-95 flex items-center gap-1"
+                              >
+                                <span className="material-symbols-outlined text-sm">check</span>
+                                Accept
+                              </button>
+                              <button
+                                onClick={() => handleRejectOrder(order.id)}
+                                disabled={updatingOrderId === order.id}
+                                className="px-4 py-2 rounded-full bg-white border border-slate-200 hover:bg-red-50 hover:border-red-200 hover:text-red-600 text-slate-500 text-xs font-bold transition active:scale-95"
+                              >
+                                Decline
+                              </button>
+                            </>
+                          }
+                        />
                       ))}
                     </div>
                   </div>
@@ -909,72 +938,33 @@ const Dashboard = () => {
                       {activeOrders.map((order) => {
                         const status = ORDER_STATUS[order.status] || ORDER_STATUS.PENDING_PAYMENT;
                         return (
-                          <div key={order.id} className="bg-white rounded-2xl shadow-sm overflow-hidden">
-                            <div className="px-5 py-4 flex items-center justify-between gap-4">
-                              <div className="min-w-0">
-                                <div className="flex items-center gap-2 flex-wrap">
-                                  <span className="text-xs text-slate-400 font-semibold uppercase tracking-wider">Order #{order.id}</span>
-                                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${status.color}`}>{status.label}</span>
-                                </div>
-                                <p className="text-xs text-slate-500 mt-1">
-                                  {order.customer?.name || "Customer"} ·{" "}
-                                  {new Date(order.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric" })}{" "}
-                                  at{" "}
-                                  {new Date(order.createdAt).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}
-                                </p>
-                              </div>
-                              <div className="flex items-center gap-2 shrink-0">
+                          <OrderCard
+                            key={order.id}
+                            order={order}
+                            statusInfo={status}
+                            actions={
+                              <>
                                 {order.status === "ACCEPTED" && (
-                                  <button
-                                    onClick={() => advanceOrder(order.id, "PREPARING", "marked preparing")}
-                                    disabled={updatingOrderId === order.id}
-                                    className="px-4 py-2 rounded-full bg-orange-500 hover:bg-orange-600 disabled:bg-orange-300 text-white text-xs font-bold transition active:scale-95"
-                                  >
+                                  <button onClick={() => advanceOrder(order.id, "PREPARING", "marked preparing")} disabled={updatingOrderId === order.id} className="px-4 py-2 rounded-full bg-orange-500 hover:bg-orange-600 disabled:bg-orange-300 text-white text-xs font-bold transition active:scale-95">
                                     Preparing
                                   </button>
                                 )}
                                 {order.status === "PREPARING" && (
-                                  <button
-                                    onClick={() => advanceOrder(order.id, "READY_FOR_PICKUP", "ready for pickup")}
-                                    disabled={updatingOrderId === order.id}
-                                    className="px-4 py-2 rounded-full bg-indigo-500 hover:bg-indigo-600 disabled:bg-indigo-300 text-white text-xs font-bold transition active:scale-95"
-                                  >
+                                  <button onClick={() => advanceOrder(order.id, "READY_FOR_PICKUP", "ready for pickup")} disabled={updatingOrderId === order.id} className="px-4 py-2 rounded-full bg-indigo-500 hover:bg-indigo-600 disabled:bg-indigo-300 text-white text-xs font-bold transition active:scale-95">
                                     Ready for pickup
                                   </button>
                                 )}
-                                {/* Owner can cancel until the rider takes over at OUT_FOR_DELIVERY. */}
                                 {["ACCEPTED", "PREPARING", "READY_FOR_PICKUP"].includes(order.status) && (
-                                  <button
-                                    onClick={() => handleRejectOrder(order.id)}
-                                    disabled={updatingOrderId === order.id}
-                                    className="px-4 py-2 rounded-full bg-white border border-slate-200 hover:bg-red-50 hover:border-red-200 hover:text-red-600 text-slate-500 text-xs font-bold transition active:scale-95"
-                                  >
+                                  <button onClick={() => handleRejectOrder(order.id)} disabled={updatingOrderId === order.id} className="px-4 py-2 rounded-full bg-white border border-slate-200 hover:bg-red-50 hover:border-red-200 hover:text-red-600 text-slate-500 text-xs font-bold transition active:scale-95">
                                     Cancel order
                                   </button>
                                 )}
                                 {updatingOrderId === order.id && (
                                   <span className="material-symbols-outlined text-sm text-amber-500 animate-spin">progress_activity</span>
                                 )}
-                              </div>
-                            </div>
-                            <div className="border-t border-slate-50 px-5 py-3 space-y-1.5">
-                              {order.orderItems?.map((item) => (
-                                <div key={item.id} className="flex items-center justify-between text-sm">
-                                  <span className="text-slate-600">
-                                    {item.quantity}&times; {item.menuItem?.name || `Item #${item.menuItemId}`}
-                                  </span>
-                                  <span className="text-slate-400 text-xs">{formatCurrency((item.unitPrice * item.quantity))}</span>
-                                </div>
-                              ))}
-                            </div>
-                            <div className="border-t border-slate-50 px-5 py-3 flex items-center justify-between bg-slate-50/30">
-                              <div className="flex items-center gap-1.5 text-xs text-slate-400 min-w-0">
-                                <span className="material-symbols-outlined text-sm shrink-0">location_on</span>
-                                <span className="truncate">{order.deliveryAddress}</span>
-                              </div>
-                              <span className="text-sm font-bold text-slate-900 shrink-0 ml-2">{formatCurrency(Number(order.totalAmount))}</span>
-                            </div>
-                          </div>
+                              </>
+                            }
+                          />
                         );
                       })}
                     </div>
@@ -999,21 +989,15 @@ const Dashboard = () => {
                       {pastOrders.map((order) => {
                         const status = ORDER_STATUS[order.status] || ORDER_STATUS.CANCELLED;
                         return (
-                          <div key={order.id} className="bg-white rounded-2xl shadow-sm overflow-hidden opacity-60 hover:opacity-100 transition">
-                            <div className="px-5 py-4 flex items-center justify-between gap-4">
-                              <div className="min-w-0">
-                                <div className="flex items-center gap-2 flex-wrap">
-                                  <span className="text-xs text-slate-400 font-semibold uppercase tracking-wider">Order #{order.id}</span>
-                                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${status.color}`}>{status.label}</span>
-                                </div>
-                                <p className="text-xs text-slate-400 mt-1">
-                                  {order.customer?.name || "Customer"} ·{" "}
-                                  {new Date(order.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
-                                </p>
-                              </div>
-                              <span className="text-sm font-bold text-slate-400 shrink-0">{formatCurrency(Number(order.totalAmount))}</span>
-                            </div>
-                          </div>
+                          <OrderCard
+                            key={order.id}
+                            order={order}
+                            statusInfo={status}
+                            muted
+                            showItems={false}
+                            showFooter={false}
+                            rightSlot={<span className="text-sm font-bold text-slate-400 shrink-0">{formatCurrency(Number(order.totalAmount))}</span>}
+                          />
                         );
                       })}
                     </div>
@@ -1029,7 +1013,6 @@ const Dashboard = () => {
           <section>
             <h3 className="text-lg font-bold text-slate-900 mb-4">Payouts</h3>
 
-            {/* Bank details */}
             <div className="bg-white rounded-2xl shadow-sm p-5 mb-4">
               <h4 className="text-sm font-bold text-slate-900 mb-1">Payout bank account</h4>
               <p className="text-xs text-slate-400 mb-4">Your restaurant's share is sent here when an order is delivered.</p>
@@ -1044,55 +1027,52 @@ const Dashboard = () => {
                   </button>
                 </div>
               ) : (
-              <form onSubmit={handleSaveBank} className="space-y-3">
-                <div>
-                  <label className="block text-xs font-semibold text-slate-500 mb-1">Account Number</label>
-                  <input value={bankForm.accountNumber} onChange={(e) => { setBankForm({ ...bankForm, accountNumber: e.target.value.replace(/\D/g, "") }); setResolvedName(null); }} inputMode="numeric" maxLength={10} placeholder="10-digit account number" className="w-full h-10 px-3 rounded-lg border border-slate-200 focus:border-amber-500 focus:ring-1 focus:ring-amber-500 outline-none text-sm" />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-500 mb-1">Bank</label>
-                  <select value={bankForm.bankCode} onChange={(e) => { const bank = banks.find((b) => b.code === e.target.value); setBankForm({ ...bankForm, bankCode: e.target.value, bankName: bank?.name || "" }); setResolvedName(null); }} className="w-full h-10 px-3 rounded-lg border border-slate-200 focus:border-amber-500 focus:ring-1 focus:ring-amber-500 outline-none text-sm bg-white">
-                    <option value="">{banks.length ? "Select bank" : "Loading banks..."}</option>
-                    {banks.map((b) => (
-                      <option key={b.code} value={b.code}>{b.name}</option>
-                    ))}
-                  </select>
-                </div>
-                <button type="button" onClick={handleVerifyAccount} disabled={verifying} className="w-full h-10 rounded-xl border border-amber-300 text-amber-700 hover:bg-amber-50 disabled:opacity-50 font-semibold text-sm transition active:scale-[0.98]">
-                  {verifying ? "Verifying..." : "Verify Account"}
-                </button>
-                {resolvedName && (
-                  <div className="rounded-xl bg-emerald-50 border border-emerald-200 px-4 py-3 text-sm">
-                    <p className="text-xs text-emerald-600 mb-0.5">Account name</p>
-                    <p className="font-semibold text-emerald-800">{resolvedName}</p>
+                <form onSubmit={handleSaveBank} className="space-y-3">
+                  <SmallField
+                    label="Account Number" value={bankForm.accountNumber} inputMode="numeric" maxLength={10}
+                    placeholder="10-digit account number"
+                    onChange={(e) => { setBankForm({ ...bankForm, accountNumber: e.target.value.replace(/\D/g, "") }); setResolvedName(null); }}
+                  />
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-500 mb-1">Bank</label>
+                    <select value={bankForm.bankCode} onChange={(e) => { const bank = banks.find((b) => b.code === e.target.value); setBankForm({ ...bankForm, bankCode: e.target.value, bankName: bank?.name || "" }); setResolvedName(null); }} className="w-full h-10 px-3 rounded-lg border border-slate-200 focus:border-amber-500 focus:ring-1 focus:ring-amber-500 outline-none text-sm bg-white">
+                      <option value="">{banks.length ? "Select bank" : "Loading banks..."}</option>
+                      {banks.map((b) => (
+                        <option key={b.code} value={b.code}>{b.name}</option>
+                      ))}
+                    </select>
                   </div>
-                )}
-                <button type="submit" disabled={savingBank || !resolvedName} className="w-full h-10 rounded-xl bg-slate-900 hover:bg-slate-800 disabled:bg-slate-400 text-white font-bold text-sm transition active:scale-[0.98]">
-                  {savingBank ? "Saving..." : "Save Bank Details"}
-                </button>
-              </form>
+                  <button type="button" onClick={handleVerifyAccount} disabled={verifying} className="w-full h-10 rounded-xl border border-amber-300 text-amber-700 hover:bg-amber-50 disabled:opacity-50 font-semibold text-sm transition active:scale-[0.98]">
+                    {verifying ? "Verifying..." : "Verify Account"}
+                  </button>
+                  {resolvedName && (
+                    <div className="rounded-xl bg-emerald-50 border border-emerald-200 px-4 py-3 text-sm">
+                      <p className="text-xs text-emerald-600 mb-0.5">Account name</p>
+                      <p className="font-semibold text-emerald-800">{resolvedName}</p>
+                    </div>
+                  )}
+                  <button type="submit" disabled={savingBank || !resolvedName} className="w-full h-10 rounded-xl bg-slate-900 hover:bg-slate-800 disabled:bg-slate-400 text-white font-bold text-sm transition active:scale-[0.98]">
+                    {savingBank ? "Saving..." : "Save Bank Details"}
+                  </button>
+                </form>
               )}
             </div>
 
-            {/* Earnings summary */}
             {payoutSummary && (
               <div className="grid grid-cols-3 gap-3 mb-4">
-                <div className="bg-white rounded-2xl shadow-sm p-4 text-center">
-                  <p className="text-xl font-extrabold text-slate-900">{formatCurrency(payoutSummary.totalEarned)}</p>
-                  <p className="text-xs text-slate-400 mt-0.5">Total Earned</p>
-                </div>
-                <div className="bg-white rounded-2xl shadow-sm p-4 text-center">
-                  <p className="text-xl font-extrabold text-green-600">{formatCurrency(payoutSummary.paidOut)}</p>
-                  <p className="text-xs text-slate-400 mt-0.5">Paid Out</p>
-                </div>
-                <div className="bg-white rounded-2xl shadow-sm p-4 text-center">
-                  <p className="text-xl font-extrabold text-amber-600">{formatCurrency(payoutSummary.pending)}</p>
-                  <p className="text-xs text-slate-400 mt-0.5">Pending</p>
-                </div>
+                {[
+                  { label: "Total Earned", value: payoutSummary.totalEarned, color: "text-slate-900" },
+                  { label: "Paid Out", value: payoutSummary.paidOut, color: "text-green-600" },
+                  { label: "Pending", value: payoutSummary.pending, color: "text-amber-600" },
+                ].map((s) => (
+                  <div key={s.label} className="bg-white rounded-2xl shadow-sm p-4 text-center">
+                    <p className={`text-xl font-extrabold ${s.color}`}>{formatCurrency(s.value)}</p>
+                    <p className="text-xs text-slate-400 mt-0.5">{s.label}</p>
+                  </div>
+                ))}
               </div>
             )}
 
-            {/* Payout history */}
             {payoutsLoading ? (
               <div className="space-y-3">
                 {[1, 2].map((i) => <div key={i} className="h-16 bg-slate-200 animate-pulse rounded-2xl" />)}
@@ -1111,7 +1091,7 @@ const Dashboard = () => {
                   <div key={p.id} className={`px-5 py-3 flex items-center justify-between ${idx < payouts.length - 1 ? "border-b border-slate-50" : ""}`}>
                     <div>
                       <p className="text-sm font-semibold text-slate-900">Order #{p.orderId}</p>
-                      <p className="text-xs text-slate-400">{new Date(p.createdAt).toLocaleDateString()}</p>
+                      <p className="text-xs text-slate-400">{fmtDateYear(p.createdAt)}</p>
                     </div>
                     <div className="flex items-center gap-3">
                       <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${p.status === "SUCCESS" ? "bg-green-100 text-green-700" : p.status === "FAILED" ? "bg-red-100 text-red-700" : "bg-amber-100 text-amber-700"}`}>{p.status}</span>
@@ -1129,7 +1109,6 @@ const Dashboard = () => {
           <section>
             <h3 className="text-lg font-bold text-slate-900 mb-4">Reviews</h3>
 
-            {/* Summary */}
             {reviews.length > 0 && (
               <div className="bg-white rounded-2xl shadow-sm p-5 mb-4 flex items-center gap-5">
                 <div className="text-center">
@@ -1144,14 +1123,12 @@ const Dashboard = () => {
               </div>
             )}
 
-            {/* Loading */}
             {reviewsLoading && (
               <div className="space-y-3">
                 {[1, 2, 3].map((i) => <div key={i} className="h-20 bg-slate-200 animate-pulse rounded-2xl" />)}
               </div>
             )}
 
-            {/* Error */}
             {reviewsError && !reviewsLoading && (
               <div className="bg-red-50 rounded-2xl p-6 text-center mb-4">
                 <p className="text-sm text-red-600 font-medium mb-3">{reviewsError}</p>
@@ -1159,7 +1136,6 @@ const Dashboard = () => {
               </div>
             )}
 
-            {/* Empty */}
             {!reviewsLoading && !reviewsError && reviews.length === 0 && (
               <div className="bg-white rounded-2xl shadow-sm p-8 text-center">
                 <div className="w-16 h-16 rounded-full bg-slate-100 flex items-center justify-center mx-auto mb-3">
@@ -1170,16 +1146,13 @@ const Dashboard = () => {
               </div>
             )}
 
-            {/* List */}
             {!reviewsLoading && !reviewsError && reviews.length > 0 && (
               <div className="space-y-3">
                 {reviews.map((r) => (
                   <div key={r.id} className="bg-white rounded-2xl shadow-sm p-5">
                     <div className="flex items-center justify-between mb-2">
                       <span className="text-sm font-semibold text-slate-900">{r.author?.name || "Customer"}</span>
-                      <span className="text-xs text-slate-400">
-                        {new Date(r.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
-                      </span>
+                      <span className="text-xs text-slate-400">{fmtDateYear(r.createdAt)}</span>
                     </div>
                     <div className="mb-2">
                       <StarRating rating={r.rating} />

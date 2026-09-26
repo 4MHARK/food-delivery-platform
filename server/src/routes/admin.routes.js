@@ -761,7 +761,13 @@ router.post("/admin/payouts/mark-paid", async (req, res, next) => {
 router.get("/admin/campuses", superAdminMiddleware, async (req, res, next) => {
   try {
     const campuses = await prisma.campus.findMany({
-      include: { _count: { select: { restaurants: true, riders: true } } },
+      include: {
+        _count: { select: { restaurants: true, riders: true } },
+        users: {
+          where: { role: "ADMIN" },
+          select: { id: true, name: true, email: true, createdAt: true },
+        },
+      },
       orderBy: { createdAt: "asc" },
     });
 
@@ -771,6 +777,8 @@ router.get("/admin/campuses", superAdminMiddleware, async (req, res, next) => {
       address: c.address,
       restaurantCount: c._count.restaurants,
       riderCount: c._count.riders,
+      hasAdmin: c.users.length > 0,
+      admins: c.users,
       createdAt: c.createdAt,
     }));
 
@@ -779,7 +787,7 @@ router.get("/admin/campuses", superAdminMiddleware, async (req, res, next) => {
       campuses: formatted,
     });
   } catch (error) {
-    next(error)
+    return next(error)
   }
 });
 

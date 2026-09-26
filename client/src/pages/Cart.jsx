@@ -11,6 +11,9 @@ const Cart = () => {
   const { user } = useAuth();
   const { items, addItem, removeItem, clearItem, clearCart, itemCount, total } = useCart();
   const [deliveryAddress, setDeliveryAddress] = useState("");
+  const [deliveryLat, setDeliveryLat] = useState(null);
+  const [deliveryLng, setDeliveryLng] = useState(null);
+  const [locationStatus, setLocationStatus] = useState("idle"); // idle | loading | success | error
   const [placing, setPlacing] = useState(false);
   const [error, setError] = useState("");
   const idempotencyKeyRef = useRef(null);
@@ -30,9 +33,58 @@ const Cart = () => {
     return acc;
   }, {});
 
+  // Ask the browser for the customer's real coordinates, then reverse-geocode
+  // them into a readable address (via free OpenStreetMap Nominatim) so the text
+  // field matches the actual pin instead of being left blank or disagreeing
+  // with it. The address only gives building/area level — never a room number,
+  // since that data doesn't exist in any public map — so the student is
+  // prompted to add specifics on top.
+  const handleUseLocation = () => {
+    if (!("geolocation" in navigator)) {
+      setLocationStatus("error");
+      setError("Your browser doesn't support location. Please type your address manually.");
+      return;
+    }
+
+    setLocationStatus("loading");
+    setError("");
+
+    navigator.geolocation.getCurrentPosition(
+      async (position) => {
+        const { latitude, longitude } = position.coords;
+        setDeliveryLat(latitude);
+        setDeliveryLng(longitude);
+        setLocationStatus("success");
+
+        try {
+          const res = await fetch(
+            `https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}`
+          );
+          const data = await res.json();
+          if (data?.display_name) {
+            setDeliveryAddress(data.display_name);
+          }
+        } catch {
+          // Reverse geocoding failed — coordinates are still captured and valid,
+          // the student just keeps typing their address manually. Not a blocker.
+        }
+      },
+      () => {
+        setLocationStatus("error");
+        setError("Couldn't get your location. Please allow location access, or type your address manually.");
+      },
+      { enableHighAccuracy: true, timeout: 10000 }
+    );
+  };
+
   const handlePlaceOrder = async (restaurantId, restaurantItems) => {
     if (!deliveryAddress.trim()) {
       setError("Please enter a delivery address");
+      return;
+    }
+
+    if (deliveryLat === null || deliveryLng === null) {
+      setError("Please share your location so the rider can find you — tap \"Use my current location\" above.");
       return;
     }
 
@@ -53,6 +105,8 @@ const Cart = () => {
       const data = await api.post("/orders/checkout", {
         restaurantId,
         deliveryAddress: deliveryAddress.trim(),
+        deliveryLat,
+        deliveryLng,
         idempotencyKey: idempotencyKeyRef.current,
         items: restaurantItems.map((item) => ({
           menuItemId: item.menuItemId,
@@ -190,10 +244,41 @@ const Cart = () => {
             <div>
               <label htmlFor="address" className="block text-sm font-semibold text-slate-700 mb-2">Delivery Address</label>
               <input
-                type="text" id="address" placeholder="Enter your delivery address"
+                type="text" id="address"
+                placeholder={
+                  locationStatus === "success"
+                    ? "Add room/floor details (e.g. Block 3, Room 14)"
+                    : "Enter your delivery address (e.g. Block 3, Room 14, Hostel A)"
+                }
                 value={deliveryAddress} onChange={(e) => setDeliveryAddress(e.target.value)}
                 className="w-full h-12 px-4 rounded-xl border-2 border-slate-200 focus:border-amber-500 focus:ring-1 focus:ring-amber-500 outline-none transition text-sm"
               />
+
+              <button
+                type="button"
+                onClick={handleUseLocation}
+                disabled={locationStatus === "loading"}
+                className={`mt-3 flex items-center gap-2 text-sm font-semibold rounded-xl px-4 py-2.5 transition active:scale-95 ${
+                  locationStatus === "success"
+                    ? "bg-green-50 text-green-700"
+                    : "bg-amber-50 text-amber-600 hover:bg-amber-100"
+                }`}
+              >
+                <span className="material-symbols-outlined text-lg">
+                  {locationStatus === "success" ? "check_circle" : "my_location"}
+                </span>
+                {locationStatus === "loading"
+                  ? "Getting your location..."
+                  : locationStatus === "success"
+                  ? "Location captured — rider will find you"
+                  : "Use my current location"}
+              </button>
+
+              {locationStatus === "success" && (
+                <p className="text-xs text-slate-400 mt-1.5">
+                  We've filled in your general location — please add your room, floor, or block number above so the rider can find you exactly.
+                </p>
+              )}
             </div>
 
             {Object.values(grouped).map((group) => {

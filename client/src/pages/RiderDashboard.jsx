@@ -6,6 +6,7 @@ import { api } from "../lib/api";
 import { formatCurrency } from "../lib/format";
 import { useSSE } from "../hooks/useSSE";
 import { useNotificationPermission, notify } from "../hooks/useNotifications";
+import DeliveryMap from "../components/DeliveryMap";
 
 const ORDER_STATUS = {
   PENDING_PAYMENT:                   { label: "Pending Payment", color: "bg-amber-100 text-amber-700 border-amber-200", dot: "bg-amber-500" },
@@ -932,7 +933,9 @@ const RiderDashboard = () => {
                       </span>
                     </div>
 
-                    {/* Restaurant + Customer */}
+                    
+                                     {/* Restaurant + Customer */}
+                                      {/* Restaurant + Customer */}
                     <div className="grid grid-cols-2 gap-3 mb-3 text-sm">
                       <div className="bg-slate-50 rounded-xl p-3">
                         <p className="text-xs text-slate-400 mb-0.5">Pickup</p>
@@ -950,6 +953,14 @@ const RiderDashboard = () => {
                         )}
                         <p className="text-xs text-slate-500">{activeDelivery.order?.deliveryAddress}</p>
                       </div>
+                    </div>
+
+                    {/* Map + navigate buttons */}
+                    <div className="mb-3">
+                      <DeliveryMap
+                        restaurant={activeDelivery.order?.restaurant}
+                        delivery={activeDelivery.order}
+                      />
                     </div>
 
                     {/* Items */}

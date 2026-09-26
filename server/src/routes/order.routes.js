@@ -74,6 +74,8 @@ router.post("/orders/checkout", checkoutLimiter, authMiddleware, validate(checko
           customerId: req.user.id,
           restaurantId: Number(restaurantId),
           deliveryAddress,
+          deliveryLat: req.body.deliveryLat,
+          deliveryLng: req.body.deliveryLng,
           idempotencyKey,
           status: "PENDING_PAYMENT",
           subtotal: fees.subtotal,
