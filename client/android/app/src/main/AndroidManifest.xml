@@ -39,4 +39,11 @@
     <!-- Permissions -->
 
     <uses-permission android:name="android.permission.INTERNET" />
+
+    <!-- Geolocation: Capacitor's WebView bridge requests these at runtime when
+         the web layer calls navigator.geolocation. Without them declared here
+         the OS auto-denies the prompt, so getCurrentPosition only ever fires
+         its error callback on device (it works in a desktop browser). -->
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
 </manifest>

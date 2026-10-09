@@ -55,7 +55,29 @@ async function resolveOrderItems(restaurantId, items) {
 // ── Checkout: create order + payment ──
 router.post("/orders/checkout", checkoutLimiter, authMiddleware, validate(checkoutSchema), async (req, res, next) => {
   try {
-    const { restaurantId, deliveryAddress, items, idempotencyKey } = req.body;
+    const { restaurantId, savedLocationId, items, idempotencyKey } = req.body;
+
+    let deliveryLocation;
+    if (savedLocationId) {
+      deliveryLocation = await prisma.customerDeliveryLocation.findFirst({
+        where: { id: savedLocationId, userId: req.user.id },
+        select: { address: true, lat: true, lng: true },
+      });
+
+      if (!deliveryLocation) return res.status(404).json({ message: "Saved delivery location not found" });
+    } else {
+      deliveryLocation = {
+        address: req.body.deliveryAddress,
+        lat: req.body.deliveryLat,
+        lng: req.body.deliveryLng,
+      };
+    }
+
+    console.log("Order delivery location received:", {
+      address: deliveryLocation.address,
+      lat: deliveryLocation.lat,
+      lng: deliveryLocation.lng,
+    });
 
     // 1. Input validated by validate(checkoutSchema) middleware (zod)
 
@@ -73,9 +95,9 @@ router.post("/orders/checkout", checkoutLimiter, authMiddleware, validate(checko
         data: {
           customerId: req.user.id,
           restaurantId: Number(restaurantId),
-          deliveryAddress,
-          deliveryLat: req.body.deliveryLat,
-          deliveryLng: req.body.deliveryLng,
+          deliveryAddress: deliveryLocation.address,
+          deliveryLat: deliveryLocation.lat,
+          deliveryLng: deliveryLocation.lng,
           idempotencyKey,
           status: "PENDING_PAYMENT",
           subtotal: fees.subtotal,
@@ -121,6 +143,13 @@ router.post("/orders/checkout", checkoutLimiter, authMiddleware, validate(checko
       }
       throw error;
     }
+
+    console.log("Order delivery location saved:", {
+      orderId: order.id,
+      address: order.deliveryAddress,
+      lat: order.deliveryLat,
+      lng: order.deliveryLng,
+    });
 
     // 5. Create payment record
     const reference = `CHOW-${Date.now()}-${crypto.randomBytes(4).toString("hex")}`;

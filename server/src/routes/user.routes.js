@@ -6,7 +6,7 @@ import crypto from "crypto";
 import authMiddleware from "../middleware/auth.middleware.js";
 import { loginLimiter, registerLimiter, resetLimiter } from "../middleware/rate-limiter.js";
 import { validate } from "../middleware/validate.js";
-import { signupSchema, loginSchema, forgotPasswordSchema, resetPasswordSchema } from "../validation/schemas.js";
+import { signupSchema, loginSchema, forgotPasswordSchema, resetPasswordSchema, deliveryLocationSchema } from "../validation/schemas.js";
 import logger from "../utils/logger.js";
 import { sendPasswordResetEmail } from "../services/mailer.js";
 
@@ -14,42 +14,52 @@ import { sendPasswordResetEmail } from "../services/mailer.js";
 // Create a express app that only handles Routes
 const router = express.Router();
 
-router.get("/users", authMiddleware, async (req, res, next) => {
-  try {
-    const users = await prisma.user.findMany({
-      select: {
-        id: true,
-        name: true,
-        email: true,
-        role: true,
-        createdAt: true,
-        updatedAt: true,
-      },
-    });
-
-    res.status(200).json({
-      message: "Users fetched successfully",
-      users,
-    });
-  } catch (error) {
-   next(error)
-  }
-});
+// Removed: GET /users listed every user's name and email to any authenticated
+// caller. Nothing in the client called it, so it was pure attack surface.
+// If a cross-campus user list is ever needed, gate it behind superAdminMiddleware.
 
 router.post("/users", registerLimiter, validate(signupSchema), async (req, res, next) => {
   try {
-    const { name, email, password, role, phone } = req.body;
+    const { name, email, password, role, phone, campusId } = req.body;
 
-    const existingUser = await prisma.user.findUnique({
-      where: {
-        email,
-      },
-    });
-
+    const existingUser = await prisma.user.findUnique({ where: { email } });
     if (existingUser) {
-      return res.status(409).json({
-        message: "User with this email already exists",
+      return res.status(409).json({ message: "User with this email already exists" });
+    }
+
+    // Determine the customer's campus: prefer the email domain over the picker,
+    // and fall back to the submitted campusId when the domain matches nothing
+    // (e.g. a personal Gmail address).
+    //
+    // This only catches honest mistakes — nothing verifies the mailbox, so
+    // anyone can type a @babcock.edu.ng address. The harm is low, since they
+    // could pick that campus from the dropdown anyway; real enforcement would
+    // need an email-confirmation step.
+    let resolvedCampusId = null;
+    if (role === "CUSTOMER") {
+      const domain = email.split("@")[1]?.toLowerCase();
+
+      // Match the bare domain AND student subdomains, e.g. babcock.edu.ng and
+      // student.babcock.edu.ng. The leading dot is what stops the lookalike
+      // evilbabcock.edu.ng from matching babcock.edu.ng.
+      const campuses = await prisma.campus.findMany({
+        where: { emailDomain: { not: null } },
       });
+      const domainMatch = domain
+        ? campuses.find((c) => domain === c.emailDomain || domain.endsWith(`.${c.emailDomain}`))
+        : null;
+
+      if (domainMatch) {
+        resolvedCampusId = domainMatch.id;
+      } else if (campusId) {
+        const picked = await prisma.campus.findUnique({ where: { id: Number(campusId) } });
+        if (!picked) {
+          return res.status(400).json({ message: "Invalid campus selected" });
+        }
+        resolvedCampusId = picked.id;
+      } else {
+        return res.status(400).json({ message: "Please select your campus" });
+      }
     }
 
     const hashedPassword = await bcrypt.hash(password, 10);
@@ -60,6 +70,7 @@ router.post("/users", registerLimiter, validate(signupSchema), async (req, res, 
         email,
         password: hashedPassword,
         role,
+        campusId: resolvedCampusId,
         ...(phone && { phone }),
       },
     });
@@ -84,7 +95,7 @@ router.post("/users", registerLimiter, validate(signupSchema), async (req, res, 
       },
     });
   } catch (error) {
-   next(error)
+    next(error);
   }
 });
 
@@ -222,6 +233,62 @@ router.put("/users/profile", authMiddleware, async (req, res, next) => {
    next(error)
   }
 });
+
+router.get("/users/locations", authMiddleware, async (req, res, next) => {
+  try {
+    const locations = await prisma.customerDeliveryLocation.findMany({
+      where: { userId: req.user.id },
+      orderBy: { updatedAt: "desc" },
+    });
+
+    res.status(200).json({ locations });
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.post("/users/locations", authMiddleware, validate(deliveryLocationSchema), async (req, res, next) => {
+  try {
+    const location = await prisma.customerDeliveryLocation.create({
+      data: { ...req.body, userId: req.user.id },
+    });
+
+    res.status(201).json({ message: "Delivery location saved", location });
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.put("/users/locations/:id", authMiddleware, validate(deliveryLocationSchema), async (req, res, next) => {
+  try {
+    const result = await prisma.customerDeliveryLocation.updateMany({
+      where: { id: Number(req.params.id), userId: req.user.id },
+      data: req.body,
+    });
+
+    if (result.count === 0) return res.status(404).json({ message: "Delivery location not found" });
+
+    const location = await prisma.customerDeliveryLocation.findUnique({ where: { id: Number(req.params.id) } });
+    res.status(200).json({ message: "Delivery location updated", location });
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.delete("/users/locations/:id", authMiddleware, async (req, res, next) => {
+  try {
+    const result = await prisma.customerDeliveryLocation.deleteMany({
+      where: { id: Number(req.params.id), userId: req.user.id },
+    });
+
+    if (result.count === 0) return res.status(404).json({ message: "Delivery location not found" });
+
+    res.status(204).send();
+  } catch (error) {
+    next(error);
+  }
+});
+
 router.post("/users/forgot-password", resetLimiter, validate(forgotPasswordSchema), async (req, res, next) => {
   try {
     const { email } = req.body;

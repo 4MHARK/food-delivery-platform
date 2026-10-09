@@ -8,6 +8,10 @@ export const signupSchema = z.object({
   password: z.string().min(8, "Password must be at least 8 characters").max(72, "Password must be 72 characters or less"),
   role: z.enum(["CUSTOMER", "OWNER", "RIDER"]),
   phone: z.string().trim().max(20, "Phone must be 20 characters or less").optional(),
+  // Required for CUSTOMER (the route enforces that); declared here because zod
+  // strips unknown keys and validate() replaces req.body with the parsed data,
+  // so an undeclared campusId would never reach the handler.
+  campusId: z.coerce.number().int("Campus id must be a whole number").positive("Campus id must be positive").optional(),
 });
 
 export const loginSchema = z.object({
@@ -26,13 +30,27 @@ const orderItems = z
   )
   .min(1, "Order must have at least one item");
 
-export const checkoutSchema = z.object({
-  restaurantId: z.coerce.number().int("Restaurant id must be a whole number").positive("Restaurant id must be positive"),
-  deliveryAddress: z.string().trim().min(1, "Delivery address is required"),
-  deliveryLat: z.coerce.number().min(-90).max(90),
-  deliveryLng: z.coerce.number().min(-180).max(180),
-  idempotencyKey: z.string().trim().min(1, "Idempotency key is required"),
-  items: orderItems,
+export const checkoutSchema = z
+  .object({
+    restaurantId: z.coerce.number().int("Restaurant id must be a whole number").positive("Restaurant id must be positive"),
+    savedLocationId: z.coerce.number().int().positive().optional(),
+    deliveryAddress: z.string().trim().min(1, "Delivery address is required").optional(),
+    deliveryLat: z.coerce.number().min(-90).max(90).optional(),
+    deliveryLng: z.coerce.number().min(-180).max(180).optional(),
+    idempotencyKey: z.string().trim().min(1, "Idempotency key is required"),
+    items: orderItems,
+  })
+  .superRefine((data, ctx) => {
+    if (!data.savedLocationId && (!data.deliveryAddress || data.deliveryLat === undefined || data.deliveryLng === undefined)) {
+      ctx.addIssue({ code: "custom", message: "Choose a saved location or provide an address and coordinates" });
+    }
+  });
+
+export const deliveryLocationSchema = z.object({
+  label: z.string().trim().min(1, "Location label is required").max(50),
+  address: z.string().trim().min(1, "Address is required").max(200),
+  lat: z.coerce.number().min(-90).max(90),
+  lng: z.coerce.number().min(-180).max(180),
 });
 
 export const estimateSchema = z.object({

@@ -1,13 +1,12 @@
-import { useState, useEffect } from "react";
-import { Link } from "react-router-dom";
-import { useNavigate } from "react-router-dom";
+import { useState, useEffect, useMemo } from "react";
+import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { api, ApiError } from "../lib/api";
 import auth from "../assets/auth-bg.jpg";
 
 const Signup = () => {
-    const navigate = useNavigate();
-    const { login } = useAuth();
+  const navigate = useNavigate();
+  const { login } = useAuth();
   const [formData, setFormData] = useState({
     name: "",
     email: "",
@@ -17,6 +16,8 @@ const Signup = () => {
     confirmPassword: "",
   });
 
+  const [campuses, setCampuses] = useState([]);
+  const [campusId, setCampusId] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -24,6 +25,31 @@ const Signup = () => {
   useEffect(() => {
     api.get("/", { auth: false }).catch(() => {});
   }, []);
+
+  // Public campus list — powers the picker and the email-domain auto-match
+  useEffect(() => {
+    api
+      .get("/campuses", { auth: false })
+      .then((data) => setCampuses(data.campuses || []))
+      .catch(() => {});
+  }, []);
+
+  // Match the typed email's domain to a campus. Also matches subdomains
+  // (e.g. student.babcock.edu.ng → babcock.edu.ng) but not lookalikes
+  // (evilbabcock.edu.ng), thanks to the leading dot.
+  const detectedCampus = useMemo(() => {
+    const domain = formData.email.split("@")[1]?.trim().toLowerCase();
+    if (!domain) return null;
+    return (
+      campuses.find((c) => {
+        const d = c.emailDomain?.toLowerCase();
+        return d && (domain === d || domain.endsWith(`.${d}`));
+      }) || null
+    );
+  }, [formData.email, campuses]);
+
+  // Detected campus wins over the manual pick (the backend does the same).
+  const effectiveCampusId = detectedCampus ? detectedCampus.id : campusId;
 
   const handleChange = (e) => {
     setFormData({
@@ -52,6 +78,11 @@ const Signup = () => {
       return;
     }
 
+    if (formData.role === "CUSTOMER" && !effectiveCampusId) {
+      setError("Please select your campus");
+      return;
+    }
+
     try {
       setLoading(true);
 
@@ -66,6 +97,7 @@ const Signup = () => {
           password: formData.password,
           role: formData.role,
           ...(formData.phone && { phone: formData.phone }),
+          ...(formData.role === "CUSTOMER" && { campusId: Number(effectiveCampusId) }),
         },
         { auth: false, signal: controller.signal }
       );
@@ -318,6 +350,44 @@ const Signup = () => {
                 </label>
               </div>
             </div>
+
+            {/* Campus (customers only) */}
+            {formData.role === "CUSTOMER" && (
+              <div>
+                <label
+                  htmlFor="campusId"
+                  className="block text-sm font-semibold text-slate-700 mb-1.5"
+                >
+                  Campus
+                </label>
+                <select
+                  id="campusId"
+                  value={String(effectiveCampusId ?? "")}
+                  onChange={(e) => setCampusId(e.target.value)}
+                  disabled={!!detectedCampus}
+                  required
+                  className="w-full h-12 px-4 rounded-xl border-2 border-slate-200 focus:border-amber-500 focus:ring-1 focus:ring-amber-500 outline-none transition-shadow text-base bg-white disabled:bg-slate-50 disabled:text-slate-500"
+                >
+                  <option value="">
+                    {campuses.length ? "Select your campus" : "Loading campuses..."}
+                  </option>
+                  {campuses.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name}
+                    </option>
+                  ))}
+                </select>
+                {detectedCampus ? (
+                  <p className="text-xs text-green-600 mt-1.5">
+                    Detected from your school email.
+                  </p>
+                ) : (
+                  <p className="text-xs text-slate-400 mt-1.5">
+                    Use your school email and we'll fill this in for you.
+                  </p>
+                )}
+              </div>
+            )}
 
             {/* Submit Button */}
             <button

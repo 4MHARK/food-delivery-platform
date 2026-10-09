@@ -120,6 +120,8 @@ router.post(
         lng,
       } = req.body;
 
+      console.log("Restaurant location received:", { address, lat, lng });
+
       // Enforce 1 restaurant per owner
       const existing = await prisma.restaurant.findFirst({
         where: { ownerId: req.user.id },
@@ -163,6 +165,13 @@ router.post(
             },
           },
         },
+      });
+
+      console.log("Restaurant location saved:", {
+        restaurantId: newRestaurant.id,
+        address: newRestaurant.address,
+        lat: newRestaurant.lat,
+        lng: newRestaurant.lng,
       });
 
       cacheClear();
