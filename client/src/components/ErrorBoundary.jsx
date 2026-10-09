@@ -1,4 +1,5 @@
 import { Component } from "react";
+import * as Sentry from "@sentry/react";
 
 // Catches any uncaught render/lifecycle error in the tree below and shows a
 // friendly retry screen instead of a blank white page.
@@ -10,6 +11,15 @@ class ErrorBoundary extends Component {
 
   static getDerivedStateFromError(error) {
     return { error };
+  }
+
+  // getDerivedStateFromError only swaps in the fallback UI — it's a pure render
+  // phase hook, so side effects don't belong there. componentDidCatch is the
+  // commit-phase counterpart, and it's the one that actually reports.
+  componentDidCatch(error, errorInfo) {
+    Sentry.captureException(error, {
+      contexts: { react: { componentStack: errorInfo.componentStack } },
+    });
   }
 
   render() {
