@@ -3,6 +3,20 @@
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <!-- iOS ignores the SVG favicon above and wants a PNG touch icon. -->
+    <link rel="apple-touch-icon" href="/apple-touch-icon-180x180.png" />
+    <meta name="theme-color" content="#f59e0b" />
+    <!-- <link rel="manifest"> is NOT here on purpose — vite-plugin-pwa injects it
+         at build time, so declaring it here too would duplicate the tag. -->
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <!-- "default", not "black-translucent": no safe-area insets are handled in
+         CSS, so a translucent bar would slide the sticky header under the
+         iPhone notch. Going full-bleed later means adding viewport-fit=cover
+         here AND env(safe-area-inset-*) padding to the AppLayout header and
+         bottom nav — one without the other looks broken. -->
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-title" content="ChowZilla" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link

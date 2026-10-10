@@ -21,6 +21,13 @@ import OwnerRoute from "./components/OwnerRoute";
 import RiderRoute from "./components/RiderRoute";
 import AdminRoute from "./components/AdminRoute";
 import PushRegistrar from "./components/PushRegistrar";
+import ServiceWorkerManager from "./components/ServiceWorkerManager";
+import { isServiceWorkerAllowed } from "./lib/pwa";
+
+// Evaluated once at module scope, so it never changes between renders. The
+// check has to happen at the parent render site rather than inside the
+// component: useRegisterSW is a hook and can't be called conditionally.
+const SERVICE_WORKER_ALLOWED = isServiceWorkerAllowed();
 
 function HomeRedirect() {
   const { user, isAuthenticated } = useAuth();
@@ -42,6 +49,9 @@ function HomeRedirect() {
 function App() {
   return (
     <BrowserRouter>
+      {/* Outside AuthProvider on purpose: the offline shell has to work before
+          login, and the update banner shouldn't depend on auth state. */}
+      {SERVICE_WORKER_ALLOWED && <ServiceWorkerManager />}
       <AuthProvider>
         <PushRegistrar />
         <CartProvider>

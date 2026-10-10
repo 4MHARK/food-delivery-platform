@@ -6,6 +6,7 @@ import { api, ApiError } from "../lib/api";
 import auth from "../assets/auth-bg.jpg";
 import { Capacitor } from "@capacitor/core";
 import { SecureStorage } from "@aparajita/capacitor-secure-storage";
+import InstallPrompt from "../components/InstallPrompt";
 
 const EMAIL_KEY = "rememberedEmail";
 const PASSWORD_KEY = "rememberedPassword";
@@ -287,6 +288,11 @@ const Login = () => {
           </p>
         </div>
       </div>
+
+      {/* Placed here (the pre-auth entry point) because this page has no fixed
+          bottom nav for it to collide with, and it's where install intent is
+          highest. */}
+      <InstallPrompt />
     </div>
   );
 };
