@@ -75,6 +75,9 @@ model Campus {
   riders      Rider[]
   createdAt   DateTime     @default(now())
   updatedAt   DateTime     @updatedAt
+  emailDomain String?      @unique
+  lat Float?
+  lng Float?
 }
 
 
@@ -94,6 +97,7 @@ model User {
   favorites         CustomerFavorite[]
   pushSubscriptions PushSubscription[]
   pushTokens        PushToken[]
+  deliveryLocations CustomerDeliveryLocation[]
   campusId          Int?
   campus            Campus?  @relation(fields: [campusId], references: [id])
   resetTokenHash      String?
@@ -102,6 +106,20 @@ model User {
   updatedAt   DateTime @updatedAt
 
   @@index([campusId])
+}
+
+model CustomerDeliveryLocation {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  label     String
+  address   String
+  lat       Float
+  lng       Float
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
 }
 
 model Rider {
@@ -153,7 +171,7 @@ model Restaurant {
   accountName   String?
   recipientCode String?
   lat  Float?
-lng  Float?
+  lng  Float?
   approvalStatus RestaurantApprovalStatus @default(PENDING)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

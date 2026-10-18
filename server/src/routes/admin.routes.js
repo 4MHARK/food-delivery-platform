@@ -791,16 +791,42 @@ router.get("/admin/campuses", superAdminMiddleware, async (req, res, next) => {
   }
 });
 
+// Public — powers the signup campus picker and email-domain auto-match
+router.get("/campuses", async (req, res, next) => {
+  try {
+    const campuses = await prisma.campus.findMany({
+      select: { id: true, name: true, emailDomain: true },
+      orderBy: { name: "asc" },
+    });
+    res.status(200).json({ campuses });
+  } catch (error) {
+    next(error);
+  }
+});
+
 router.post("/admin/campuses", superAdminMiddleware, async (req, res, next) => {
   try {
-    const { name, address } = req.body;
+    const { name, address, emailDomain } = req.body;
 
     if (!name || !name.trim()) {
       return res.status(400).json({ message: "Campus name is required" });
     }
 
+    const domain = emailDomain?.trim().toLowerCase() || null;
+
+    // emailDomain is @unique, so a duplicate would otherwise surface as a raw
+    // P2002 and reach the client as a generic 500.
+    if (domain) {
+      const clash = await prisma.campus.findUnique({ where: { emailDomain: domain } });
+      if (clash) {
+        return res.status(409).json({
+          message: `That email domain is already assigned to ${clash.name}`,
+        });
+      }
+    }
+
     const campus = await prisma.campus.create({
-      data: { name: name.trim(), address: address?.trim() || null },
+      data: { name: name.trim(), address: address?.trim() || null, emailDomain: domain },
     });
 
     res.status(201).json({
