@@ -4,6 +4,9 @@ export const loginLimiter = rateLimit({
     limit: 5,
     standardHeaders: true,
     legacyHeaders: false,
+    skip: (req) =>
+        !!process.env.LOADTEST_KEY &&
+        req.headers['x-loadtest-key'] === process.env.LOADTEST_KEY,
     message: {message: "Too many login attempts. Please try again later"}
 })
 export const registerLimiter = rateLimit({
@@ -11,6 +14,9 @@ export const registerLimiter = rateLimit({
     limit: 3,
     standardHeaders: true,
     legacyHeaders: false,
+    skip: (req) =>
+        !!process.env.LOADTEST_KEY &&
+        req.headers['x-loadtest-key'] === process.env.LOADTEST_KEY,
     message: {message: "Too many registration attempts. Please try again later"}
 })
 export const checkoutLimiter = rateLimit({
@@ -18,6 +24,9 @@ export const checkoutLimiter = rateLimit({
     limit: 10,
     standardHeaders: true,
     legacyHeaders: false,
+    skip: (req) =>
+        !!process.env.LOADTEST_KEY &&
+        req.headers['x-loadtest-key'] === process.env.LOADTEST_KEY,
     message: {message: "Too many order attempts. Please try again later"}
 })
 export const resetLimiter = rateLimit({
@@ -25,6 +34,9 @@ export const resetLimiter = rateLimit({
     limit: 5,
     standardHeaders: true,
     legacyHeaders: false,
+    skip: (req) =>
+        !!process.env.LOADTEST_KEY &&
+        req.headers['x-loadtest-key'] === process.env.LOADTEST_KEY,
     message: {message: "Too many reset requests. Please try again later"}
 })
 export const globalLimiter = rateLimit({
@@ -32,6 +44,9 @@ export const globalLimiter = rateLimit({
     limit: 100,
     standardHeaders: true,
     legacyHeaders: false,
+    skip: (req) =>
+        !!process.env.LOADTEST_KEY &&
+        req.headers['x-loadtest-key'] === process.env.LOADTEST_KEY,
     message: {message: "Too many requests. Please try again later"}
 })
 // export default
