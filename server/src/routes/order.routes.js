@@ -94,7 +94,10 @@ router.post("/orders/checkout", checkoutLimiter, authMiddleware, validate(checko
     // 3. Calculate fees on the backend (never trust frontend totals)
     const fees = calculateFees(validatedItems);
 
-    // 4. Create the order — idempotent: a duplicate (customerId, idempotencyKey) returns the existing order
+    // 4. Create the order, its items, and its payment in one transaction — a
+    //    failure in any part leaves no orphan order. Idempotent: a duplicate
+    //    (customerId, idempotencyKey) returns the existing order.
+    const reference = `CHOW-${Date.now()}-${crypto.randomBytes(4).toString("hex")}`;
     let order;
     try {
       order = await prisma.order.create({
@@ -118,10 +121,18 @@ router.post("/orders/checkout", checkoutLimiter, authMiddleware, validate(checko
               menuItemId: item.menuItemId,
             })),
           },
+          payment: {
+            create: {
+              amount: fees.totalAmount,
+              reference,
+              status: "PENDING",
+            },
+          },
         },
         include: {
           orderItems: { include: { menuItem: true } },
           restaurant: PUBLIC_RESTAURANT,
+          payment: true,
         },
       });
     } catch (error) {
@@ -141,6 +152,10 @@ router.post("/orders/checkout", checkoutLimiter, authMiddleware, validate(checko
           },
         });
 
+        // P2002 could also be a payment-reference collision; only replay when
+        // the idempotency key is the one that matched.
+        if (!existing) throw error;
+
         return res.status(200).json({
           message: "Order already exists",
           order: existing,
@@ -157,21 +172,12 @@ router.post("/orders/checkout", checkoutLimiter, authMiddleware, validate(checko
       lng: order.deliveryLng,
     });
 
-    // 5. Create payment record
-    const reference = `CHOW-${Date.now()}-${crypto.randomBytes(4).toString("hex")}`;
-    const payment = await prisma.payment.create({
-      data: {
-        orderId: order.id,
-        amount: fees.totalAmount,
-        reference,
-        status: "PENDING",
-      },
-    });
-
-    // 6. Return everything
+    // 5. Return everything. The payment is created nested, so strip it back out
+    //    of `order` to keep the response shape unchanged.
+    const { payment, ...orderPayload } = order;
     res.status(201).json({
       message: "Order created — payment pending",
-      order,
+      order: orderPayload,
       payment,
       fees,
     });
