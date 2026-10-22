@@ -119,7 +119,7 @@ const AdminDashboard = () => {
             {activeSection === "customers" && <CustomersSection />}
             {activeSection === "orders" && <OrdersSection />}
             {activeSection === "payments" && <PaymentsSection />}
-            {activeSection === "payouts" && <PayoutsSection />}
+            {activeSection === "payouts" && <PayoutsSection isSuperAdmin={isSuperAdmin} />}
             {activeSection === "campuses" && <CampusesSection />}
           </div>
         </main>
@@ -1240,13 +1240,14 @@ const PAYOUT_STATUS_STYLE = {
   FAILED: "bg-red-100 text-red-700",
 };
 
-const PayoutsSection = () => {
+const PayoutsSection = ({ isSuperAdmin }) => {
   const [payouts, setPayouts] = useState([]);
   const [unpaid, setUnpaid] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [reconciling, setReconciling] = useState(false);
   const [reconcileMsg, setReconcileMsg] = useState("");
+  const [confirmReconcile, setConfirmReconcile] = useState(false);
   const [markingKey, setMarkingKey] = useState(null);
   const [markMsg, setMarkMsg] = useState("");
 
@@ -1300,6 +1301,7 @@ const PayoutsSection = () => {
       setReconcileMsg(err.message || "Reconciliation failed.");
     } finally {
       setReconciling(false);
+      setConfirmReconcile(false);
     }
   };
 
@@ -1336,10 +1338,43 @@ const PayoutsSection = () => {
             {payouts.length} payout{payouts.length !== 1 ? "s" : ""} · Unpaid balances to settle, plus payout history.
           </p>
         </div>
-        <button onClick={handleReconcile} disabled={reconciling} className="shrink-0 h-10 px-4 rounded-xl bg-slate-900 hover:bg-slate-800 disabled:bg-slate-400 text-white font-bold text-sm transition active:scale-[0.98]">
-          {reconciling ? "Reconciling..." : "Reconcile"}
-        </button>
+        {isSuperAdmin ? (
+          <button onClick={() => setConfirmReconcile(true)} disabled={reconciling} className="shrink-0 h-10 px-4 rounded-xl bg-slate-900 hover:bg-slate-800 disabled:bg-slate-400 text-white font-bold text-sm transition active:scale-[0.98]">
+            {reconciling ? "Reconciling..." : "Reconcile"}
+          </button>
+        ) : (
+          <p className="shrink-0 max-w-[220px] text-right text-xs text-slate-400">
+            Only super admins can reconcile payouts.
+          </p>
+        )}
       </div>
+
+      {confirmReconcile && (
+        <div className="rounded-2xl border border-red-200 bg-red-50 p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div>
+            <p className="text-sm font-bold text-red-800">Create real Paystack transfers?</p>
+            <p className="text-xs text-red-600 mt-1">
+              Reconcile pays every delivered order that has no payout rows. This moves real money and cannot be undone.
+            </p>
+          </div>
+          <div className="flex gap-2 shrink-0">
+            <button
+              onClick={() => setConfirmReconcile(false)}
+              className="px-4 h-9 rounded-xl text-xs font-bold text-slate-500 hover:bg-white transition"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleReconcile}
+              disabled={reconciling}
+              className="px-4 h-9 rounded-xl bg-red-600 hover:bg-red-700 disabled:bg-red-300 text-white text-xs font-bold transition active:scale-[0.98]"
+            >
+              {reconciling ? "Reconciling..." : "Confirm Reconcile"}
+            </button>
+          </div>
+        </div>
+      )}
+
       {reconcileMsg && (
         <p className="text-sm text-amber-600">{reconcileMsg}</p>
       )}
