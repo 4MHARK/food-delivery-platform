@@ -7,7 +7,7 @@ import adminMiddleware from "../middleware/admin.middleware.js";
 import superAdminMiddleware from "../middleware/superAdmin.middleware.js";
 import { validate } from "../middleware/validate.js";
 import { adminRegisterSchema } from "../validation/schemas.js";
-import { settleOrderPayouts } from "../services/payouts.js";
+import { settleOrderPayouts, verifyPendingPayouts, retryPayout } from "../services/payouts.js";
 
 const router = express.Router();
 
@@ -607,9 +607,11 @@ router.get("/admin/payouts", async (req, res, next) => {
       id: p.id,
       orderId: p.orderId,
       type: p.type,
+      attempt: p.attempt,
       amount: Number(p.amount),
       status: p.status,
       reference: p.reference,
+      supersededBy: p.supersededBy,
       restaurant: p.order.restaurant.name,
       customer: p.order.customer.name,
       createdAt: p.createdAt,
@@ -657,10 +659,75 @@ router.post("/admin/payouts/reconcile", async (req, res, next) => {
   }
 });
 
+// ── Verify stale PENDING payouts against Paystack ──
+// Safety net for a crash between claiming a payout and the transfer call, or a
+// transfer webhook we never received. Defaults to rows older than 10 minutes so
+// a transfer Paystack has not indexed yet is not mistaken for a missing one.
+router.post("/admin/payouts/verify-pending", async (req, res, next) => {
+  try {
+    const requestedMinutes = Number(req.body?.olderThanMinutes);
+    const olderThanMinutes =
+      Number.isFinite(requestedMinutes) && requestedMinutes >= 1 ? requestedMinutes : 10;
+
+    const requestedLimit = Number(req.body?.limit);
+    const limit =
+      Number.isInteger(requestedLimit) && requestedLimit > 0
+        ? Math.min(requestedLimit, 100)
+        : 50;
+
+    // School admins may only verify payouts for their own campus's orders.
+    const campusWhere =
+      req.user.role === "SUPER_ADMIN"
+        ? {}
+        : { order: { restaurant: { campusId: req.user.campusId } } };
+
+    const summary = await verifyPendingPayouts({ olderThanMinutes, limit, where: campusWhere });
+
+    res.status(200).json({
+      message: "Pending payout verification complete",
+      ...summary,
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// ── Retry a FAILED payout (e.g. the rider added bank details later) ──
+// Creates a NEW attempt row with a suffixed reference. The failed row is linked
+// via supersededBy, so it stops appearing as unpaid.
+router.post("/admin/payouts/:id/retry", async (req, res, next) => {
+  try {
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id) || id <= 0) {
+      return res.status(400).json({ message: "Invalid payout id" });
+    }
+
+    const campusWhere =
+      req.user.role === "SUPER_ADMIN"
+        ? {}
+        : { order: { restaurant: { campusId: req.user.campusId } } };
+
+    const result = await retryPayout(id, campusWhere);
+
+    if (!result.ok) {
+      return res.status(result.status || 400).json({ message: result.message });
+    }
+
+    res.status(201).json({
+      message: "Payout retry created",
+      payout: result.payout,
+      attempt: result.attempt,
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
 // ── Manual payouts: unpaid balances grouped per recipient ──
-// Groups PENDING + FAILED payouts by the person owed (restaurant or rider),
-// with their *current* bank details and a total. The admin pays each person
-// manually from their own bank app, then marks them paid via /mark-paid.
+// Groups PENDING + FAILED + REVERSED payouts by the person owed (restaurant or
+// rider), with their *current* bank details and a total. A reversal returns the
+// money to us, so it is owed again. The admin pays each person manually from
+// their own bank app, then marks them paid via /mark-paid.
 router.get("/admin/payouts/unpaid", async (req, res, next) => {
   try {
     const campusWhere =
@@ -669,7 +736,11 @@ router.get("/admin/payouts/unpaid", async (req, res, next) => {
         : { order: { restaurant: { campusId: req.user.campusId } } };
 
     const payouts = await prisma.payout.findMany({
-      where: { ...campusWhere, status: { in: ["PENDING", "FAILED"] } },
+      where: {
+        ...campusWhere,
+        status: { in: ["PENDING", "FAILED", "REVERSED"] },
+        supersededBy: null,
+      },
       include: {
         order: {
           select: {
@@ -725,7 +796,7 @@ router.get("/admin/payouts/unpaid", async (req, res, next) => {
 });
 
 // Mark unpaid payouts as paid manually (the admin sent the money from their own
-// bank). Body: { payoutIds: number[] }. Only flips PENDING/FAILED rows.
+// bank). Body: { payoutIds: number[] }. Only flips PENDING/FAILED/REVERSED rows.
 router.post("/admin/payouts/mark-paid", async (req, res, next) => {
   try {
     const { payoutIds } = req.body;
@@ -740,7 +811,12 @@ router.post("/admin/payouts/mark-paid", async (req, res, next) => {
         : { order: { restaurant: { campusId: req.user.campusId } } };
 
     const result = await prisma.payout.updateMany({
-      where: { id: { in: ids }, status: { in: ["PENDING", "FAILED"] }, ...campusWhere },
+      where: {
+        id: { in: ids },
+        status: { in: ["PENDING", "FAILED", "REVERSED"] },
+        supersededBy: null,
+        ...campusWhere,
+      },
       data: {
         status: "SUCCESS",
         gatewayResponse: {

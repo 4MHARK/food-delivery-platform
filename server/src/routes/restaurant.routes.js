@@ -293,7 +293,9 @@ router.get("/restaurants/:id/payouts", authMiddleware, ownerMiddleware, async (r
     }
 
     const payouts = await prisma.payout.findMany({
-      where: { type: "RESTAURANT", order: { restaurantId: restaurant.id } },
+      // Superseded rows are old failed attempts replaced by a retry — hide them
+      // so the history and summary don't double-count the same order.
+      where: { type: "RESTAURANT", order: { restaurantId: restaurant.id }, supersededBy: null },
       include: { order: { select: { id: true, createdAt: true } } },
       orderBy: { createdAt: "desc" },
     });
@@ -312,7 +314,8 @@ router.get("/restaurants/:id/payouts", authMiddleware, ownerMiddleware, async (r
       summary: {
         totalEarned: sum(payouts),
         paidOut: sum(payouts.filter((p) => p.status === "SUCCESS")),
-        pending: sum(payouts.filter((p) => p.status === "PENDING")),
+        // A reversed transfer came back to us, so it is still owed, not paid.
+        pending: sum(payouts.filter((p) => p.status === "PENDING" || p.status === "REVERSED")),
       },
     });
   } catch (error) {

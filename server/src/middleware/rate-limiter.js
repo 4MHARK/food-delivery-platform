@@ -1,12 +1,18 @@
-import rateLimit from "express-rate-limit";
+import rateLimit, { ipKeyGenerator } from "express-rate-limit";
 
 // Real client IP: Cloudflare puts it in cf-connecting-ip; falls back to req.ip.
-const clientIp = (req) => req.headers["cf-connecting-ip"] || req.ip;
+// ipKeyGenerator normalizes IPv6 to a /56 bucket so a single address cannot
+// mint unlimited rate-limit keys (and satisfies express-rate-limit's guard).
+const clientIp = (req) =>
+  ipKeyGenerator(req.headers["cf-connecting-ip"] || req.ip);
 
 // Load-test bypass: only active while LOADTEST_KEY is set on the server.
+// Paystack webhooks are server-to-server retries; rate-limiting them would
+// cause failed deliveries and repeated retry storms.
 const skip = (req) =>
-  !!process.env.LOADTEST_KEY &&
-  req.headers["x-loadtest-key"] === process.env.LOADTEST_KEY;
+  req.path === "/payments/webhook" ||
+  (!!process.env.LOADTEST_KEY &&
+    req.headers["x-loadtest-key"] === process.env.LOADTEST_KEY);
 
 const base = { standardHeaders: true, legacyHeaders: false, skip };
 

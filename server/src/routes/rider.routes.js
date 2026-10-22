@@ -265,7 +265,8 @@ router.get("/riders/payouts", authMiddleware, riderMiddleware, async (req, res, 
     }
 
     const payouts = await prisma.payout.findMany({
-      where: { type: "RIDER", order: { delivery: { riderId: rider.id } } },
+      // Hide failed attempts that were replaced by a retry.
+      where: { type: "RIDER", order: { delivery: { riderId: rider.id } }, supersededBy: null },
       include: { order: { select: { id: true, createdAt: true } } },
       orderBy: { createdAt: "desc" },
     });

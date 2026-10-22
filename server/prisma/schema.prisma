@@ -64,6 +64,7 @@ enum PayoutStatus {
   PENDING
   SUCCESS
   FAILED
+  REVERSED
 }
 
 model Campus {
@@ -300,10 +301,12 @@ model Payout {
   orderId         Int
   order           Order        @relation(fields: [orderId], references: [id])
   type            PayoutType
+  attempt         Int          @default(1)
   amount          Decimal      @db.Decimal(10,2)
   recipientCode   String?
   reference       String       @unique
   status          PayoutStatus @default(PENDING)
+  supersededBy    Int?
   gatewayResponse Json?
   createdAt       DateTime     @default(now())
   updatedAt       DateTime     @updatedAt

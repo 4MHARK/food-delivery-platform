@@ -21,7 +21,12 @@ app.use(cors({
 
 // Rider profile photos are sent as base64 data URLs, so raise the default
 // 100kb body limit to leave comfortable headroom for a resized image.
-app.use(express.json({ limit: "2mb" }))
+// `verify` keeps the exact raw bytes: Paystack signs the raw body, and parsing +
+// re-stringifying JSON can reorder keys and break the HMAC check.
+app.use(express.json({
+    limit: "2mb",
+    verify: (req, _res, buf) => { req.rawBody = buf },
+}))
 app.set('trust proxy', 1)
 app.get("/", (req, res) =>{
     res.json({
