@@ -5,15 +5,8 @@ import ownerMiddleware from "../middleware/owner.middleware.js";
 import { validate } from "../middleware/validate.js";
 import { restaurantSchema, bankDetailsSchema } from "../validation/schemas.js";
 import { createTransferRecipient } from "../services/paystack.js";
-import { cacheGet, cacheSet, cacheClear } from "../services/cache.js";  
-
-
-const PUBLIC_RESTAURANT_SELECT = {
-  id: true, name: true, description: true, imageUrl: true,
-  address: true, phone: true, lat: true, lng: true,
-  campusId: true, ownerId: true, approvalStatus: true,
-  owner: { select: { id: true, name: true } },
-};
+import { cacheGet, cacheSet, cacheClear } from "../services/cache.js";
+import { PUBLIC_RESTAURANT_SELECT } from "../utils/selects.js";
 
 const router = express.Router();
 

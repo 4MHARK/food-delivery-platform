@@ -8,6 +8,7 @@ import superAdminMiddleware from "../middleware/superAdmin.middleware.js";
 import { validate } from "../middleware/validate.js";
 import { adminRegisterSchema } from "../validation/schemas.js";
 import { settleOrderPayouts, verifyPendingPayouts, retryPayout } from "../services/payouts.js";
+import { cacheClear } from "../services/cache.js";
 
 const router = express.Router();
 
@@ -465,6 +466,9 @@ router.put("/admin/restaurants/:id/status", async (req, res, next) => {
       where: { id: restaurantId },
       data: { approvalStatus: status },
     });
+
+    // Approval changes alter what the public list/menu may serve.
+    cacheClear();
 
     res.status(200).json({
       message: `Restaurant ${status.toLowerCase()}`,

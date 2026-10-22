@@ -291,6 +291,8 @@ model Payment {
   currency String @default("NGN")
   status PaymentStatus @default(PENDING)
   paidAt DateTime?
+  refundedAt DateTime?
+  refundReference String?
   gatewayResponse Json?
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt

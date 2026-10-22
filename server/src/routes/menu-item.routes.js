@@ -2,6 +2,7 @@ import express from "express";
 import prisma from "../config/prisma.js";
 import authMiddleware from "../middleware/auth.middleware.js";
 import ownerMiddleware from "../middleware/owner.middleware.js";
+import optionalAuthMiddleware from "../middleware/optional-auth.middleware.js";
 import { validate } from "../middleware/validate.js";
 import { menuItemSchema } from "../validation/schemas.js";
 import { cacheGet, cacheSet, cacheClear } from "../services/cache.js";
@@ -15,6 +16,7 @@ router.get("/categories", async (req, res, next) => {
     if (cached) return res.status(200).json(cached);
 
     const categories = await prisma.menuItem.findMany({
+      where: { restaurant: { approvalStatus: "APPROVED" } },
       distinct: ["category"],
       select: { category: true },
       orderBy: { category: "asc" },
@@ -75,31 +77,49 @@ router.post("/restaurants/:id/menu-items", authMiddleware, ownerMiddleware, vali
   }
 });
 
-router.get("/restaurants/:id/menu-items", async (req, res, next) => {
+router.get("/restaurants/:id/menu-items", optionalAuthMiddleware, async (req, res, next) => {
   try {
-    const cacheKey = `menu:${req.params.id}`;
-    const cached = cacheGet(cacheKey);
-    if (cached) return res.status(200).json(cached);
-
     const restaurant = await prisma.restaurant.findUnique({
       where: { id: Number(req.params.id) },
+      select: { id: true, ownerId: true, approvalStatus: true },
     });
     if (!restaurant) {
       return res.status(404).json({
         message: "restaurant not found",
       });
     }
-    const restaurantId = Number(req.params.id);
+
+    const isOwner = req.user?.id === restaurant.ownerId;
+    const isAdmin = ["ADMIN", "SUPER_ADMIN"].includes(req.user?.role);
+
+    // Unapproved menus are visible only to their owner or an admin.
+    if (!isOwner && !isAdmin && restaurant.approvalStatus !== "APPROVED") {
+      return res.status(404).json({
+        message: "restaurant not found",
+      });
+    }
+
+    // Owners and admins need unavailable items so they can re-enable them; the
+    // public menu only shows items that can actually be ordered.
+    const includeUnavailable = isOwner || isAdmin;
+    const cacheKey = includeUnavailable ? null : `menu:${restaurant.id}`;
+
+    if (cacheKey) {
+      const cached = cacheGet(cacheKey);
+      if (cached) return res.status(200).json(cached);
+    }
+
     const menuItems = await prisma.menuItem.findMany({
       where: {
-        restaurantId,
+        restaurantId: restaurant.id,
+        ...(includeUnavailable ? {} : { isAvailable: true }),
       },
     });
     const body = {
       message: "Menu-item fetched successfully",
       menuItems,
     };
-    cacheSet(cacheKey, body);
+    if (cacheKey) cacheSet(cacheKey, body);
     res.status(200).json(body);
   } catch (error) {
   next(error)
