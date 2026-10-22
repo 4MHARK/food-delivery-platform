@@ -1226,7 +1226,7 @@ const RiderDashboard = () => {
                             <p className="text-xs text-slate-400">{new Date(p.createdAt).toLocaleDateString()}</p>
                           </div>
                           <div className="flex items-center gap-3">
-                            <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${p.status === "SUCCESS" ? "bg-green-100 text-green-700" : p.status === "FAILED" ? "bg-red-100 text-red-700" : "bg-amber-100 text-amber-700"}`}>{p.status}</span>
+                            <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${p.status === "SUCCESS" ? "bg-green-100 text-green-700" : p.status === "FAILED" ? "bg-red-100 text-red-700" : p.status === "REVERSED" ? "bg-purple-100 text-purple-700" : "bg-amber-100 text-amber-700"}`}>{p.status}</span>
                             <span className="text-sm font-bold text-slate-900">{formatCurrency(p.amount)}</span>
                           </div>
                         </div>
