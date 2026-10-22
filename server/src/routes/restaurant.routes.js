@@ -5,7 +5,15 @@ import ownerMiddleware from "../middleware/owner.middleware.js";
 import { validate } from "../middleware/validate.js";
 import { restaurantSchema, bankDetailsSchema } from "../validation/schemas.js";
 import { createTransferRecipient } from "../services/paystack.js";
-import { cacheGet, cacheSet, cacheClear } from "../services/cache.js";
+import { cacheGet, cacheSet, cacheClear } from "../services/cache.js";  
+
+
+const PUBLIC_RESTAURANT_SELECT = {
+  id: true, name: true, description: true, imageUrl: true,
+  address: true, phone: true, lat: true, lng: true,
+  campusId: true, ownerId: true, approvalStatus: true,
+  owner: { select: { id: true, name: true } },
+};
 
 const router = express.Router();
 
@@ -45,11 +53,7 @@ router.get("/restaurants", async (req, res, next) => {
     };
     const restaurants = await prisma.restaurant.findMany({
       where,
-      include: {
-        owner: {
-          select: { id: true, name: true, email: true },
-        },
-      },
+      select: PUBLIC_RESTAURANT_SELECT,
     });
     const body = {
       message: "Restaurants fetched successfully",
@@ -67,11 +71,7 @@ router.get("/restaurants/:id", async (req, res, next) => {
   try {
     const restaurant = await prisma.restaurant.findUnique({
       where: { id: Number(req.params.id), approvalStatus: "APPROVED" },
-      include: {
-        owner: {
-          select: { id: true, name: true, email: true },
-        },
-      },
+   select: PUBLIC_RESTAURANT_SELECT,
     });
 
     if (!restaurant) {
