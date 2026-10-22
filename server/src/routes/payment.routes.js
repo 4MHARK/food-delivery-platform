@@ -12,7 +12,70 @@ const PUBLIC_RESTAURANT = {
   },
 };
 
+// Webhook event → the only status transition it may make. The `from` guard is
+// what makes duplicate and out-of-order deliveries harmless.
+const TRANSFER_EVENTS = {
+  "transfer.success": { status: "SUCCESS", from: ["PENDING"] },
+  "transfer.failed": { status: "FAILED", from: ["PENDING"] },
+  "transfer.reversed": { status: "REVERSED", from: ["SUCCESS"] },
+};
+
 const router = express.Router();
+
+// ── Paystack webhook: called by Paystack, not by users. There is no JWT here —
+// the one-way authentication is the HMAC signature over the raw request body. ──
+router.post("/payments/webhook", async (req, res) => {
+  const secret = process.env.PAYSTACK_SECRET_KEY;
+
+  // Fail closed on configuration errors rather than trusting an unsigned body.
+  if (!secret) {
+    console.error("[paystack-webhook] PAYSTACK_SECRET_KEY is not set");
+    return res.status(500).json({ message: "Webhook not configured" });
+  }
+  const given = req.headers["x-paystack-signature"];
+  if (!req.rawBody || !given) {
+    return res.status(401).json({ message: "Invalid webhook signature" });
+  }
+
+  const expected = crypto
+    .createHmac("sha512", secret)
+    .update(req.rawBody)
+    .digest("hex");
+
+  // timingSafeEqual throws when lengths differ, so check length first.
+  if (given.length !== expected.length ||
+      !crypto.timingSafeEqual(Buffer.from(given), Buffer.from(expected))) {
+    return res.status(401).json({ message: "Invalid webhook signature" });
+  }
+
+  const event = req.body?.event;
+  const data = req.body?.data;
+  const reference = data?.reference;
+  const transition = TRANSFER_EVENTS[event];
+
+  if (transition && reference) {
+    try {
+      // Idempotent by design: the status guard means a replayed event matches
+      // zero rows and changes nothing. It also ignores out-of-order events,
+      // e.g. a late "failed" arriving after a confirmed "success".
+      const result = await prisma.payout.updateMany({
+        where: { reference, status: { in: transition.from } },
+        data: { status: transition.status, gatewayResponse: data },
+      });
+      console.log(
+        `[paystack-webhook] ${event} ref=${reference} updated=${result.count}`
+      );
+    } catch (error) {
+      // 500 so Paystack retries — a DB outage must not silently drop the event.
+      console.error(`[paystack-webhook] update failed for ${reference}:`, error);
+      return res.status(500).json({ message: "Webhook processing failed" });
+    }
+  } else {
+    console.log(`[paystack-webhook] ignored event=${event} ref=${reference}`);
+  }
+
+  res.status(200).json({ received: true });
+});
 
 router.post("/payments/verify", authMiddleware, async (req, res, next) => {
   try {

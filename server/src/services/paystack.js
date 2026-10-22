@@ -123,9 +123,13 @@ export async function verifyTransfer(reference) {
 
   const body = await response.json();
 
+  // Callers need to tell "Paystack says this reference does not exist" (404)
+  // apart from "we could not ask Paystack right now" (network/auth/5xx).
   return {
     ok: Boolean(body.status),
+    httpStatus: response.status,
     data: body.data,
+    message: body.message,
   };
 }
 
