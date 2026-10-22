@@ -19,29 +19,21 @@ const PUBLIC_RESTAURANT = {
 };
 const router = express.Router();
 
-// ── TEMPORARY: checkout timing instrumentation. Remove before merging. ──
-const timeStep = (label, startedAt) =>
-  console.log(`[checkout] ${label} took ${Date.now() - startedAt}ms`);
-
 // Resolve + price cart items against the DB. Shared by checkout and estimate so the
 // server stays the single source of truth for what an order actually costs.
-async function resolveOrderItems(restaurantId, items, timingLabel = null) {
-  const restaurantQueryStart = Date.now();
+async function resolveOrderItems(restaurantId, items) {
   const restaurant = await prisma.restaurant.findUnique({
     where: { id: Number(restaurantId) },
   });
-  if (timingLabel) timeStep(`${timingLabel}:restaurant.findUnique`, restaurantQueryStart);
   if (!restaurant) {
     return { error: { status: 404, message: "Restaurant not found" } };
   }
 
   const validatedItems = [];
-  for (const [index, item] of items.entries()) {
-    const menuItemQueryStart = Date.now();
+  for (const item of items) {
     const menuItem = await prisma.menuItem.findUnique({
       where: { id: item.menuItemId },
     });
-    if (timingLabel) timeStep(`${timingLabel}:menuItem.findUnique[${index}]`, menuItemQueryStart);
 
     if (!menuItem) {
       return { error: { status: 404, message: `Menu item "${item.menuItemId}" not found` } };
@@ -69,17 +61,14 @@ async function resolveOrderItems(restaurantId, items, timingLabel = null) {
 // ── Checkout: create order + payment ──
 router.post("/orders/checkout", checkoutLimiter, authMiddleware, validate(checkoutSchema), async (req, res, next) => {
   try {
-    const handlerStart = Date.now();
     const { restaurantId, savedLocationId, items, idempotencyKey } = req.body;
 
     let deliveryLocation;
     if (savedLocationId) {
-      const savedLocationStart = Date.now();
       deliveryLocation = await prisma.customerDeliveryLocation.findFirst({
         where: { id: savedLocationId, userId: req.user.id },
         select: { address: true, lat: true, lng: true },
       });
-      timeStep("customerDeliveryLocation.findFirst", savedLocationStart);
 
       if (!deliveryLocation) return res.status(404).json({ message: "Saved delivery location not found" });
     } else {
@@ -99,19 +88,14 @@ router.post("/orders/checkout", checkoutLimiter, authMiddleware, validate(checko
     // 1. Input validated by validate(checkoutSchema) middleware (zod)
 
     // 2. Check restaurant exists + validate menu items (exist + all belong to this restaurant)
-    const resolveStart = Date.now();
-    const { validatedItems, error } = await resolveOrderItems(restaurantId, items, "resolveOrderItems");
-    timeStep("resolveOrderItems (total)", resolveStart);
+    const { validatedItems, error } = await resolveOrderItems(restaurantId, items);
     if (error) return res.status(error.status).json({ message: error.message });
 
     // 3. Calculate fees on the backend (never trust frontend totals)
-    const feesStart = Date.now();
     const fees = calculateFees(validatedItems);
-    timeStep("calculateFees", feesStart);
 
     // 4. Create the order — idempotent: a duplicate (customerId, idempotencyKey) returns the existing order
     let order;
-    const orderCreateStart = Date.now();
     try {
       order = await prisma.order.create({
         data: {
@@ -140,12 +124,9 @@ router.post("/orders/checkout", checkoutLimiter, authMiddleware, validate(checko
           restaurant: PUBLIC_RESTAURANT,
         },
       });
-      timeStep("order.create", orderCreateStart);
     } catch (error) {
-      timeStep("order.create (failed)", orderCreateStart);
       if (error.code === "P2002") {
         // This customer already has an order with this key → return it instead of creating a duplicate
-        const existingLookupStart = Date.now();
         const existing = await prisma.order.findUnique({
           where: {
             customerId_idempotencyKey: {
@@ -155,11 +136,10 @@ router.post("/orders/checkout", checkoutLimiter, authMiddleware, validate(checko
           },
           include: {
             orderItems: { include: { menuItem: true } },
-            restaurant: true,
+            restaurant: PUBLIC_RESTAURANT,
             payment: true,
           },
         });
-        timeStep("order.findUnique (idempotent replay)", existingLookupStart);
 
         return res.status(200).json({
           message: "Order already exists",
@@ -179,7 +159,6 @@ router.post("/orders/checkout", checkoutLimiter, authMiddleware, validate(checko
 
     // 5. Create payment record
     const reference = `CHOW-${Date.now()}-${crypto.randomBytes(4).toString("hex")}`;
-    const paymentCreateStart = Date.now();
     const payment = await prisma.payment.create({
       data: {
         orderId: order.id,
@@ -188,9 +167,6 @@ router.post("/orders/checkout", checkoutLimiter, authMiddleware, validate(checko
         status: "PENDING",
       },
     });
-    timeStep("payment.create", paymentCreateStart);
-
-    timeStep("handler (through payment.create)", handlerStart);
 
     // 6. Return everything
     res.status(201).json({
