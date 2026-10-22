@@ -5,6 +5,13 @@ import { verifyPayment, resolveAccount, listBanks } from "../services/paystack.j
 import { notify } from "../services/events.js";
 import crypto from "node:crypto";
 
+const PUBLIC_RESTAURANT = {
+  select: {
+    id: true, name: true, description: true, imageUrl: true,
+    address: true, phone: true, lat: true, lng: true, ownerId: true,
+  },
+};
+
 const router = express.Router();
 
 router.post("/payments/verify", authMiddleware, async (req, res, next) => {
@@ -85,7 +92,7 @@ router.post("/payments/verify", authMiddleware, async (req, res, next) => {
               menuItem: { select: { name: true } },
             },
           },
-          restaurant: true,
+          restaurant: PUBLIC_RESTAURANT,
         },
       }),
     ]);
