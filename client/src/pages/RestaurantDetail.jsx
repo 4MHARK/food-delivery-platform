@@ -1,11 +1,14 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useCart } from "../context/CartContext";
 import { useAuth } from "../context/AuthContext";
 import { useFavorites } from "../hooks/useFavorites";
+import { useSSE } from "../hooks/useSSE";
 import AppLayout from "../components/AppLayout";
 import { api } from "../lib/api";
 import { formatCurrency } from "../lib/format";
+
+const DAY_NAMES = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 
 const RestaurantDetail = () => {
   const { id } = useParams();
@@ -52,6 +55,24 @@ const RestaurantDetail = () => {
     };
     fetchData();
   }, [id]);
+
+  // Live stock and open/closed status. SSE gives instant updates when logged
+  // in; the timer also catches schedule boundaries and serves anonymous users.
+  const refreshMenu = useCallback(async () => {
+    const [menuData, restaurantData] = await Promise.all([
+      api.get(`/restaurants/${id}/menu-items`, { auth: false }).catch(() => null),
+      api.get(`/restaurants/${id}`, { auth: false }).catch(() => null),
+    ]);
+    if (menuData) setMenuItems(menuData.menuItems || []);
+    if (restaurantData) setRestaurant(restaurantData.restaurant);
+  }, [id]);
+
+  useSSE(refreshMenu, { enabled: isAuthenticated, deps: [id] });
+
+  useEffect(() => {
+    const timer = setInterval(refreshMenu, isAuthenticated ? 60000 : 30000);
+    return () => clearInterval(timer);
+  }, [isAuthenticated, refreshMenu]);
 
   const refreshReviews = async () => {
     try {
@@ -189,6 +210,10 @@ const RestaurantDetail = () => {
         <div className="bg-white rounded-2xl -mt-6 relative z-10 p-6 shadow-sm mb-8">
           <p className="text-slate-600 leading-relaxed mb-4">{restaurant.description}</p>
           <div className="flex flex-wrap items-center gap-4 text-sm text-slate-500">
+            <span className={`flex items-center gap-1.5 font-semibold ${restaurant.isOpenNow ? "text-green-700" : "text-red-600"}`}>
+              <span className={`w-2 h-2 rounded-full ${restaurant.isOpenNow ? "bg-green-500" : "bg-red-500"}`} />
+              {restaurant.isOpenNow ? "Open now" : "Closed"}
+            </span>
             <span className="flex items-center gap-1.5">
               <span className="material-symbols-outlined text-base text-amber-500">location_on</span>
               {restaurant.address}
@@ -198,6 +223,24 @@ const RestaurantDetail = () => {
               {restaurant.phone}
             </span>
           </div>
+          {restaurant.hours?.length > 0 && (
+            <div className="mt-4 pt-4 border-t border-slate-100">
+              <p className="text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">Opening hours</p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-1 text-xs text-slate-500">
+                {DAY_NAMES.map((label, day) => {
+                  const row = restaurant.hours.find((h) => h.dayOfWeek === day);
+                  return (
+                    <div key={label} className="flex justify-between gap-3">
+                      <span>{label}</span>
+                      <span className="font-medium text-slate-600">
+                        {!row || row.isClosed ? "Closed" : `${row.openTime}–${row.closeTime}`}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Reviews Section */}
@@ -299,6 +342,12 @@ const RestaurantDetail = () => {
             )}
           </div>
 
+          {restaurant.isOpenNow === false && (
+            <div className="rounded-2xl border border-rose-100 bg-rose-50 px-4 py-3 mb-6 text-sm font-medium text-rose-700">
+              This restaurant is closed right now. You can browse the menu, but ordering is disabled.
+            </div>
+          )}
+
           {/* Category tabs */}
           {categories.length > 1 && (
             <div className="overflow-x-auto flex gap-2 mb-6 no-scrollbar">
@@ -344,8 +393,11 @@ const RestaurantDetail = () => {
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
               {filteredItems.map((item) => {
                 const qty = cartItems.find((i) => i.menuItemId === item.id)?.quantity || 0;
+                const inStock = item.inStock ?? item.isAvailable;
+                const maxedOut = item.stockQuantity != null && qty >= item.stockQuantity;
+                const orderingOpen = restaurant.isOpenNow !== false;
                 return (
-                  <div key={item.id} className={`bg-white rounded-2xl shadow-sm overflow-hidden flex transition hover:shadow-md ${!item.isAvailable ? "opacity-50" : ""}`}>
+                  <div key={item.id} className={`bg-white rounded-2xl shadow-sm overflow-hidden flex transition hover:shadow-md ${!inStock ? "opacity-50" : ""}`}>
                     <div className="w-28 h-28 md:w-36 md:h-36 bg-slate-100 shrink-0">
                       {item.imageUrl ? (
                         <img src={item.imageUrl} alt={item.name} className="w-full h-full object-cover" />
@@ -359,32 +411,43 @@ const RestaurantDetail = () => {
                       <div>
                         <div className="flex items-start justify-between gap-2">
                           <h3 className="text-sm md:text-base font-bold text-slate-900 line-clamp-1">{item.name}</h3>
-                          {!item.isAvailable && (
-                            <span className="text-[10px] font-semibold text-red-500 bg-red-50 px-2 py-0.5 rounded-full shrink-0">Out of stock</span>
-                          )}
+                          <div className="flex items-center gap-1 shrink-0">
+                            {inStock && item.lowStock && (
+                              <span className="text-[10px] font-semibold text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full">
+                                Only {item.stockQuantity} left
+                              </span>
+                            )}
+                            {!inStock && (
+                              <span className="text-[10px] font-semibold text-red-500 bg-red-50 px-2 py-0.5 rounded-full">Sold out</span>
+                            )}
+                          </div>
                         </div>
                         <p className="text-xs md:text-sm text-slate-500 line-clamp-2 mt-1 leading-relaxed">{item.description}</p>
                       </div>
                       <div className="flex items-center justify-between mt-3">
                         <span className="text-sm md:text-base font-bold text-slate-900">{formatCurrency(Number(item.price))}</span>
-                        {item.isAvailable ? (
-                          qty > 0 ? (
-                            <div className="flex items-center gap-2">
-                              <button onClick={() => removeItem(item.id)} className="w-8 h-8 rounded-full bg-slate-100 text-slate-600 hover:bg-slate-200 flex items-center justify-center transition active:scale-90">
-                                <span className="material-symbols-outlined text-lg">remove</span>
-                              </button>
-                              <span className="text-sm font-bold text-slate-900 w-5 text-center">{qty}</span>
-                              <button onClick={() => addItem(item, restaurant.id, restaurant.name)} className="w-8 h-8 rounded-full bg-amber-500 text-white hover:bg-amber-600 flex items-center justify-center transition active:scale-90">
-                                <span className="material-symbols-outlined text-lg">add</span>
-                              </button>
-                            </div>
-                          ) : (
-                            <button onClick={() => addItem(item, restaurant.id, restaurant.name)} className="bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold px-4 py-2 rounded-full transition active:scale-95">
-                              Add
+                        {qty > 0 ? (
+                          <div className="flex items-center gap-2">
+                            <button onClick={() => removeItem(item.id)} className="w-8 h-8 rounded-full bg-slate-100 text-slate-600 hover:bg-slate-200 flex items-center justify-center transition active:scale-90">
+                              <span className="material-symbols-outlined text-lg">remove</span>
                             </button>
-                          )
+                            <span className="text-sm font-bold text-slate-900 w-5 text-center">{qty}</span>
+                            <button
+                              onClick={() => addItem(item, restaurant.id, restaurant.name)}
+                              disabled={!inStock || maxedOut || !orderingOpen}
+                              className="w-8 h-8 rounded-full bg-amber-500 text-white hover:bg-amber-600 disabled:bg-slate-300 disabled:cursor-not-allowed flex items-center justify-center transition active:scale-90"
+                            >
+                              <span className="material-symbols-outlined text-lg">add</span>
+                            </button>
+                          </div>
+                        ) : inStock && orderingOpen ? (
+                          <button onClick={() => addItem(item, restaurant.id, restaurant.name)} className="bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold px-4 py-2 rounded-full transition active:scale-95">
+                            Add
+                          </button>
                         ) : (
-                          <span className="text-xs text-slate-400 font-medium">Unavailable</span>
+                          <span className="text-xs text-slate-400 font-medium">
+                            {!orderingOpen ? "Closed" : "Sold out"}
+                          </span>
                         )}
                       </div>
                     </div>

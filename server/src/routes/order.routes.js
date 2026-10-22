@@ -7,6 +7,8 @@ import { checkoutSchema, estimateSchema } from "../validation/schemas.js";
 import { calculateFees } from "../services/feecalculator.js";
 import { notify } from "../services/events.js";
 import { refundPaymentOnce } from "../services/refunds.js";
+import { announceMenuUpdate, releaseOrderStock } from "../services/inventory.js";
+import { computeOpenStatus } from "../services/hours.js";
 import crypto from "crypto";
 import { checkoutLimiter } from "../middleware/rate-limiter.js";
 import { getRefundWindowMinutes } from "../utils/refund.js";
@@ -30,7 +32,14 @@ async function resolveOrderItems(restaurantId, items) {
   const numericRestaurantId = Number(restaurantId);
   const restaurant = await prisma.restaurant.findUnique({
     where: { id: numericRestaurantId },
-    select: { id: true, approvalStatus: true },
+    select: {
+      id: true,
+      approvalStatus: true,
+      isOpen: true,
+      hours: {
+        select: { dayOfWeek: true, openTime: true, closeTime: true, isClosed: true },
+      },
+    },
   });
   if (!restaurant) {
     return { error: { status: 404, message: "Restaurant not found" } };
@@ -42,6 +51,11 @@ async function resolveOrderItems(restaurantId, items) {
     return {
       error: { status: 403, message: "This restaurant is not currently accepting orders" },
     };
+  }
+
+  // The manual switch and the weekly schedule both gate ordering.
+  if (!computeOpenStatus(restaurant).isOpenNow) {
+    return { error: { status: 403, message: "This restaurant is currently closed" } };
   }
 
   // One query for the whole cart instead of one per item.
@@ -80,6 +94,7 @@ async function resolveOrderItems(restaurantId, items) {
       unitPrice: Number(menuItem.price),
       quantity: item.quantity,
       menuItemId: item.menuItemId,
+      name: menuItem.name,
     });
   }
 
@@ -128,42 +143,75 @@ router.post("/orders/checkout", checkoutLimiter, authMiddleware, validate(checko
     const reference = `CHOW-${Date.now()}-${crypto.randomBytes(4).toString("hex")}`;
     let order;
     try {
-      order = await prisma.order.create({
-        data: {
-          customerId: req.user.id,
-          restaurantId: Number(restaurantId),
-          deliveryAddress: deliveryLocation.address,
-          deliveryLat: deliveryLocation.lat,
-          deliveryLng: deliveryLocation.lng,
-          idempotencyKey,
-          status: "PENDING_PAYMENT",
-          subtotal: fees.subtotal,
-          deliveryFee: fees.deliveryFee,
-          serviceFee: fees.serviceFee,
-          totalAmount: fees.totalAmount,
-          orderItems: {
-            create: validatedItems.map((item) => ({
-              quantity: item.quantity,
-              unitPrice: item.unitPrice,
-              totalPrice: item.unitPrice * item.quantity,
-              menuItemId: item.menuItemId,
-            })),
-          },
-          payment: {
-            create: {
-              amount: fees.totalAmount,
-              reference,
-              status: "PENDING",
+      order = await prisma.$transaction(async (tx) => {
+        // Aggregate duplicate lines, then claim stock atomically. Untracked
+        // items (null) pass the OR branch and stay null after the decrement.
+        const quantities = new Map();
+        const names = new Map();
+        for (const item of validatedItems) {
+          quantities.set(item.menuItemId, (quantities.get(item.menuItemId) || 0) + item.quantity);
+          names.set(item.menuItemId, item.name);
+        }
+
+        for (const [menuItemId, quantity] of quantities) {
+          const claimed = await tx.menuItem.updateMany({
+            where: {
+              id: menuItemId,
+              isAvailable: true,
+              OR: [{ stockQuantity: null }, { stockQuantity: { gte: quantity } }],
+            },
+            data: { stockQuantity: { decrement: quantity } },
+          });
+
+          if (claimed.count === 0) {
+            throw {
+              status: 409,
+              message: `"${names.get(menuItemId)}" just sold out. Please refresh your cart.`,
+            };
+          }
+        }
+
+        return tx.order.create({
+          data: {
+            customerId: req.user.id,
+            restaurantId: Number(restaurantId),
+            deliveryAddress: deliveryLocation.address,
+            deliveryLat: deliveryLocation.lat,
+            deliveryLng: deliveryLocation.lng,
+            idempotencyKey,
+            status: "PENDING_PAYMENT",
+            stockReserved: true,
+            subtotal: fees.subtotal,
+            deliveryFee: fees.deliveryFee,
+            serviceFee: fees.serviceFee,
+            totalAmount: fees.totalAmount,
+            orderItems: {
+              create: validatedItems.map((item) => ({
+                quantity: item.quantity,
+                unitPrice: item.unitPrice,
+                totalPrice: item.unitPrice * item.quantity,
+                menuItemId: item.menuItemId,
+              })),
+            },
+            payment: {
+              create: {
+                amount: fees.totalAmount,
+                reference,
+                status: "PENDING",
+              },
             },
           },
-        },
-        include: {
-          orderItems: { include: { menuItem: true } },
-          restaurant: PUBLIC_RESTAURANT,
-          payment: true,
-        },
-      });
+          include: {
+            orderItems: { include: { menuItem: true } },
+            restaurant: PUBLIC_RESTAURANT,
+            payment: true,
+          },
+        });
+      }, { timeout: 15000, maxWait: 10000 });
     } catch (error) {
+      if (error.status) {
+        return res.status(error.status).json({ message: error.message });
+      }
       if (error.code === "P2002") {
         // This customer already has an order with this key → return it instead of creating a duplicate
         const existing = await prisma.order.findUnique({
@@ -192,6 +240,9 @@ router.post("/orders/checkout", checkoutLimiter, authMiddleware, validate(checko
       }
       throw error;
     }
+
+    // Stock changed for this restaurant's menu.
+    announceMenuUpdate(Number(restaurantId));
 
     console.log("Order delivery location saved:", {
       orderId: order.id,
@@ -444,6 +495,10 @@ router.put("/orders/:id/status", authMiddleware, ownerMiddleware, async (req, re
           });
         }
       }
+
+      // Release the inventory this order held (idempotent via stockReserved).
+      await prisma.$transaction((tx) => releaseOrderStock(order.id, tx));
+      announceMenuUpdate(order.restaurantId);
     } else {
       // Same atomic-claim pattern for every forward transition.
       const transition = await prisma.order.updateMany({
@@ -562,6 +617,10 @@ router.post("/orders/:id/cancel", authMiddleware, async (req, res, next) => {
 
       refunded = true;
     }
+
+    // Put the reserved stock back on the menu (idempotent).
+    await prisma.$transaction((tx) => releaseOrderStock(order.id, tx));
+    announceMenuUpdate(order.restaurantId);
 
     const updated = await prisma.order.findUnique({ where: { id: order.id } });
     if (updated) delete updated.deliveryCode;

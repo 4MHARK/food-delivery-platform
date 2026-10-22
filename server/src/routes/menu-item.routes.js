@@ -6,6 +6,8 @@ import optionalAuthMiddleware from "../middleware/optional-auth.middleware.js";
 import { validate } from "../middleware/validate.js";
 import { menuItemSchema } from "../validation/schemas.js";
 import { cacheGet, cacheSet, cacheClear } from "../services/cache.js";
+import { serializeMenuItem, announceMenuUpdate } from "../services/inventory.js";
+import { computeOpenStatus } from "../services/hours.js";
 
 const router = express.Router();
 
@@ -34,7 +36,7 @@ router.get("/categories", async (req, res, next) => {
 
 router.post("/restaurants/:id/menu-items", authMiddleware, ownerMiddleware, validate(menuItemSchema), async (req, res, next) => {
   try {
-    const { name, description, imageUrl, price, category } = req.body;
+    const { name, description, imageUrl, price, category, stockQuantity } = req.body;
     const restaurant = await prisma.restaurant.findUnique({
       where: { id: Number(req.params.id) },
     });
@@ -55,6 +57,7 @@ router.post("/restaurants/:id/menu-items", authMiddleware, ownerMiddleware, vali
         imageUrl,
         price,
         category,
+        stockQuantity: stockQuantity ?? null,
         restaurantId: Number(req.params.id),
       },
       include: {
@@ -68,6 +71,7 @@ router.post("/restaurants/:id/menu-items", authMiddleware, ownerMiddleware, vali
       },
     });
     cacheClear();
+    announceMenuUpdate(Number(req.params.id));
     res.status(201).json({
       message: " Menu created successfully",
       menu: newMenu,
@@ -117,7 +121,7 @@ router.get("/restaurants/:id/menu-items", optionalAuthMiddleware, async (req, re
     });
     const body = {
       message: "Menu-item fetched successfully",
-      menuItems,
+      menuItems: menuItems.map(serializeMenuItem),
     };
     if (cacheKey) cacheSet(cacheKey, body);
     res.status(200).json(body);
@@ -128,7 +132,7 @@ router.get("/restaurants/:id/menu-items", optionalAuthMiddleware, async (req, re
 
 router.put("/menu-items/:id", authMiddleware, ownerMiddleware, validate(menuItemSchema), async (req, res, next) => {
   try {
-    const { name, description, price, imageUrl, category } = req.body;
+    const { name, description, price, imageUrl, category, stockQuantity } = req.body;
     const menuItem = await prisma.menuItem.findUnique({
       where: { id: Number(req.params.id) },
       include: { restaurant: true },
@@ -145,7 +149,14 @@ router.put("/menu-items/:id", authMiddleware, ownerMiddleware, validate(menuItem
     }
     const update = await prisma.menuItem.update({
       where: { id: Number(req.params.id) },
-      data: { name, description, price, category, imageUrl },
+      data: {
+        name,
+        description,
+        price,
+        category,
+        imageUrl,
+        ...(stockQuantity !== undefined ? { stockQuantity } : {}),
+      },
       include: {
         restaurant: {
           include: {
@@ -157,6 +168,7 @@ router.put("/menu-items/:id", authMiddleware, ownerMiddleware, validate(menuItem
       },
     });
     cacheClear();
+    announceMenuUpdate(menuItem.restaurantId);
     res.status(200).json({
       message: "Menu items updated successfully",
       update,
@@ -202,6 +214,7 @@ router.delete("/menu-items/:id", authMiddleware,ownerMiddleware ,async (req, res
       },
     });
     cacheClear();
+    announceMenuUpdate(menuItem.restaurantId);
     res.status(200).json({
       message: "Items deleted successfully",
       deleteMenuItem,
@@ -237,15 +250,29 @@ router.get("/search", async (req, res, next) => {
           approvalStatus: "APPROVED",
           name: { contains: q, mode: "insensitive" },
         },
-        select: { id: true, name: true, imageUrl: true, address: true, description: true },
+        select: {
+          id: true,
+          name: true,
+          imageUrl: true,
+          address: true,
+          description: true,
+          isOpen: true,
+          hours: {
+            select: { dayOfWeek: true, openTime: true, closeTime: true, isClosed: true },
+            orderBy: { dayOfWeek: "asc" },
+          },
+        },
         take: 10,
       }),
     ]);
 
     res.status(200).json({
       message: "Search results fetched successfully",
-      menuItems,
-      restaurants,
+      menuItems: menuItems.map(serializeMenuItem),
+      restaurants: restaurants.map((restaurant) => ({
+        ...restaurant,
+        ...computeOpenStatus(restaurant),
+      })),
     });
   } catch (error) {
     next(error);

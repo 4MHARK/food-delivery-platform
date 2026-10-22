@@ -2,6 +2,7 @@ import express from "express";
 import prisma from "../config/prisma.js";
 import authMiddleware from "../middleware/auth.middleware.js";
 import { PUBLIC_RESTAURANT_SELECT } from "../utils/selects.js";
+import { computeOpenStatus } from "../services/hours.js";
 
 const router = express.Router();
 
@@ -18,7 +19,10 @@ router.get("/favorites", authMiddleware, async (req, res, next) => {
     });
     res.status(200).json({
       message: "Favorites fetched successfully",
-      favorites: favorites.map((f) => f.restaurant),
+      favorites: favorites.map((f) => ({
+        ...f.restaurant,
+        ...computeOpenStatus(f.restaurant),
+      })),
     });
   } catch (error) {
     next(error);

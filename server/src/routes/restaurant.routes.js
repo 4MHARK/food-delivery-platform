@@ -3,9 +3,11 @@ import prisma from "../config/prisma.js";
 import authMiddleware from "../middleware/auth.middleware.js";
 import ownerMiddleware from "../middleware/owner.middleware.js";
 import { validate } from "../middleware/validate.js";
-import { restaurantSchema, bankDetailsSchema } from "../validation/schemas.js";
+import { restaurantSchema, restaurantHoursSchema, bankDetailsSchema } from "../validation/schemas.js";
 import { createTransferRecipient } from "../services/paystack.js";
 import { cacheGet, cacheSet, cacheClear } from "../services/cache.js";
+import { computeOpenStatus } from "../services/hours.js";
+import { notify } from "../services/events.js";
 import { PUBLIC_RESTAURANT_SELECT } from "../utils/selects.js";
 
 const router = express.Router();
@@ -48,9 +50,13 @@ router.get("/restaurants", async (req, res, next) => {
       where,
       select: PUBLIC_RESTAURANT_SELECT,
     });
+    const withRatings = await attachRatings(restaurants);
     const body = {
       message: "Restaurants fetched successfully",
-      restaurants: await attachRatings(restaurants),
+      restaurants: withRatings.map((restaurant) => ({
+        ...restaurant,
+        ...computeOpenStatus(restaurant),
+      })),
     };
     cacheSet(cacheKey, body);
     res.status(200).json(body);
@@ -73,9 +79,10 @@ router.get("/restaurants/:id", async (req, res, next) => {
       });
     }
 
+    const withRatings = (await attachRatings([restaurant]))[0];
     res.status(200).json({
       message: "Restaurants fetched successfully",
-      restaurant: (await attachRatings([restaurant]))[0],
+      restaurant: { ...withRatings, ...computeOpenStatus(withRatings) },
     });
   } catch (error) {
     next(error)
@@ -87,9 +94,14 @@ router.get("/my-restaurant", authMiddleware, async (req, res, next) => {
   try {
     const restaurant = await prisma.restaurant.findFirst({
       where: { ownerId: req.user.id },
-      include: { owner: { select: { id: true, name: true, email: true } } },
+      include: {
+        owner: { select: { id: true, name: true, email: true } },
+        hours: { orderBy: { dayOfWeek: "asc" } },
+      },
     });
-    res.status(200).json({ restaurant: restaurant || null });
+    res.status(200).json({
+      restaurant: restaurant ? { ...restaurant, ...computeOpenStatus(restaurant) } : null,
+    });
   } catch (error) {
     next(error)
   }
@@ -216,6 +228,110 @@ router.put("/restaurants/:id", authMiddleware, ownerMiddleware, validate(restaur
 
   } catch (error) {
     next(error)
+  }
+});
+
+// Toggle the manual "accepting orders" switch (owner)
+router.put("/restaurants/:id/availability", authMiddleware, ownerMiddleware, async (req, res, next) => {
+  try {
+    const { isOpen } = req.body;
+    if (typeof isOpen !== "boolean") {
+      return res.status(400).json({ message: "isOpen must be true or false" });
+    }
+
+    const restaurant = await prisma.restaurant.findUnique({
+      where: { id: Number(req.params.id) },
+      select: { id: true, ownerId: true },
+    });
+
+    if (!restaurant) {
+      return res.status(404).json({ message: "restaurant not found" });
+    }
+    if (restaurant.ownerId !== req.user.id) {
+      return res.status(403).json({ message: "You can only edit your restaurant" });
+    }
+
+    const updated = await prisma.restaurant.update({
+      where: { id: restaurant.id },
+      data: { isOpen },
+      select: { id: true, isOpen: true },
+    });
+
+    cacheClear();
+    notify("restaurant:updated", ["*"], { restaurantId: updated.id });
+
+    const withHours = await prisma.restaurant.findUnique({
+      where: { id: restaurant.id },
+      select: {
+        isOpen: true,
+        hours: {
+          select: { dayOfWeek: true, openTime: true, closeTime: true, isClosed: true },
+        },
+      },
+    });
+
+    res.status(200).json({
+      message: updated.isOpen ? "Restaurant is accepting orders" : "Restaurant is closed",
+      isOpen: updated.isOpen,
+      isOpenNow: computeOpenStatus(withHours).isOpenNow,
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// Replace the weekly schedule (owner). An empty array means "always open".
+router.put("/restaurants/:id/hours", authMiddleware, ownerMiddleware, validate(restaurantHoursSchema), async (req, res, next) => {
+  try {
+    const restaurant = await prisma.restaurant.findUnique({
+      where: { id: Number(req.params.id) },
+      select: { id: true, ownerId: true },
+    });
+
+    if (!restaurant) {
+      return res.status(404).json({ message: "restaurant not found" });
+    }
+    if (restaurant.ownerId !== req.user.id) {
+      return res.status(403).json({ message: "You can only edit your restaurant" });
+    }
+
+    const { hours } = req.body;
+
+    await prisma.$transaction(async (tx) => {
+      await tx.restaurantHours.deleteMany({ where: { restaurantId: restaurant.id } });
+      if (hours.length > 0) {
+        await tx.restaurantHours.createMany({
+          data: hours.map((day) => ({
+            restaurantId: restaurant.id,
+            dayOfWeek: day.dayOfWeek,
+            openTime: day.isClosed ? null : day.openTime,
+            closeTime: day.isClosed ? null : day.closeTime,
+            isClosed: day.isClosed,
+          })),
+        });
+      }
+    });
+
+    cacheClear();
+    notify("restaurant:updated", ["*"], { restaurantId: restaurant.id });
+
+    const saved = await prisma.restaurantHours.findMany({
+      where: { restaurantId: restaurant.id },
+      orderBy: { dayOfWeek: "asc" },
+    });
+
+    const restaurantState = await prisma.restaurant.findUnique({
+      where: { id: restaurant.id },
+      select: { isOpen: true },
+    });
+
+    res.status(200).json({
+      message: "Opening hours saved",
+      hours: saved,
+      isOpenNow: computeOpenStatus({ isOpen: restaurantState.isOpen, hours: saved }).isOpenNow,
+    });
+  } catch (error) {
+    next(error);
   }
 });
 

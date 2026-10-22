@@ -13,7 +13,12 @@ export const PUBLIC_RESTAURANT_SELECT = {
   campusId: true,
   ownerId: true,
   approvalStatus: true,
+  isOpen: true,
   owner: { select: { id: true, name: true } },
+  hours: {
+    select: { dayOfWeek: true, openTime: true, closeTime: true, isClosed: true },
+    orderBy: { dayOfWeek: "asc" },
+  },
 };
 
 export const PUBLIC_RESTAURANT = { select: PUBLIC_RESTAURANT_SELECT };
