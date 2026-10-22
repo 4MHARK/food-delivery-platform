@@ -37,6 +37,17 @@ app.use(globalLimiter)
 app.use(indexRoutes)
 app.use((err, req, res, next) =>{
     logger.error(`${req.method} ${req.originalUrl} —`, err)
+
+    // Transient database/connection failures are retryable, not a generic bug.
+    if (
+      err?.name === "PrismaClientInitializationError" ||
+      ["P1001", "P1017"].includes(err?.code)
+    ) {
+      return res.status(503).json({
+        message: "Our database is temporarily unavailable. Please try again.",
+      });
+    }
+
     const status= err.status || 500
     const message = err.status ? err.message: "Unexpected error occured"
     res.status(status).json({message})

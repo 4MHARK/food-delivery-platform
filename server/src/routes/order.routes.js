@@ -483,7 +483,13 @@ router.put("/orders/:id/status", authMiddleware, ownerMiddleware, async (req, re
       // Refund paid orders. If Paystack refuses, put the order back so the
       // owner can retry instead of ending up cancelled without a refund.
       if (order.payment?.status === "SUCCESS") {
-        const refund = await refundPaymentOnce(order.payment);
+        let refund;
+        try {
+          refund = await refundPaymentOnce(order.payment);
+        } catch (error) {
+          console.error("[orders/status] refund failed", error);
+          refund = { ok: false };
+        }
 
         if (!refund.ok) {
           await prisma.order.updateMany({
@@ -491,14 +497,18 @@ router.put("/orders/:id/status", authMiddleware, ownerMiddleware, async (req, re
             data: { status: previousStatus, deliveryCode: order.deliveryCode },
           });
           return res.status(502).json({
-            message: "Refund failed — order was NOT cancelled. Please try again.",
+            message: "We couldn't start the refund, so the order was NOT cancelled. Please try again.",
           });
         }
       }
 
       // Release the inventory this order held (idempotent via stockReserved).
-      await prisma.$transaction((tx) => releaseOrderStock(order.id, tx));
-      announceMenuUpdate(order.restaurantId);
+      try {
+        await prisma.$transaction((tx) => releaseOrderStock(order.id, tx));
+        announceMenuUpdate(order.restaurantId);
+      } catch (error) {
+        console.error("[orders/status] stock release failed", error);
+      }
     } else {
       // Same atomic-claim pattern for every forward transition.
       const transition = await prisma.order.updateMany({
@@ -602,7 +612,13 @@ router.post("/orders/:id/cancel", authMiddleware, async (req, res, next) => {
 
     let refunded = false;
     if (refundDue) {
-      const refund = await refundPaymentOnce(payment);
+      let refund;
+      try {
+        refund = await refundPaymentOnce(payment);
+      } catch (error) {
+        console.error("[orders/cancel] refund failed", error);
+        refund = { ok: false };
+      }
 
       if (!refund.ok) {
         // Restore the order so the customer can retry.
@@ -611,16 +627,22 @@ router.post("/orders/:id/cancel", authMiddleware, async (req, res, next) => {
           data: { status: previousStatus, deliveryCode: order.deliveryCode },
         });
         return res.status(502).json({
-          message: "Refund failed — order was NOT cancelled. Please try again.",
+          message: "We couldn't start your refund, so the order was NOT cancelled. Please try again.",
         });
       }
 
       refunded = true;
     }
 
-    // Put the reserved stock back on the menu (idempotent).
-    await prisma.$transaction((tx) => releaseOrderStock(order.id, tx));
-    announceMenuUpdate(order.restaurantId);
+    // Put the reserved stock back on the menu (idempotent). A stock failure
+    // must not turn a successful cancellation into an error; the sweep will
+    // retry orders left with stockReserved = true.
+    try {
+      await prisma.$transaction((tx) => releaseOrderStock(order.id, tx));
+      announceMenuUpdate(order.restaurantId);
+    } catch (error) {
+      console.error("[orders/cancel] stock release failed", error);
+    }
 
     const updated = await prisma.order.findUnique({ where: { id: order.id } });
     if (updated) delete updated.deliveryCode;

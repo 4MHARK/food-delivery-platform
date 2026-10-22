@@ -29,19 +29,37 @@ export async function refundPayment(reference) {
   // asynchronous — a `true` here means the refund was *queued*, not that the
   // money has landed back on the card yet. body.data.status reflects its
   // progress ("pending" / "processed" / "failed").
-  const response = await fetch(`${PAYSTACK_BASE}/refund`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${process.env.PAYSTACK_SECRET_KEY}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({ transaction: reference }),
-  });
+  let response;
+  try {
+    response = await fetch(`${PAYSTACK_BASE}/refund`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${process.env.PAYSTACK_SECRET_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ transaction: reference }),
+    });
+  } catch (error) {
+    // Network/DNS failure — return a failure result instead of throwing an
+    // opaque 500 out of the cancel route.
+    return {
+      refunded: false,
+      data: { message: "Could not reach Paystack. Please try again.", error: error.message },
+    };
+  }
 
-  const body = await response.json();
+  let body = null;
+  try {
+    body = await response.json();
+  } catch {
+    // Paystack can return an HTML/empty page for upstream errors.
+  }
 
-  if (!body.status) {
-    return { refunded: false, data: body };
+  if (!body || !body.status) {
+    return {
+      refunded: false,
+      data: body || { message: `Paystack refund failed (HTTP ${response.status})` },
+    };
   }
 
   return {

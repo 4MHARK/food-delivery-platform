@@ -31,18 +31,24 @@ export async function refundPaymentOnce(payment) {
       ? payment.gatewayResponse
       : {};
 
-  await prisma.payment.update({
-    where: { id: payment.id },
-    data: {
-      refundReference:
-        data?.reference != null
-          ? String(data.reference)
-          : data?.id != null
-            ? String(data.id)
-            : "queued",
-      gatewayResponse: { ...previous, refund: data },
-    },
-  });
+  try {
+    await prisma.payment.update({
+      where: { id: payment.id },
+      data: {
+        refundReference:
+          data?.reference != null
+            ? String(data.reference)
+            : data?.id != null
+              ? String(data.id)
+              : "queued",
+        gatewayResponse: { ...previous, refund: data },
+      },
+    });
+  } catch (error) {
+    // The refund is already queued; a metadata write failure must not turn the
+    // cancellation into an error. Paystack remains the source of truth.
+    console.error(`[refunds] could not store refund metadata for ${payment.reference}`, error);
+  }
 
   return { ok: true, alreadyRefunded: false, data };
 }
