@@ -99,7 +99,7 @@ const STATUS_MESSAGES = {
     owner: { title: "Order picked up", body: "A rider has picked up your order." },
   },
   FAILED: {
-    customer: { title: "Delivery issue", body: "Your delivery hit a snag — we're reassigning a rider." },
+    customer: { title: "Delivery issue", body: "Your delivery hit a snag — we're reassigning a rider. Your handoff code has changed." },
     owner: { title: "Delivery failed", body: "The rider reported a problem — reassign the order." },
   },
 };

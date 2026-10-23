@@ -334,6 +334,8 @@ const RidersSection = () => {
   const [error, setError] = useState("");
   const [togglingId, setTogglingId] = useState(null);
   const [suspendingId, setSuspendingId] = useState(null);
+  const [clearingId, setClearingId] = useState(null);
+  const [clearingBankId, setClearingBankId] = useState(null);
   const [message, setMessage] = useState("");
   const [messageType, setMessageType] = useState("success"); // "success" | "error"
   const [confirmRevokeId, setConfirmRevokeId] = useState(null);
@@ -394,6 +396,50 @@ const RidersSection = () => {
       setTimeout(() => setMessage(""), 4000);
     } finally {
       setSuspendingId(null);
+    }
+  };
+
+  const handleClearFailureFlag = async (riderId) => {
+    try {
+      setClearingId(riderId);
+      const data = await api.put(`/admin/riders/${riderId}/clear-failure-flag`);
+
+      setRiders((prev) =>
+        prev.map((r) =>
+          r.id === riderId ? { ...r, flaggedForReview: false } : r
+        )
+      );
+      setMessage(data.message);
+      setMessageType("success");
+      setTimeout(() => setMessage(""), 4000);
+    } catch (err) {
+      setMessage(err.message || "Failed to clear the flag.");
+      setMessageType("error");
+      setTimeout(() => setMessage(""), 4000);
+    } finally {
+      setClearingId(null);
+    }
+  };
+
+  const handleClearBankReview = async (riderId) => {
+    try {
+      setClearingBankId(riderId);
+      const data = await api.put(`/admin/riders/${riderId}/clear-bank-review`);
+
+      setRiders((prev) =>
+        prev.map((r) =>
+          r.id === riderId ? { ...r, bankDetailsReviewRequired: false } : r
+        )
+      );
+      setMessage(data.message);
+      setMessageType("success");
+      setTimeout(() => setMessage(""), 4000);
+    } catch (err) {
+      setMessage(err.message || "Failed to approve the bank details.");
+      setMessageType("error");
+      setTimeout(() => setMessage(""), 4000);
+    } finally {
+      setClearingBankId(null);
     }
   };
 
@@ -481,6 +527,18 @@ const RidersSection = () => {
                         Suspended
                       </span>
                     )}
+                    {rider.flaggedForReview && (
+                      <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-red-100 text-red-700">
+                        <span className="w-1.5 h-1.5 rounded-full bg-red-500" />
+                        Needs review
+                      </span>
+                    )}
+                    {rider.bankDetailsReviewRequired && (
+                      <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-800">
+                        <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+                        Bank review
+                      </span>
+                    )}
                   </div>
                   <p className="text-xs text-slate-400 mb-2">{rider.email} · {rider.phone}</p>
                   <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-500">
@@ -489,6 +547,24 @@ const RidersSection = () => {
                     {rider.licenseNumber && <span>License: {rider.licenseNumber}</span>}
                     {rider.matricNumber && <span>Matric: {rider.matricNumber}</span>}
                   </div>
+                  {(rider.bankDetailsReviewRequired || rider.accountNameMismatch) && (
+                    <div className="mt-2 text-xs text-slate-500">
+                      <span className="text-slate-400">Payout account: </span>
+                      <span className="font-semibold text-slate-700">
+                        {rider.accountName || "—"}
+                      </span>
+                      {rider.accountNumber && (
+                        <span className="text-slate-400">
+                          {" "}· {rider.bankName || "Bank"} ····{rider.accountNumber.slice(-4)}
+                        </span>
+                      )}
+                      {rider.accountNameMismatch && (
+                        <span className="block text-red-500 mt-0.5">
+                          Account name does not match the rider's profile name.
+                        </span>
+                      )}
+                    </div>
+                  )}
                   <div className="flex gap-3 mt-2 text-xs text-slate-400">
                     <span>{rider.totalDeliveries} deliveries</span>
                     <span>{rider.completedDeliveries} completed</span>
@@ -547,6 +623,24 @@ const RidersSection = () => {
                 >
                   {suspendingId === rider.id ? "Updating..." : rider.isSuspended ? "Unsuspend" : "Suspend"}
                 </button>
+                {rider.flaggedForReview && (
+                  <button
+                    onClick={() => handleClearFailureFlag(rider.id)}
+                    disabled={clearingId === rider.id}
+                    className="px-4 py-2 rounded-full text-xs font-bold bg-amber-100 text-amber-800 hover:bg-amber-200 disabled:opacity-50 transition active:scale-95"
+                  >
+                    {clearingId === rider.id ? "Clearing..." : "Clear flag"}
+                  </button>
+                )}
+                {rider.bankDetailsReviewRequired && (
+                  <button
+                    onClick={() => handleClearBankReview(rider.id)}
+                    disabled={clearingBankId === rider.id}
+                    className="px-4 py-2 rounded-full text-xs font-bold bg-amber-100 text-amber-800 hover:bg-amber-200 disabled:opacity-50 transition active:scale-95"
+                  >
+                    {clearingBankId === rider.id ? "Approving..." : "Approve bank"}
+                  </button>
+                )}
                 </div>
               </div>
             </div>
@@ -1244,6 +1338,7 @@ const PAYOUT_STATUS_STYLE = {
 const PayoutsSection = ({ isSuperAdmin }) => {
   const [payouts, setPayouts] = useState([]);
   const [unpaid, setUnpaid] = useState([]);
+  const [autoPayouts, setAutoPayouts] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [reconciling, setReconciling] = useState(false);
@@ -1260,6 +1355,7 @@ const PayoutsSection = ({ isSuperAdmin }) => {
   const fetchPayouts = async () => {
     const data = await api.get("/admin/payouts");
     setPayouts(data.payouts);
+    setAutoPayouts(Boolean(data.autoPayouts));
   };
 
   const fetchUnpaid = async () => {
@@ -1471,6 +1567,11 @@ const PayoutsSection = ({ isSuperAdmin }) => {
                     ) : (
                       <p className="text-xs text-red-500 font-medium">⚠ No bank details yet — ask them to add it before you pay.</p>
                     )}
+                    {g.bankDetailsReviewRequired && (
+                      <p className="text-xs text-amber-600 font-medium mt-1">
+                        ⚠ Bank details changed — approve them in the Riders tab before paying.
+                      </p>
+                    )}
                   </div>
                   <div className="shrink-0 flex flex-col items-end gap-2">
                     <span className="text-base font-bold text-slate-900">{formatCurrency(g.total)}</span>
@@ -1515,6 +1616,11 @@ const PayoutsSection = ({ isSuperAdmin }) => {
                         Attempt {p.attempt}
                       </span>
                     )}
+                    {p.held && (
+                      <span className="inline-flex items-center text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-800">
+                        Held for review
+                      </span>
+                    )}
                     {p.supersededBy && (
                       <span className="inline-flex items-center text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-500">
                         Superseded by #{p.supersededBy}
@@ -1526,7 +1632,7 @@ const PayoutsSection = ({ isSuperAdmin }) => {
                 </div>
                 <div className="shrink-0 flex flex-col items-end gap-2">
                   <span className="text-sm font-bold text-slate-900">{formatCurrency(p.amount)}</span>
-                  {p.status === "FAILED" && !p.supersededBy && (
+                  {(p.status === "FAILED" || (p.held && autoPayouts)) && !p.supersededBy && (
                     confirmRetryId === p.id ? (
                       <div className="flex items-center gap-2">
                         <button
@@ -1540,7 +1646,11 @@ const PayoutsSection = ({ isSuperAdmin }) => {
                           disabled={retryingId === p.id}
                           className="px-3 py-1.5 rounded-lg bg-red-600 hover:bg-red-700 disabled:bg-red-300 text-white text-[11px] font-bold transition active:scale-[0.98]"
                         >
-                          {retryingId === p.id ? "Retrying..." : "Confirm retry"}
+                          {retryingId === p.id
+                            ? "Retrying..."
+                            : p.held
+                              ? "Release payout"
+                              : "Confirm retry"}
                         </button>
                       </div>
                     ) : (
@@ -1548,7 +1658,7 @@ const PayoutsSection = ({ isSuperAdmin }) => {
                         onClick={() => setConfirmRetryId(p.id)}
                         className="px-3 py-1.5 rounded-lg border border-red-200 text-red-600 hover:bg-red-50 text-[11px] font-bold transition active:scale-[0.98]"
                       >
-                        Retry
+                        {p.held ? "Release" : "Retry"}
                       </button>
                     )
                   )}

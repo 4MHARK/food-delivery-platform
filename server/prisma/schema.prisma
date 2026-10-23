@@ -60,6 +60,15 @@ enum PayoutType {
   RIDER
 }
 
+// Why a delivery ended in FAILED. Kept on the audit row so accountability can
+// tell a rider-reported problem apart from a burned handoff code.
+enum DeliveryFailureKind {
+  REPORTED
+  CODE_ATTEMPTS
+  // Auto-failed by the stale-delivery sweeper: no status update for too long.
+  STALE
+}
+
 enum PayoutStatus {
   PENDING
   SUCCESS
@@ -159,11 +168,23 @@ model Rider {
   isAvailable   Boolean     @default(true)
   isVerified    Boolean     @default(false)
   isSuspended   Boolean     @default(false)
+  // Accountability counters. failureCount is the lifetime total; the automatic
+  // review flag is driven by a rolling window (see services/accountability.js).
+  failureCount      Int       @default(0)
+  lastFailureAt     DateTime?
+  flaggedForReview Boolean   @default(false)
   bankName      String?
   bankCode      String?
   accountNumber String?
   accountName   String?
   recipientCode String?
+  // Payout-account review. accountNameMismatch is informational (the Paystack
+  // account name shares no token with the rider's name); the review flag gates
+  // automatic payouts whenever the destination account changes.
+  accountNameMismatch       Boolean   @default(false)
+  bankDetailsUpdatedAt      DateTime?
+  bankDetailsReviewRequired Boolean   @default(false)
+  payouts                   Payout[]
   photoUrl      String?
   campusId      Int
   campus        Campus      @relation(fields: [campusId], references: [id])
@@ -171,6 +192,7 @@ model Rider {
   deliveries    Delivery[]
   rejectedOrders RejectedOrder[]
   reviews        RiderReview[]
+  failures       DeliveryFailure[]
   createdAt     DateTime    @default(now())
   updatedAt     DateTime    @updatedAt
 
@@ -286,6 +308,7 @@ deliveryLng Float?
   orderItems      OrderItem[]
   rejectedBy      RejectedOrder[]
   payouts         Payout[]
+  failures        DeliveryFailure[]
   createdAt       DateTime    @default(now())
   updatedAt       DateTime    @updatedAt
   @@index([restaurantId])
@@ -345,6 +368,25 @@ model RejectedOrder {
   @@unique([riderId, orderId])
 }
 
+// Permanent record of a failed delivery attempt. The Delivery row itself is
+// deleted when the order goes back to the queue, so this is the history that
+// survives reassignment and holds a rider accountable across orders.
+model DeliveryFailure {
+  id           Int                 @id @default(autoincrement())
+  orderId      Int
+  riderId      Int
+  kind         DeliveryFailureKind
+  reason       String?
+  // Wrong-code attempts burned on the assignment that failed.
+  codeAttempts Int                 @default(0)
+  createdAt    DateTime            @default(now())
+  order        Order               @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  rider        Rider               @relation(fields: [riderId], references: [id], onDelete: Cascade)
+
+  @@index([orderId])
+  @@index([riderId, createdAt])
+}
+
 model OrderItem {
   id         Int      @id @default(autoincrement())
   quantity   Int
@@ -383,6 +425,10 @@ model Payout {
   orderId         Int
   order           Order        @relation(fields: [orderId], references: [id])
   type            PayoutType
+  // Who is owed for a RIDER payout. Stored directly so the rider's history and
+  // balance survive the delivery row being deleted on reassignment.
+  riderId         Int?
+  rider           Rider?       @relation(fields: [riderId], references: [id], onDelete: SetNull)
   attempt         Int          @default(1)
   amount          Decimal      @db.Decimal(10,2)
   recipientCode   String?
@@ -395,6 +441,7 @@ model Payout {
 
   @@index([orderId])
   @@index([type, status])
+  @@index([riderId, status])
 }
 
 model RestaurantReview {

@@ -145,6 +145,9 @@ const ACTIVE_DELIVERY_STATUSES = [
   "CLOSE_BY",
 ];
 const PAST_DELIVERY_STATUSES = ["DELIVERED", "FAILED"];
+// Once the food is picked up, the server requires a written failure reason.
+const FAIL_REASON_REQUIRED_STATUSES = ["BAGGED", "MOVING", "CLOSE_BY"];
+const FAIL_REASON_MIN_LENGTH = 5;
 
 const ETA_RANGES = {
   Bicycle: [20, 35],
@@ -232,6 +235,7 @@ const RiderDashboard = () => {
   const [profileForm, setProfileForm] = useState(null);
   const [profilePhoto, setProfilePhoto] = useState("");
   const [profileIdType, setProfileIdType] = useState("license");
+  const [editingProfile, setEditingProfile] = useState(false);
   const [savingProfile, setSavingProfile] = useState(false);
   const [processingProfilePhoto, setProcessingProfilePhoto] = useState(false);
 
@@ -309,6 +313,10 @@ const RiderDashboard = () => {
     () => myDeliveries.filter((d) => PAST_DELIVERY_STATUSES.includes(d.status)),
     [myDeliveries]
   );
+  const failNeedsReason =
+    Boolean(failTarget) &&
+    activeDelivery?.id === failTarget &&
+    FAIL_REASON_REQUIRED_STATUSES.includes(activeDelivery.status);
 
   // Automatically switch to "My Delivery" sub-tab if rider has an active delivery on first load
   const hasAutoSwitchedRef = useRef(false);
@@ -319,21 +327,30 @@ const RiderDashboard = () => {
     }
   }, [activeDelivery]);
 
+  // Reset the editable profile fields from the saved rider. Used on load, on
+  // entering the Profile tab, on Edit, and on Cancel.
+  const resetProfileForm = (riderData) => {
+    if (!riderData) return;
+    setProfileForm({
+      vehicleType: riderData.vehicleType || "",
+      phone: riderData.user?.phone || "",
+      campusId: riderData.campusId ? String(riderData.campusId) : "",
+      licensePlate: riderData.licensePlate || "",
+      licenseNumber: riderData.licenseNumber || "",
+      matricNumber: riderData.matricNumber || "",
+    });
+    setProfilePhoto(riderData.photoUrl || "");
+    // Derive the ID tab from what was actually saved, so an unsaved toggle
+    // cannot survive a tab switch or a cancel.
+    setProfileIdType(riderData.matricNumber ? "matric" : "license");
+  };
+
   // ── Fetch rider profile ──
   const fetchRider = async () => {
     try {
       const data = await api.get("/riders/me");
       setRider(data.rider);
-      setProfileForm({
-        vehicleType: data.rider.vehicleType || "",
-        phone: data.rider.user?.phone || "",
-        campusId: data.rider.campusId ? String(data.rider.campusId) : "",
-        licensePlate: data.rider.licensePlate || "",
-        licenseNumber: data.rider.licenseNumber || "",
-        matricNumber: data.rider.matricNumber || "",
-      });
-      setProfilePhoto(data.rider.photoUrl || "");
-      setProfileIdType(data.rider.matricNumber ? "matric" : "license");
+      resetProfileForm(data.rider);
       setBankForm({
         accountNumber: data.rider.accountNumber || "",
         bankCode: data.rider.bankCode || "",
@@ -424,6 +441,17 @@ const RiderDashboard = () => {
     }
   };
 
+  const handleEditProfile = () => {
+    if (!rider) return;
+    resetProfileForm(rider);
+    setEditingProfile(true);
+  };
+
+  const handleCancelProfile = () => {
+    resetProfileForm(rider);
+    setEditingProfile(false);
+  };
+
   // ── Save profile changes ──
   const handleSaveProfile = async (e) => {
     e.preventDefault();
@@ -465,7 +493,8 @@ const RiderDashboard = () => {
 
       const data = await api.put("/riders/me", body);
       setRider((prev) => ({ ...prev, ...data.rider }));
-      setProfilePhoto(data.rider.photoUrl || profilePhoto);
+      resetProfileForm(data.rider);
+      setEditingProfile(false);
       showMsg("Profile updated.");
       // Campus/availability changes affect which orders this rider sees.
       fetchData();
@@ -651,9 +680,15 @@ const RiderDashboard = () => {
   // ── Confirm and execute FAILED ──
   const confirmFail = async () => {
     const deliveryId = failTarget;
-    setFailTarget(null);
     if (!deliveryId) return;
-    const reason = failReason.trim() || undefined;
+
+    const reason = failReason.trim();
+    if (failNeedsReason && reason.length < FAIL_REASON_MIN_LENGTH) {
+      showMsg("Add a short reason — the food has already been picked up.");
+      return; // keep the dialog open so the rider can type one
+    }
+
+    setFailTarget(null);
     setFailReason("");
     await handleUpdateDeliveryStatus(
       deliveryId,
@@ -722,8 +757,10 @@ const RiderDashboard = () => {
       setEditingBank(false);
       showMsg(
         data.nameMismatch
-          ? "Bank details saved, but the account name doesn't match your profile name. Double-check it."
-          : "Bank details saved."
+          ? "Bank details saved, but the account name doesn't match your profile name. An admin will review them before payouts."
+          : data.bankDetailsReviewRequired
+            ? "Bank details saved. An admin will review them before payouts are sent."
+            : "Bank details saved."
       );
     } catch (e) {
       showMsg(e.message || "Failed to save bank details.");
@@ -803,6 +840,14 @@ const RiderDashboard = () => {
     if (activeTab === "payouts") fetchPayouts();
     if (activeTab === "reviews") fetchReviews();
   }, [activeTab]);
+
+  // Opening the Profile tab always starts from saved data. This discards any
+  // unsaved edit and resets the ID-type toggle to what is actually stored.
+  useEffect(() => {
+    if (activeTab !== "profile" || !rider) return;
+    resetProfileForm(rider);
+    setEditingProfile(false);
+  }, [activeTab, rider?.id]);
 
   useEffect(() => {
     prevReviewCountRef.current = reviews.length;
@@ -1386,28 +1431,30 @@ const RiderDashboard = () => {
                       </span>
                     )}
                   </div>
-                  <div>
-                    <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-full bg-amber-500 px-4 py-2 text-xs font-bold text-white hover:bg-amber-600 transition">
-                      <span className="material-symbols-outlined text-sm">
-                        {processingProfilePhoto ? "hourglass_top" : "photo_camera"}
-                      </span>
-                      {processingProfilePhoto
-                        ? "Processing..."
-                        : profilePhoto
-                          ? "Change photo"
-                          : "Add photo"}
-                      <input
-                        type="file"
-                        accept="image/*"
-                        onChange={handleProfilePhotoChange}
-                        className="hidden"
-                        disabled={processingProfilePhoto}
-                      />
-                    </label>
-                    <p className="text-[11px] text-slate-400 mt-1.5">
-                      A clear photo helps customers identify you.
-                    </p>
-                  </div>
+                  {editingProfile && (
+                    <div>
+                      <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-full bg-amber-500 px-4 py-2 text-xs font-bold text-white hover:bg-amber-600 transition">
+                        <span className="material-symbols-outlined text-sm">
+                          {processingProfilePhoto ? "hourglass_top" : "photo_camera"}
+                        </span>
+                        {processingProfilePhoto
+                          ? "Processing..."
+                          : profilePhoto
+                            ? "Change photo"
+                            : "Add photo"}
+                        <input
+                          type="file"
+                          accept="image/*"
+                          onChange={handleProfilePhotoChange}
+                          className="hidden"
+                          disabled={processingProfilePhoto}
+                        />
+                      </label>
+                      <p className="text-[11px] text-slate-400 mt-1.5">
+                        A clear photo helps customers identify you.
+                      </p>
+                    </div>
+                  )}
                 </div>
 
                 <div className="grid sm:grid-cols-2 gap-3">
@@ -1420,7 +1467,8 @@ const RiderDashboard = () => {
                       onChange={(e) =>
                         setProfileForm({ ...profileForm, vehicleType: e.target.value })
                       }
-                      className="w-full h-11 px-3 rounded-xl border border-slate-200 bg-white text-sm text-slate-700 focus:border-amber-500 focus:ring-1 focus:ring-amber-500 outline-none"
+                      disabled={!editingProfile}
+                      className="w-full h-11 px-3 rounded-xl border border-slate-200 bg-white text-sm text-slate-700 focus:border-amber-500 focus:ring-1 focus:ring-amber-500 outline-none disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-500"
                     >
                       <option value="">Select vehicle...</option>
                       <option value="Motorcycle">Motorcycle</option>
@@ -1438,7 +1486,8 @@ const RiderDashboard = () => {
                       onChange={(e) =>
                         setProfileForm({ ...profileForm, phone: e.target.value })
                       }
-                      className="w-full h-11 px-3 rounded-xl border border-slate-200 bg-white text-sm text-slate-700 focus:border-amber-500 focus:ring-1 focus:ring-amber-500 outline-none"
+                      disabled={!editingProfile}
+                      className="w-full h-11 px-3 rounded-xl border border-slate-200 bg-white text-sm text-slate-700 focus:border-amber-500 focus:ring-1 focus:ring-amber-500 outline-none disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-500"
                       placeholder="+234..."
                     />
                   </div>
@@ -1453,7 +1502,8 @@ const RiderDashboard = () => {
                     onChange={(e) =>
                       setProfileForm({ ...profileForm, campusId: e.target.value })
                     }
-                    className="w-full h-11 px-3 rounded-xl border border-slate-200 bg-white text-sm text-slate-700 focus:border-amber-500 focus:ring-1 focus:ring-amber-500 outline-none"
+                    disabled={!editingProfile}
+                    className="w-full h-11 px-3 rounded-xl border border-slate-200 bg-white text-sm text-slate-700 focus:border-amber-500 focus:ring-1 focus:ring-amber-500 outline-none disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-500"
                   >
                     <option value="">
                       {campuses.length ? "Select your campus..." : "Loading campuses..."}
@@ -1474,7 +1524,8 @@ const RiderDashboard = () => {
                     <button
                       type="button"
                       onClick={() => setProfileIdType("license")}
-                      className={`flex-1 h-10 rounded-xl border-2 text-xs font-semibold transition ${
+                      disabled={!editingProfile}
+                      className={`flex-1 h-10 rounded-xl border-2 text-xs font-semibold transition disabled:cursor-not-allowed disabled:opacity-70 ${
                         profileIdType === "license"
                           ? "border-amber-500 bg-amber-50 text-amber-700"
                           : "border-slate-200 text-slate-500 hover:border-slate-300"
@@ -1485,7 +1536,8 @@ const RiderDashboard = () => {
                     <button
                       type="button"
                       onClick={() => setProfileIdType("matric")}
-                      className={`flex-1 h-10 rounded-xl border-2 text-xs font-semibold transition ${
+                      disabled={!editingProfile}
+                      className={`flex-1 h-10 rounded-xl border-2 text-xs font-semibold transition disabled:cursor-not-allowed disabled:opacity-70 ${
                         profileIdType === "matric"
                           ? "border-amber-500 bg-amber-50 text-amber-700"
                           : "border-slate-200 text-slate-500 hover:border-slate-300"
@@ -1507,7 +1559,8 @@ const RiderDashboard = () => {
                         onChange={(e) =>
                           setProfileForm({ ...profileForm, licensePlate: e.target.value })
                         }
-                        className="w-full h-11 px-3 rounded-xl border border-slate-200 bg-white text-sm text-slate-700 focus:border-amber-500 focus:ring-1 focus:ring-amber-500 outline-none"
+                        disabled={!editingProfile}
+                        className="w-full h-11 px-3 rounded-xl border border-slate-200 bg-white text-sm text-slate-700 focus:border-amber-500 focus:ring-1 focus:ring-amber-500 outline-none disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-500"
                         placeholder="e.g. LAG-12345"
                       />
                     </div>
@@ -1520,7 +1573,8 @@ const RiderDashboard = () => {
                         onChange={(e) =>
                           setProfileForm({ ...profileForm, licenseNumber: e.target.value })
                         }
-                        className="w-full h-11 px-3 rounded-xl border border-slate-200 bg-white text-sm text-slate-700 focus:border-amber-500 focus:ring-1 focus:ring-amber-500 outline-none"
+                        disabled={!editingProfile}
+                        className="w-full h-11 px-3 rounded-xl border border-slate-200 bg-white text-sm text-slate-700 focus:border-amber-500 focus:ring-1 focus:ring-amber-500 outline-none disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-500"
                         placeholder="e.g. LAG-12345"
                       />
                     </div>
@@ -1535,19 +1589,40 @@ const RiderDashboard = () => {
                       onChange={(e) =>
                         setProfileForm({ ...profileForm, matricNumber: e.target.value })
                       }
-                      className="w-full h-11 px-3 rounded-xl border border-slate-200 bg-white text-sm text-slate-700 focus:border-amber-500 focus:ring-1 focus:ring-amber-500 outline-none"
+                      disabled={!editingProfile}
+                      className="w-full h-11 px-3 rounded-xl border border-slate-200 bg-white text-sm text-slate-700 focus:border-amber-500 focus:ring-1 focus:ring-amber-500 outline-none disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-500"
                       placeholder="e.g. RUN/CMP/23/15250"
                     />
                   </div>
                 )}
 
-                <button
-                  type="submit"
-                  disabled={savingProfile}
-                  className="w-full h-11 rounded-xl bg-slate-900 hover:bg-slate-800 disabled:bg-slate-400 text-white font-bold text-sm transition active:scale-[0.98]"
-                >
-                  {savingProfile ? "Saving..." : "Save profile"}
-                </button>
+                {editingProfile ? (
+                  <div className="flex gap-3">
+                    <button
+                      type="button"
+                      onClick={handleCancelProfile}
+                      disabled={savingProfile}
+                      className="flex-1 h-11 rounded-xl border-2 border-slate-200 text-slate-600 font-semibold text-sm hover:bg-slate-50 transition active:scale-[0.98] disabled:opacity-50"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={savingProfile}
+                      className="flex-1 h-11 rounded-xl bg-slate-900 hover:bg-slate-800 disabled:bg-slate-400 text-white font-bold text-sm transition active:scale-[0.98]"
+                    >
+                      {savingProfile ? "Saving..." : "Save changes"}
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={handleEditProfile}
+                    className="w-full h-11 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-sm transition active:scale-[0.98]"
+                  >
+                    Edit profile
+                  </button>
+                )}
               </form>
             </section>
           )}
@@ -2344,6 +2419,12 @@ const RiderDashboard = () => {
                         {rider.accountNumber?.slice(-4)}
                       </p>
                     </div>
+                    {rider.bankDetailsReviewRequired && (
+                      <p className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-700">
+                        These bank details are pending admin approval. Payouts
+                        stay on hold until they are approved.
+                      </p>
+                    )}
                     <button
                       type="button"
                       onClick={() => {
@@ -2687,7 +2768,7 @@ const RiderDashboard = () => {
 
             <div>
               <label className="block text-xs font-semibold text-slate-600 mb-1.5">
-                Reason (optional)
+                Reason {failNeedsReason ? "(required)" : "(optional)"}
               </label>
               <textarea
                 value={failReason}
@@ -2696,6 +2777,12 @@ const RiderDashboard = () => {
                 rows={3}
                 className="w-full px-4 py-2.5 rounded-xl border-2 border-slate-200 focus:border-red-400 focus:ring-1 focus:ring-red-400 outline-none transition text-sm resize-none"
               />
+              {failNeedsReason && (
+                <p className="mt-1.5 text-[11px] text-slate-500">
+                  The food has already been picked up, so a short reason is
+                  required.
+                </p>
+              )}
             </div>
 
             <div className="flex gap-3">
@@ -2710,7 +2797,11 @@ const RiderDashboard = () => {
               </button>
               <button
                 onClick={confirmFail}
-                className="flex-1 h-12 rounded-xl bg-red-600 hover:bg-red-700 text-white font-bold text-sm transition active:scale-95"
+                disabled={
+                  failNeedsReason &&
+                  failReason.trim().length < FAIL_REASON_MIN_LENGTH
+                }
+                className="flex-1 h-12 rounded-xl bg-red-600 hover:bg-red-700 text-white font-bold text-sm transition active:scale-95 disabled:bg-red-300 disabled:cursor-not-allowed"
               >
                 Confirm
               </button>
