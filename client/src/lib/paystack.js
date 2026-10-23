@@ -1,3 +1,5 @@
+import { api } from "./api";
+
 // Paystack's inline SDK is only needed at checkout. Loading it from index.html
 // made every page — including login and the rider dashboard — pay for a
 // parser-blocking third-party script and its cookie. This loads it on demand
@@ -24,4 +26,35 @@ export function loadPaystack() {
   });
 
   return scriptPromise;
+}
+
+// Refuse to charge when the browser's public key and the server's secret key
+// come from different Paystack modes. A mismatch takes the money but leaves the
+// server unable to verify it ("transaction not found").
+export async function checkPaystackMode() {
+  const publicKey = import.meta.env.VITE_PAYSTACK_PUBLIC_KEY || "";
+  const clientMode = publicKey.startsWith("pk_live_")
+    ? "live"
+    : publicKey.startsWith("pk_test_")
+      ? "test"
+      : null;
+
+  let serverMode = null;
+  try {
+    const data = await api.get("/payments/mode", { auth: false });
+    serverMode = data?.mode || null;
+  } catch {
+    return { ok: false, message: "Payment system is unavailable. Please try again." };
+  }
+
+  if (!clientMode || !serverMode) {
+    return { ok: false, message: "Payments are not configured correctly. Please contact support." };
+  }
+  if (clientMode !== serverMode) {
+    return {
+      ok: false,
+      message: `Payments are misconfigured: this app uses a ${clientMode} Paystack key while the server is in ${serverMode} mode. No charge was made. Please contact support.`,
+    };
+  }
+  return { ok: true };
 }

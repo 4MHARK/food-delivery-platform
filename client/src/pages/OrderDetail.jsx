@@ -6,7 +6,7 @@ import { api } from "../lib/api";
 import { useSSE } from "../hooks/useSSE";
 import { useNotificationPermission, notify } from "../hooks/useNotifications";
 import { formatCurrency } from "../lib/format";
-import { loadPaystack } from "../lib/paystack";
+import { checkPaystackMode, loadPaystack } from "../lib/paystack";
 
 const STATUS_FLOW = [
   { key: "PENDING_PAYMENT", label: "Placed", icon: "receipt" },
@@ -276,6 +276,12 @@ const OrderDetail = () => {
     }
     setPaying(true);
     try {
+      const modeCheck = await checkPaystackMode();
+      if (!modeCheck.ok) {
+        setError(modeCheck.message);
+        setPaying(false);
+        return;
+      }
       await loadPaystack();
     } catch (e) {
       setError(e.message);
@@ -305,6 +311,26 @@ const OrderDetail = () => {
       onClose: () => setPaying(false),
     });
     handler.openIframe();
+  };
+
+  // ── Re-verify an existing payment without reopening the popup. Use this when
+  // Paystack charged the card but the app could not confirm it. ──
+  const handleConfirmPayment = async () => {
+    const payment = order?.payment;
+    if (!payment?.reference) {
+      setError("No payment reference found for this order.");
+      return;
+    }
+    setPaying(true);
+    setError("");
+    try {
+      const data = await api.post("/payments/verify", { reference: payment.reference });
+      if (data.order) setOrder(data.order);
+    } catch (e) {
+      setError(e?.message || "We couldn't confirm this payment yet. Please try again or contact support.");
+    } finally {
+      setPaying(false);
+    }
   };
 
   // ── LOADING ──
@@ -409,6 +435,13 @@ const OrderDetail = () => {
                     className="h-10 px-5 rounded-xl bg-amber-500 hover:bg-amber-600 disabled:bg-amber-300 text-slate-950 font-semibold text-sm transition active:scale-95"
                   >
                     {paying ? "Opening payment..." : "Pay now"}
+                  </button>
+                  <button
+                    onClick={handleConfirmPayment}
+                    disabled={paying}
+                    className="h-10 px-5 rounded-xl border-2 border-slate-200 text-slate-600 hover:bg-slate-50 disabled:opacity-50 font-semibold text-sm transition active:scale-95"
+                  >
+                    Already paid? Confirm
                   </button>
                   <button
                     onClick={handleCancel}

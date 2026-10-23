@@ -5,7 +5,7 @@ import { useCart } from "../context/CartContext";
 import AppLayout from "../components/AppLayout";
 import { api } from "../lib/api";
 import { formatCurrency } from "../lib/format";
-import { loadPaystack } from "../lib/paystack";
+import { checkPaystackMode, loadPaystack } from "../lib/paystack";
 import LandmarkPicker from "../components/LandmarkPicker";
 import { getCurrentPosition, nearestLandmark } from "../lib/geo";
 
@@ -139,6 +139,15 @@ const Cart = () => {
       setPlacing(true);
       setError("");
 
+      // Refuse to charge if the browser and server Paystack keys are from
+      // different modes — the charge would succeed but never verify.
+      const modeCheck = await checkPaystackMode();
+      if (!modeCheck.ok) {
+        setError(modeCheck.message);
+        setPlacing(false);
+        return;
+      }
+
       // Load the SDK before creating the order, so an ad blocker or CDN failure
       // leaves no orphaned PENDING_PAYMENT order behind.
       await loadPaystack();
@@ -198,9 +207,12 @@ const Cart = () => {
             await api.post("/payments/verify", { reference: payment.reference });
             restaurantItems.forEach((item) => clearItem(item.menuItemId));
             navigate(`/orders/${order.id}`);
-          } catch {
-            // Surface the failure instead of silently swallowing it
-            setError("Payment received, but we couldn't confirm it with our servers. Please check your Orders page or contact support.");
+          } catch (e) {
+            // Surface the server's reason (e.g. a Paystack mode mismatch).
+            setError(
+              e?.message ||
+                "Payment received, but we couldn't confirm it. Please check your Orders page or contact support."
+            );
           }
         },
         onCancel: () => {
