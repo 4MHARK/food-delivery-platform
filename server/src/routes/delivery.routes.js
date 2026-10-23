@@ -6,6 +6,9 @@ import { validate } from "../middleware/validate.js";
 import { deliveryStatusSchema } from "../validation/schemas.js";
 import { notify } from "../services/events.js";
 import { settleOrderPayouts } from "../services/payouts.js";
+import { recordDeliveryFailure } from "../services/accountability.js";
+import { ACTIVE_DELIVERY_STATUSES, notifyCampusRiders } from "../services/deliveryQueue.js";
+import { generateDeliveryCode } from "../utils/deliveryCode.js";
 import {
   buildProximityAudit,
   decideProximityAction,
@@ -17,37 +20,6 @@ const router = express.Router();
 
 // Remove the handoff code from rider-facing payloads so only the customer sees it.
 const hideDeliveryCode = (order) => { if (order) delete order.deliveryCode; return order; };
-
-// Tell eligible riders on the same campus that an order is back in the queue.
-// This is what makes a release visible immediately instead of waiting for the
-// rider dashboard to be reloaded.
-async function notifyCampusRiders(order, { excludeUserId } = {}) {
-  if (!order?.restaurant?.campusId) return;
-
-  const riders = await prisma.rider.findMany({
-    where: {
-      campusId: order.restaurant.campusId,
-      isAvailable: true,
-      isVerified: true,
-      isSuspended: false,
-      ...(excludeUserId ? { userId: { not: excludeUserId } } : {}),
-    },
-    select: { userId: true },
-  });
-
-  const riderUserIds = riders.map((r) => r.userId);
-  if (!riderUserIds.length) return;
-
-  notify("order:updated", riderUserIds, {
-    status: "READY_FOR_PICKUP",
-    // Customer/owner already received the FAILED notification; null here stops
-    // this rider-facing event from pushing to them a second time.
-    customerId: null,
-    ownerId: null,
-    riderIds: riderUserIds,
-    orderId: order.id,
-  });
-}
 
 // State machine: valid transitions
 const VALID_TRANSITIONS = {
@@ -101,6 +73,8 @@ router.get("/riders/available-orders", authMiddleware, riderMiddleware, async (r
     const orders = await prisma.order.findMany({
       where: {
         status: "READY_FOR_PICKUP",
+        // A rider must never be able to pick up their own order.
+        customerId: { not: rider.userId },
         // A failed delivery keeps its row for the rider's history, but the
         // order itself is back in the queue. Filtering on `delivery: null`
         // alone hid those orders from every rider forever.
@@ -218,16 +192,13 @@ router.post("/deliveries/:orderId/accept", authMiddleware, riderMiddleware, asyn
 
     const orderId = Number(req.params.orderId);
 
-    // Active delivery statuses (non-terminal)
-    const ACTIVE_STATUSES = ["ZILLA_ON_IT", "AT_KITCHEN", "BAGGED", "MOVING", "CLOSE_BY"];
-
     // Use a transaction to prevent race conditions
     const result = await prisma.$transaction(async (tx) => {
       // Guard: rider must not already have an active delivery
       const activeDelivery = await tx.delivery.findFirst({
         where: {
           riderId: rider.id,
-          status: { in: ACTIVE_STATUSES },
+          status: { in: ACTIVE_DELIVERY_STATUSES },
         },
       });
 
@@ -251,6 +222,12 @@ router.post("/deliveries/:orderId/accept", authMiddleware, riderMiddleware, asyn
         throw { status: 404, message: "Order not found" };
       }
 
+      // Self-accept check: the UI filter is not enough, the API must refuse it
+      // too. Otherwise a rider could claim their own order and pay themselves.
+      if (order.customerId === rider.userId) {
+        throw { status: 403, message: "You cannot accept your own order." };
+      }
+
       if (order.restaurant.campusId !== rider.campusId) {
         throw { status: 403, message: "This order is outside your campus." };
       }
@@ -259,10 +236,24 @@ router.post("/deliveries/:orderId/accept", authMiddleware, riderMiddleware, asyn
         throw { status: 400, message: "This order is no longer available for pickup" };
       }
 
+      // The available-orders list filters skipped/burned orders from the UI;
+      // this is the API equivalent, so a barred rider cannot accept by ID.
+      const barred = await tx.rejectedOrder.findUnique({
+        where: { riderId_orderId: { riderId: rider.id, orderId } },
+      });
+
+      if (barred) {
+        throw { status: 403, message: "This order is not available to you." };
+      }
+
       if (order.delivery) {
-        // If the previous delivery failed, clean it up so a new rider can accept
+        // If the previous delivery failed, clean it up so a new rider can accept.
+        // deleteMany, not delete: a concurrent re-accept may have removed the
+        // row already, and a missing row must not abort our transaction.
         if (order.delivery.status === "FAILED") {
-          await tx.delivery.delete({ where: { id: order.delivery.id } });
+          await tx.delivery.deleteMany({
+            where: { id: order.delivery.id, status: "FAILED" },
+          });
         } else {
           throw { status: 409, message: "This order has already been assigned to a rider" };
         }
@@ -305,9 +296,22 @@ router.post("/deliveries/:orderId/accept", authMiddleware, riderMiddleware, asyn
       order: hideDeliveryCode(result.order),
     });
   } catch (error) {
+    // P2002 means a unique index won a race that the in-transaction findFirst
+    // guard cannot see: either this rider already has an active delivery
+    // (partial unique index) or another rider took the order (orderId unique).
+    if (error.code === "P2002") {
+      // The index name may show up in meta.target or only in the raw message.
+      const violated = `${error.meta?.target || ""} ${error.message || ""}`;
+      return res.status(409).json({
+        message: violated.includes("one_active_per_rider")
+          ? "You already have an active delivery. Complete or fail it before accepting a new order."
+          : "This order was just taken by another rider.",
+      });
+    }
+
     // Handle structured throws from the transaction
     if (error.status) {
-      
+
      return next(error)
     }
    next(error)
@@ -360,6 +364,21 @@ router.put("/deliveries/:id/status", authMiddleware, riderMiddleware, validate(d
         throw {
           status: 400,
           message: `Cannot transition from ${delivery.status} to ${status}. Allowed: ${allowed.join(", ") || "none"}`,
+        };
+      }
+
+      // Once the food is in the rider's hands, "FAILED" must carry a written
+      // reason. Without it the audit trail says nothing, and the reason is what
+      // an admin reviews before deciding on suspension.
+      if (
+        status === "FAILED" &&
+        ["BAGGED", "MOVING", "CLOSE_BY"].includes(delivery.status) &&
+        String(reason || "").trim().length < 5
+      ) {
+        throw {
+          status: 400,
+          message:
+            "A reason of at least 5 characters is required after the food has been picked up.",
         };
       }
 
@@ -491,7 +510,29 @@ router.put("/deliveries/:id/status", authMiddleware, riderMiddleware, validate(d
               data: {
                 status: "READY_FOR_PICKUP",
                 deliveryCodeAttempts: totalAttempts,
+                // Unconditional rotation: assume this rider saw or guessed the
+                // code. Committed with the failure, never in a separate write.
+                deliveryCode: generateDeliveryCode(),
               },
+            });
+
+            // Same transaction as the failure: audit row + rider counters.
+            await recordDeliveryFailure(tx, {
+              orderId: delivery.orderId,
+              riderId: delivery.riderId,
+              kind: "CODE_ATTEMPTS",
+              reason: "Too many incorrect delivery-code attempts",
+              codeAttempts: attempts,
+            });
+
+            // Bar this rider from re-accepting. Without it they could
+            // immediately re-accept and burn the freshly rotated code, turning
+            // the attempt cap into a DoS on the customer.
+            // createMany + skipDuplicates is idempotent in one statement, so a
+            // concurrent double-submit cannot trip the unique constraint.
+            await tx.rejectedOrder.createMany({
+              data: [{ riderId: delivery.riderId, orderId: delivery.orderId }],
+              skipDuplicates: true,
             });
 
             return {
@@ -547,13 +588,33 @@ router.put("/deliveries/:id/status", authMiddleware, riderMiddleware, validate(d
       if (status === "FAILED") {
         updatedOrder = await tx.order.update({
           where: { id: delivery.orderId },
-          data: { status: "READY_FOR_PICKUP" },
+          data: {
+            status: "READY_FOR_PICKUP",
+            // Unconditional rotation: a failed handoff voids the old code.
+            deliveryCode: generateDeliveryCode(),
+          },
           include: {
             orderItems: { include: { menuItem: true } },
             restaurant: { select: { id: true, name: true, address: true } },
             customer: { select: { id: true, name: true, phone: true } },
             deliveryLandmark: { select: { id: true, name: true, category: true } },
           },
+        });
+
+        // Audit + accountability, commit-or-rollback with the failure.
+        await recordDeliveryFailure(tx, {
+          orderId: delivery.orderId,
+          riderId: delivery.riderId,
+          kind: "REPORTED",
+          reason: reason || null,
+          codeAttempts: delivery.codeAttempts || 0,
+        });
+
+        // The order is someone else's now; don't let the same rider take it
+        // back immediately.
+        await tx.rejectedOrder.createMany({
+          data: [{ riderId: delivery.riderId, orderId: delivery.orderId }],
+          skipDuplicates: true,
         });
       }
 
@@ -759,7 +820,9 @@ router.get("/riders/stats", authMiddleware, riderMiddleware, async (req, res, ne
     const payouts = await prisma.payout.findMany({
       where: {
         type: "RIDER",
-        order: { delivery: { riderId: rider.id } },
+        // Keyed on the payout ledger, not the delivery row: the latter is
+        // deleted when an order is reassigned.
+        riderId: rider.id,
         supersededBy: null,
       },
       select: { amount: true, status: true, createdAt: true },

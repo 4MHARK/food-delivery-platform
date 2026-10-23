@@ -99,8 +99,11 @@ const STATUS_MESSAGES = {
     owner: { title: "Order picked up", body: "A rider has picked up your order." },
   },
   FAILED: {
-    customer: { title: "Delivery issue", body: "Your delivery hit a snag — we're reassigning a rider." },
+    customer: { title: "Delivery issue", body: "Your delivery hit a snag — we're reassigning a rider. Your handoff code has changed." },
     owner: { title: "Delivery failed", body: "The rider reported a problem — reassign the order." },
+    // Sent when the system (not the rider) failed the delivery, e.g. a stale
+    // timeout. Rider-initiated failures don't pass riderIds.
+    rider: { title: "Delivery reassigned", body: "Your delivery timed out and was reassigned. Check your history for details." },
   },
 };
 
@@ -114,13 +117,29 @@ export function startPushListener() {
     const jobs = [];
     if (customerId && messages.customer) jobs.push([[customerId], messages.customer]);
     if (ownerId && messages.owner) jobs.push([[ownerId], messages.owner]);
-    if (riderIds && messages.rider) jobs.push([riderIds, messages.rider]);
+    // Riders live in the dispatch dashboard, not the customer order pages.
+    if (riderIds && messages.rider) jobs.push([riderIds, messages.rider, "/rider"]);
 
-    jobs.forEach(([ids, msg]) => {
-      const payload = { ...msg, url: orderId ? `/orders/${orderId}` : "/orders" };
+    jobs.forEach(([ids, msg, urlOverride]) => {
+      const payload = {
+        ...msg,
+        url: urlOverride || (orderId ? `/orders/${orderId}` : "/orders"),
+      };
       sendPushToUsers(ids, payload).catch((e) => console.error("[push]", e));
       sendFcmToUsers(ids, payload).catch((e) => console.error("[fcm]", e));
     });
+  });
+
+  // Account-level notifications (suspension, re-verification). Unlike order
+  // events these carry their own title/body.
+  bus.on("user:notification", (recipientIds, data) => {
+    const payload = {
+      title: data?.title || "ChowZilla",
+      body: data?.body || "",
+      url: data?.url || "/",
+    };
+    sendPushToUsers(recipientIds, payload).catch((e) => console.error("[push]", e));
+    sendFcmToUsers(recipientIds, payload).catch((e) => console.error("[fcm]", e));
   });
 
   bus.on("review:created", (recipientIds) => {

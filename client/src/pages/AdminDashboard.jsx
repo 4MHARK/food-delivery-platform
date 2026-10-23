@@ -334,6 +334,13 @@ const RidersSection = () => {
   const [error, setError] = useState("");
   const [togglingId, setTogglingId] = useState(null);
   const [suspendingId, setSuspendingId] = useState(null);
+  const [clearingId, setClearingId] = useState(null);
+  const [clearingBankId, setClearingBankId] = useState(null);
+  const [expandedFailuresId, setExpandedFailuresId] = useState(null);
+  const [loadingFailuresId, setLoadingFailuresId] = useState(null);
+  const [failuresByRider, setFailuresByRider] = useState({});
+  const [confirmSuspendId, setConfirmSuspendId] = useState(null);
+  const [suspendReason, setSuspendReason] = useState("");
   const [message, setMessage] = useState("");
   const [messageType, setMessageType] = useState("success"); // "success" | "error"
   const [confirmRevokeId, setConfirmRevokeId] = useState(null);
@@ -375,14 +382,24 @@ const RidersSection = () => {
     }
   };
 
-  const handleToggleSuspend = async (riderId) => {
+  const handleToggleSuspend = async (riderId, reason) => {
     try {
       setSuspendingId(riderId);
-      const data = await api.put(`/admin/riders/${riderId}/suspend`);
+      const data = await api.put(
+        `/admin/riders/${riderId}/suspend`,
+        reason ? { reason } : {}
+      );
 
       setRiders((prev) =>
         prev.map((r) =>
-          r.id === riderId ? { ...r, isSuspended: !r.isSuspended } : r
+          r.id === riderId
+            ? {
+                ...r,
+                isSuspended: !r.isSuspended,
+                // The server keeps the reason only while suspended.
+                suspensionReason: !r.isSuspended ? reason || null : null,
+              }
+            : r
         )
       );
       setMessage(data.message);
@@ -394,6 +411,69 @@ const RidersSection = () => {
       setTimeout(() => setMessage(""), 4000);
     } finally {
       setSuspendingId(null);
+    }
+  };
+
+  const handleClearFailureFlag = async (riderId) => {
+    try {
+      setClearingId(riderId);
+      const data = await api.put(`/admin/riders/${riderId}/clear-failure-flag`);
+
+      setRiders((prev) =>
+        prev.map((r) =>
+          r.id === riderId ? { ...r, flaggedForReview: false } : r
+        )
+      );
+      setMessage(data.message);
+      setMessageType("success");
+      setTimeout(() => setMessage(""), 4000);
+    } catch (err) {
+      setMessage(err.message || "Failed to clear the flag.");
+      setMessageType("error");
+      setTimeout(() => setMessage(""), 4000);
+    } finally {
+      setClearingId(null);
+    }
+  };
+
+  const handleClearBankReview = async (riderId) => {
+    try {
+      setClearingBankId(riderId);
+      const data = await api.put(`/admin/riders/${riderId}/clear-bank-review`);
+
+      setRiders((prev) =>
+        prev.map((r) =>
+          r.id === riderId ? { ...r, bankDetailsReviewRequired: false } : r
+        )
+      );
+      setMessage(data.message);
+      setMessageType("success");
+      setTimeout(() => setMessage(""), 4000);
+    } catch (err) {
+      setMessage(err.message || "Failed to approve the bank details.");
+      setMessageType("error");
+      setTimeout(() => setMessage(""), 4000);
+    } finally {
+      setClearingBankId(null);
+    }
+  };
+
+  const handleViewFailures = async (riderId) => {
+    if (expandedFailuresId === riderId) {
+      setExpandedFailuresId(null);
+      return;
+    }
+    setExpandedFailuresId(riderId);
+    setLoadingFailuresId(riderId);
+    try {
+      const data = await api.get(`/admin/riders/${riderId}/failures`);
+      setFailuresByRider((prev) => ({ ...prev, [riderId]: data.failures || [] }));
+    } catch (err) {
+      setMessage(err.message || "Failed to load failure history.");
+      setMessageType("error");
+      setTimeout(() => setMessage(""), 4000);
+    } finally {
+      setLoadingFailuresId(null);
     }
   };
 
@@ -481,6 +561,18 @@ const RidersSection = () => {
                         Suspended
                       </span>
                     )}
+                    {rider.flaggedForReview && (
+                      <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-red-100 text-red-700">
+                        <span className="w-1.5 h-1.5 rounded-full bg-red-500" />
+                        Needs review
+                      </span>
+                    )}
+                    {rider.bankDetailsReviewRequired && (
+                      <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-800">
+                        <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+                        Bank review
+                      </span>
+                    )}
                   </div>
                   <p className="text-xs text-slate-400 mb-2">{rider.email} · {rider.phone}</p>
                   <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-500">
@@ -489,6 +581,24 @@ const RidersSection = () => {
                     {rider.licenseNumber && <span>License: {rider.licenseNumber}</span>}
                     {rider.matricNumber && <span>Matric: {rider.matricNumber}</span>}
                   </div>
+                  {(rider.bankDetailsReviewRequired || rider.accountNameMismatch) && (
+                    <div className="mt-2 text-xs text-slate-500">
+                      <span className="text-slate-400">Payout account: </span>
+                      <span className="font-semibold text-slate-700">
+                        {rider.accountName || "—"}
+                      </span>
+                      {rider.accountNumber && (
+                        <span className="text-slate-400">
+                          {" "}· {rider.bankName || "Bank"} ····{rider.accountNumber.slice(-4)}
+                        </span>
+                      )}
+                      {rider.accountNameMismatch && (
+                        <span className="block text-red-500 mt-0.5">
+                          Account name does not match the rider's profile name.
+                        </span>
+                      )}
+                    </div>
+                  )}
                   <div className="flex gap-3 mt-2 text-xs text-slate-400">
                     <span>{rider.totalDeliveries} deliveries</span>
                     <span>{rider.completedDeliveries} completed</span>
@@ -496,6 +606,11 @@ const RidersSection = () => {
                       <span className="text-red-500">{rider.failedDeliveries} failed</span>
                     )}
                   </div>
+                  {rider.isSuspended && rider.suspensionReason && (
+                    <p className="text-xs text-red-600 mt-1.5">
+                      Reason: {rider.suspensionReason}
+                    </p>
+                  )}
                 </div>
 
                 <div className="shrink-0 flex flex-col items-end gap-2">
@@ -536,19 +651,129 @@ const RidersSection = () => {
                         : "Approve"}
                   </button>
                 )}
-                <button
-                  onClick={() => handleToggleSuspend(rider.id)}
-                  disabled={suspendingId === rider.id}
-                  className={`px-4 py-2 rounded-full text-xs font-bold transition active:scale-95 ${
-                    rider.isSuspended
-                      ? "bg-emerald-600 hover:bg-emerald-700 text-white disabled:bg-emerald-300"
-                      : "bg-white border-2 border-slate-200 text-slate-600 hover:bg-slate-50 disabled:opacity-50"
-                  }`}
-                >
-                  {suspendingId === rider.id ? "Updating..." : rider.isSuspended ? "Unsuspend" : "Suspend"}
-                </button>
+                {confirmSuspendId === rider.id && !rider.isSuspended ? (
+                  <div className="flex flex-col items-end gap-2 w-full max-w-[220px]">
+                    <textarea
+                      value={suspendReason}
+                      onChange={(e) => setSuspendReason(e.target.value)}
+                      placeholder="Reason (optional)"
+                      rows={2}
+                      maxLength={300}
+                      className="w-full px-3 py-2 rounded-xl border-2 border-slate-200 focus:border-red-400 outline-none text-xs resize-none"
+                    />
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => {
+                          setConfirmSuspendId(null);
+                          setSuspendReason("");
+                        }}
+                        className="px-3 py-2 rounded-full text-xs font-bold text-slate-500 hover:bg-slate-100 transition"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        onClick={() => {
+                          handleToggleSuspend(rider.id, suspendReason.trim());
+                          setConfirmSuspendId(null);
+                          setSuspendReason("");
+                        }}
+                        disabled={suspendingId === rider.id}
+                        className="px-4 py-2 rounded-full text-xs font-bold bg-red-600 hover:bg-red-700 text-white disabled:bg-red-300 transition active:scale-95"
+                      >
+                        {suspendingId === rider.id ? "Suspending..." : "Confirm suspend"}
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => {
+                      if (rider.isSuspended) {
+                        handleToggleSuspend(rider.id);
+                      } else {
+                        setConfirmSuspendId(rider.id);
+                        setSuspendReason("");
+                      }
+                    }}
+                    disabled={suspendingId === rider.id}
+                    className={`px-4 py-2 rounded-full text-xs font-bold transition active:scale-95 ${
+                      rider.isSuspended
+                        ? "bg-emerald-600 hover:bg-emerald-700 text-white disabled:bg-emerald-300"
+                        : "bg-white border-2 border-slate-200 text-slate-600 hover:bg-slate-50 disabled:opacity-50"
+                    }`}
+                  >
+                    {suspendingId === rider.id ? "Updating..." : rider.isSuspended ? "Unsuspend" : "Suspend"}
+                  </button>
+                )}
+                {rider.flaggedForReview && (
+                  <button
+                    onClick={() => handleClearFailureFlag(rider.id)}
+                    disabled={clearingId === rider.id}
+                    className="px-4 py-2 rounded-full text-xs font-bold bg-amber-100 text-amber-800 hover:bg-amber-200 disabled:opacity-50 transition active:scale-95"
+                  >
+                    {clearingId === rider.id ? "Clearing..." : "Clear flag"}
+                  </button>
+                )}
+                {rider.bankDetailsReviewRequired && (
+                  <button
+                    onClick={() => handleClearBankReview(rider.id)}
+                    disabled={clearingBankId === rider.id}
+                    className="px-4 py-2 rounded-full text-xs font-bold bg-amber-100 text-amber-800 hover:bg-amber-200 disabled:opacity-50 transition active:scale-95"
+                  >
+                    {clearingBankId === rider.id ? "Approving..." : "Approve bank"}
+                  </button>
+                )}
+                {rider.failureCount > 0 && (
+                  <button
+                    onClick={() => handleViewFailures(rider.id)}
+                    className="px-4 py-2 rounded-full text-xs font-bold bg-white border-2 border-slate-200 text-slate-600 hover:bg-slate-50 transition active:scale-95"
+                  >
+                    {expandedFailuresId === rider.id
+                      ? "Hide failures"
+                      : `View failures (${rider.failureCount})`}
+                  </button>
+                )}
                 </div>
               </div>
+              {expandedFailuresId === rider.id && (
+                <div className="mt-4 border-t border-slate-100 pt-3">
+                  {loadingFailuresId === rider.id ? (
+                    <p className="text-xs text-slate-400">Loading failure history…</p>
+                  ) : (failuresByRider[rider.id]?.length ?? 0) === 0 ? (
+                    <p className="text-xs text-slate-400">No failure records.</p>
+                  ) : (
+                    <ul className="space-y-2">
+                      {failuresByRider[rider.id].map((f) => (
+                        <li key={f.id} className="flex items-start justify-between gap-3 text-xs">
+                          <span className="text-slate-600">
+                            <span
+                              className={`font-bold ${
+                                f.kind === "CODE_ATTEMPTS"
+                                  ? "text-red-600"
+                                  : f.kind === "STALE"
+                                    ? "text-amber-700"
+                                    : "text-slate-700"
+                              }`}
+                            >
+                              {f.kind.replace("_", " ")}
+                            </span>
+                            {` · Order #${f.orderId}`}
+                            {f.restaurant ? ` · ${f.restaurant}` : ""}
+                            {f.kind === "CODE_ATTEMPTS"
+                              ? ` · ${f.codeAttempts} wrong code${f.codeAttempts === 1 ? "" : "s"}`
+                              : ""}
+                            {f.reason ? (
+                              <span className="block text-slate-400 mt-0.5">{f.reason}</span>
+                            ) : null}
+                          </span>
+                          <span className="shrink-0 text-slate-400">
+                            {new Date(f.createdAt).toLocaleDateString()}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              )}
             </div>
           ))}
         </div>
@@ -1244,6 +1469,7 @@ const PAYOUT_STATUS_STYLE = {
 const PayoutsSection = ({ isSuperAdmin }) => {
   const [payouts, setPayouts] = useState([]);
   const [unpaid, setUnpaid] = useState([]);
+  const [autoPayouts, setAutoPayouts] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [reconciling, setReconciling] = useState(false);
@@ -1260,6 +1486,7 @@ const PayoutsSection = ({ isSuperAdmin }) => {
   const fetchPayouts = async () => {
     const data = await api.get("/admin/payouts");
     setPayouts(data.payouts);
+    setAutoPayouts(Boolean(data.autoPayouts));
   };
 
   const fetchUnpaid = async () => {
@@ -1471,6 +1698,11 @@ const PayoutsSection = ({ isSuperAdmin }) => {
                     ) : (
                       <p className="text-xs text-red-500 font-medium">⚠ No bank details yet — ask them to add it before you pay.</p>
                     )}
+                    {g.bankDetailsReviewRequired && (
+                      <p className="text-xs text-amber-600 font-medium mt-1">
+                        ⚠ Bank details changed — approve them in the Riders tab before paying.
+                      </p>
+                    )}
                   </div>
                   <div className="shrink-0 flex flex-col items-end gap-2">
                     <span className="text-base font-bold text-slate-900">{formatCurrency(g.total)}</span>
@@ -1515,6 +1747,11 @@ const PayoutsSection = ({ isSuperAdmin }) => {
                         Attempt {p.attempt}
                       </span>
                     )}
+                    {p.held && (
+                      <span className="inline-flex items-center text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-800">
+                        Held for review
+                      </span>
+                    )}
                     {p.supersededBy && (
                       <span className="inline-flex items-center text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-500">
                         Superseded by #{p.supersededBy}
@@ -1526,7 +1763,7 @@ const PayoutsSection = ({ isSuperAdmin }) => {
                 </div>
                 <div className="shrink-0 flex flex-col items-end gap-2">
                   <span className="text-sm font-bold text-slate-900">{formatCurrency(p.amount)}</span>
-                  {p.status === "FAILED" && !p.supersededBy && (
+                  {(p.status === "FAILED" || (p.held && autoPayouts)) && !p.supersededBy && (
                     confirmRetryId === p.id ? (
                       <div className="flex items-center gap-2">
                         <button
@@ -1540,7 +1777,11 @@ const PayoutsSection = ({ isSuperAdmin }) => {
                           disabled={retryingId === p.id}
                           className="px-3 py-1.5 rounded-lg bg-red-600 hover:bg-red-700 disabled:bg-red-300 text-white text-[11px] font-bold transition active:scale-[0.98]"
                         >
-                          {retryingId === p.id ? "Retrying..." : "Confirm retry"}
+                          {retryingId === p.id
+                            ? "Retrying..."
+                            : p.held
+                              ? "Release payout"
+                              : "Confirm retry"}
                         </button>
                       </div>
                     ) : (
@@ -1548,7 +1789,7 @@ const PayoutsSection = ({ isSuperAdmin }) => {
                         onClick={() => setConfirmRetryId(p.id)}
                         className="px-3 py-1.5 rounded-lg border border-red-200 text-red-600 hover:bg-red-50 text-[11px] font-bold transition active:scale-[0.98]"
                       >
-                        Retry
+                        {p.held ? "Release" : "Retry"}
                       </button>
                     )
                   )}

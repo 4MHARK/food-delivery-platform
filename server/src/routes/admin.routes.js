@@ -7,8 +7,9 @@ import adminMiddleware from "../middleware/admin.middleware.js";
 import superAdminMiddleware from "../middleware/superAdmin.middleware.js";
 import { validate } from "../middleware/validate.js";
 import { adminRegisterSchema } from "../validation/schemas.js";
-import { settleOrderPayouts, verifyPendingPayouts, retryPayout } from "../services/payouts.js";
+import { AUTO_PAYOUTS, settleOrderPayouts, verifyPendingPayouts, retryPayout } from "../services/payouts.js";
 import { cacheClear } from "../services/cache.js";
+import { notify } from "../services/events.js";
 
 const router = express.Router();
 
@@ -138,9 +139,23 @@ router.get("/admin/riders", async (req, res, next) => {
       isAvailable: r.isAvailable,
       isVerified: r.isVerified,
       isSuspended: r.isSuspended,
+      suspensionReason: r.suspensionReason,
+      // The failed Delivery row is deleted on reassignment, so the permanent
+      // counter is the reliable number (DeliveryFailure is the audit trail).
+      failureCount: r.failureCount,
+      lastFailureAt: r.lastFailureAt,
+      flaggedForReview: r.flaggedForReview,
+      // Payout-account review surface. Auto payouts are held until the review
+      // flag is cleared.
+      bankName: r.bankName,
+      accountNumber: r.accountNumber,
+      accountName: r.accountName,
+      accountNameMismatch: r.accountNameMismatch,
+      bankDetailsUpdatedAt: r.bankDetailsUpdatedAt,
+      bankDetailsReviewRequired: r.bankDetailsReviewRequired,
       totalDeliveries: r.deliveries.length,
       completedDeliveries: r.deliveries.filter((d) => d.status === "DELIVERED").length,
-      failedDeliveries: r.deliveries.filter((d) => d.status === "FAILED").length,
+      failedDeliveries: r.failureCount,
       joinedAt: r.user.createdAt,
     }));
 
@@ -214,16 +229,160 @@ router.put("/admin/riders/:id/suspend", async (req, res, next) => {
       return res.status(403).json({ message: "You can only manage riders in your campus." });
     }
 
+    const suspending = !rider.isSuspended;
+    const reason =
+      typeof req.body?.reason === "string"
+        ? req.body.reason.trim().slice(0, 300) || null
+        : null;
+
     const updated = await prisma.rider.update({
       where: { id: riderId },
-      data: { isSuspended: !rider.isSuspended },
+      data: {
+        isSuspended: suspending,
+        // Keep the reason only while suspended; unsuspending clears it.
+        suspensionReason: suspending ? reason : null,
+      },
+    });
+
+    // A banner on the next page load is not enough when accepting orders has
+    // just stopped working — push the change and the reason.
+    notify("user:notification", [rider.userId], {
+      title: suspending ? "Account suspended" : "Account restored",
+      body: suspending
+        ? reason || "Your rider account was suspended. Contact your campus admin."
+        : "Your rider account has been restored. You can accept deliveries again.",
+      url: "/rider",
     });
 
     res.status(200).json({
       message: updated.isSuspended
         ? `${rider.user.name} has been suspended`
         : `${rider.user.name} has been unsuspended`,
-      rider: { id: updated.id, name: rider.user.name, isSuspended: updated.isSuspended },
+      rider: {
+        id: updated.id,
+        name: rider.user.name,
+        isSuspended: updated.isSuspended,
+        suspensionReason: updated.suspensionReason,
+      },
+    });
+  } catch (error) {
+    next(error)
+  }
+});
+
+// ── Riders: failure history ──
+// The evidence behind the "Needs review" flag. DeliveryFailure survives the
+// Delivery row being deleted on reassignment, so this is the complete record.
+router.get("/admin/riders/:id/failures", async (req, res, next) => {
+  try {
+    const riderId = Number(req.params.id);
+
+    const rider = await prisma.rider.findUnique({
+      where: { id: riderId },
+      select: { id: true, campusId: true },
+    });
+
+    if (!rider) {
+      return res.status(404).json({ message: "Rider not found" });
+    }
+
+    // School admins can only inspect riders in their own campus.
+    if (req.user.role !== "SUPER_ADMIN" && rider.campusId !== req.user.campusId) {
+      return res.status(403).json({ message: "You can only manage riders in your campus." });
+    }
+
+    const failures = await prisma.deliveryFailure.findMany({
+      where: { riderId },
+      orderBy: { createdAt: "desc" },
+      take: 50,
+      include: {
+        order: {
+          select: { id: true, restaurant: { select: { name: true } } },
+        },
+      },
+    });
+
+    res.status(200).json({
+      message: "Failure history fetched successfully",
+      failures: failures.map((f) => ({
+        id: f.id,
+        orderId: f.orderId,
+        restaurant: f.order?.restaurant?.name || null,
+        kind: f.kind,
+        reason: f.reason,
+        codeAttempts: f.codeAttempts,
+        createdAt: f.createdAt,
+      })),
+    });
+  } catch (error) {
+    next(error)
+  }
+});
+
+// ── Riders: clear the automatic failure-review flag ──
+// The flag is set by the accountability service after repeated failures. An
+// admin clears it once they have looked at the DeliveryFailure history.
+router.put("/admin/riders/:id/clear-failure-flag", async (req, res, next) => {
+  try {
+    const riderId = Number(req.params.id);
+
+    const rider = await prisma.rider.findUnique({
+      where: { id: riderId },
+      include: { user: { select: { name: true } } },
+    });
+
+    if (!rider) {
+      return res.status(404).json({ message: "Rider not found" });
+    }
+
+    // School admins can only manage riders in their own campus.
+    if (req.user.role !== "SUPER_ADMIN" && rider.campusId !== req.user.campusId) {
+      return res.status(403).json({ message: "You can only manage riders in your campus." });
+    }
+
+    await prisma.rider.update({
+      where: { id: riderId },
+      data: { flaggedForReview: false },
+    });
+
+    res.status(200).json({
+      message: `${rider.user.name}'s failure review flag has been cleared`,
+      rider: { id: riderId, flaggedForReview: false },
+    });
+  } catch (error) {
+    next(error)
+  }
+});
+
+// ── Riders: approve changed bank details ──
+// Clears the flag set whenever a rider changes their payout account. Automatic
+// payouts stay held until this runs.
+router.put("/admin/riders/:id/clear-bank-review", async (req, res, next) => {
+  try {
+    const riderId = Number(req.params.id);
+
+    const rider = await prisma.rider.findUnique({
+      where: { id: riderId },
+      include: { user: { select: { name: true } } },
+    });
+
+    if (!rider) {
+      return res.status(404).json({ message: "Rider not found" });
+    }
+
+    // School admins can only manage riders in their own campus.
+    if (req.user.role !== "SUPER_ADMIN" && rider.campusId !== req.user.campusId) {
+      return res.status(403).json({ message: "You can only manage riders in your campus." });
+    }
+
+    await prisma.rider.update({
+      where: { id: riderId },
+      data: { bankDetailsReviewRequired: false },
+    });
+
+    res.status(200).json({
+      message: `${rider.user.name}'s bank details have been approved`,
+      rider: { id: riderId, bankDetailsReviewRequired: false },
     });
   } catch (error) {
     next(error)
@@ -616,6 +775,9 @@ router.get("/admin/payouts", async (req, res, next) => {
       status: p.status,
       reference: p.reference,
       supersededBy: p.supersededBy,
+      // True when the payout was claimed but deliberately not transferred
+      // because the recipient's bank details needed review.
+      held: p.gatewayResponse?.state === "held",
       restaurant: p.order.restaurant.name,
       customer: p.order.customer.name,
       createdAt: p.createdAt,
@@ -624,6 +786,9 @@ router.get("/admin/payouts", async (req, res, next) => {
     res.status(200).json({
       message: "Payouts fetched successfully",
       payouts: formatted,
+      // The client uses this to decide whether a held row can be released
+      // (auto mode) or should be settled by hand.
+      autoPayouts: AUTO_PAYOUTS,
     });
   } catch (error) {
     next(error)
@@ -747,6 +912,19 @@ router.get("/admin/payouts/unpaid", async (req, res, next) => {
         supersededBy: null,
       },
       include: {
+        // The direct relation survives the delivery row being deleted; the
+        // order.delivery path is only a legacy fallback for pre-backfill rows.
+        rider: {
+          select: {
+            id: true,
+            user: { select: { name: true } },
+            bankName: true,
+            accountNumber: true,
+            accountName: true,
+            accountNameMismatch: true,
+            bankDetailsReviewRequired: true,
+          },
+        },
         order: {
           select: {
             restaurant: {
@@ -755,7 +933,15 @@ router.get("/admin/payouts/unpaid", async (req, res, next) => {
             delivery: {
               select: {
                 rider: {
-                  select: { id: true, user: { select: { name: true } }, bankName: true, accountNumber: true, accountName: true },
+                  select: {
+                    id: true,
+                    user: { select: { name: true } },
+                    bankName: true,
+                    accountNumber: true,
+                    accountName: true,
+                    accountNameMismatch: true,
+                    bankDetailsReviewRequired: true,
+                  },
                 },
               },
             },
@@ -768,7 +954,9 @@ router.get("/admin/payouts/unpaid", async (req, res, next) => {
     const groups = new Map();
     for (const p of payouts) {
       const isRestaurant = p.type === "RESTAURANT";
-      const recipient = isRestaurant ? p.order.restaurant : p.order.delivery?.rider;
+      const recipient = isRestaurant
+        ? p.order.restaurant
+        : p.rider ?? p.order.delivery?.rider;
       const key = `${p.type}-${recipient?.id ?? "unknown"}`;
       const existing = groups.get(key);
 
@@ -783,6 +971,8 @@ router.get("/admin/payouts/unpaid", async (req, res, next) => {
           bankName: recipient?.bankName || null,
           accountNumber: recipient?.accountNumber || null,
           accountName: recipient?.accountName || null,
+          accountNameMismatch: Boolean(recipient?.accountNameMismatch),
+          bankDetailsReviewRequired: Boolean(recipient?.bankDetailsReviewRequired),
           total: Number(p.amount),
           deliveries: 1,
           payoutIds: [p.id],

@@ -12,11 +12,20 @@ const payoutReference = (orderId, type, attempt = 1) =>
 // Manual payouts by default: record what's owed (PENDING) without firing a
 // transfer. Set AUTO_PAYOUTS=true once the Paystack account is a *Registered*
 // Business to switch back to automatic transfers.
-const AUTO_PAYOUTS = process.env.AUTO_PAYOUTS === "true";
+export const AUTO_PAYOUTS = process.env.AUTO_PAYOUTS === "true";
 
 // Create one Payout row and (when bank details exist) fire the transfer.
 // Returns null when there is nothing to pay out (zero/negative amount).
-async function createAndRunPayout({ orderId, type, amountNaira, recipientCode, reason, attempt = 1 }) {
+async function createAndRunPayout({
+  orderId,
+  type,
+  riderId,
+  amountNaira,
+  recipientCode,
+  reason,
+  attempt = 1,
+  holdForReview = false,
+}) {
   if (amountNaira <= 0) return null;
 
   const reference = payoutReference(orderId, type, attempt);
@@ -30,17 +39,27 @@ async function createAndRunPayout({ orderId, type, amountNaira, recipientCode, r
       data: {
         orderId,
         type,
+        riderId: riderId || null,
         attempt,
         amount: amountNaira,
         recipientCode: recipientCode || null,
         reference,
         // Auto mode with no bank details: record the failure so the admin sees it.
         status: AUTO_PAYOUTS && !recipientCode ? "FAILED" : "PENDING",
-        gatewayResponse: !AUTO_PAYOUTS
-          ? { mode: "manual", bankDetails: recipientCode ? "complete" : "missing" }
-          : recipientCode
-            ? { mode: "auto", state: "claimed" }
-            : { reason: "bank details missing" },
+        gatewayResponse: holdForReview
+          ? {
+              // Held rows are money owed, never an in-flight transfer. The
+              // verifier skips state "held" so it cannot 404 them to FAILED.
+              mode: AUTO_PAYOUTS ? "auto" : "manual",
+              state: "held",
+              reason: "Payout account needs admin review",
+              bankDetails: recipientCode ? "complete" : "missing",
+            }
+          : !AUTO_PAYOUTS
+            ? { mode: "manual", bankDetails: recipientCode ? "complete" : "missing" }
+            : recipientCode
+              ? { mode: "auto", state: "claimed" }
+              : { reason: "bank details missing" },
       },
     });
   } catch (error) {
@@ -54,6 +73,10 @@ async function createAndRunPayout({ orderId, type, amountNaira, recipientCode, r
 
   // Manual mode: recorded as owed; an admin pays by hand.
   if (!AUTO_PAYOUTS) return payout;
+
+  // Never auto-transfer to an account whose recent change an admin has not
+  // approved. The row stays as money owed until the review is cleared.
+  if (holdForReview) return payout;
 
   // Auto mode with no bank details: the FAILED row above is the record.
   if (!recipientCode) return payout;
@@ -109,7 +132,17 @@ export async function settleOrderPayouts(orderId) {
     where: { id: orderId },
     include: {
       restaurant: { select: { recipientCode: true, name: true } },
-      delivery: { include: { rider: { select: { recipientCode: true } } } },
+      delivery: {
+        include: {
+          rider: {
+            select: {
+              id: true,
+              recipientCode: true,
+              bankDetailsReviewRequired: true,
+            },
+          },
+        },
+      },
       payment: { select: { status: true } },
     },
   });
@@ -130,8 +163,10 @@ export async function settleOrderPayouts(orderId) {
     {
       orderId,
       type: "RIDER",
+      riderId: order.delivery?.rider?.id || null,
       amountNaira: Number(order.deliveryFee),
       recipientCode: order.delivery?.rider?.recipientCode || null,
+      holdForReview: Boolean(order.delivery?.rider?.bankDetailsReviewRequired),
       reason: `Delivery fee for order #${orderId}`,
     },
   ];
@@ -176,6 +211,9 @@ export async function verifyPendingPayouts({
     scanned += page.length;
     for (const payout of page) {
       if (payout.gatewayResponse?.mode === "manual") continue;
+      // Held payouts have no transfer at Paystack; verifying them would 404
+      // them into FAILED. Skipping also keeps them visible as money owed.
+      if (payout.gatewayResponse?.state === "held") continue;
       candidates.push(payout);
       if (candidates.length >= limit) break;
     }
@@ -251,7 +289,7 @@ export async function retryPayout(payoutId, where = {}) {
       order: {
         include: {
           restaurant: { select: { recipientCode: true } },
-          delivery: { include: { rider: { select: { recipientCode: true } } } },
+          delivery: { include: { rider: { select: { id: true, recipientCode: true } } } },
         },
       },
     },
@@ -261,8 +299,29 @@ export async function retryPayout(payoutId, where = {}) {
   if (payout.supersededBy) {
     return { ok: false, status: 409, message: "This payout has already been retried" };
   }
-  if (payout.status !== "FAILED") {
-    return { ok: false, status: 409, message: "Only FAILED payouts can be retried" };
+  // A held row is a claim that never called Paystack (bank details changed and
+  // an admin has not approved them yet). Releasing it after approval is the
+  // same operation as retrying a failed payout.
+  const isHeld =
+    payout.status === "PENDING" && payout.gatewayResponse?.state === "held";
+
+  if (payout.status !== "FAILED" && !isHeld) {
+    return {
+      ok: false,
+      status: 409,
+      message: "Only FAILED or held payouts can be retried",
+    };
+  }
+
+  // Manual mode never sent a transfer for the held row, so there is nothing to
+  // release: the admin pays by hand and marks it paid. Only auto mode needs
+  // the release path.
+  if (isHeld && !AUTO_PAYOUTS) {
+    return {
+      ok: false,
+      status: 409,
+      message: "Manual payouts are on — pay this one by hand and mark it paid.",
+    };
   }
 
   // A newer attempt may exist without supersededBy being set (the process could
@@ -302,6 +361,9 @@ export async function retryPayout(payoutId, where = {}) {
   const retry = await createAndRunPayout({
     orderId: payout.orderId,
     type: payout.type,
+    // Payout.riderId survives the delivery row being deleted; fall back to the
+    // order's delivery for legacy rows created before the column existed.
+    riderId: payout.riderId || payout.order.delivery?.rider?.id || null,
     amountNaira: Number(payout.amount),
     recipientCode,
     reason: `Retry of payout #${payout.id} for order #${payout.orderId}`,

@@ -5,6 +5,7 @@ import { verifyPayment, resolveAccount, listBanks } from "../services/paystack.j
 import { refundPaymentOnce } from "../services/refunds.js";
 import { PUBLIC_RESTAURANT } from "../utils/selects.js";
 import { notify } from "../services/events.js";
+import { generateDeliveryCode } from "../utils/deliveryCode.js";
 import crypto from "node:crypto";
 
 // Webhook event → the only status transition it may make. The `from` guard is
@@ -18,7 +19,7 @@ const TRANSFER_EVENTS = {
 // Mark a Paystack-confirmed payment as SUCCESS and advance its order exactly
 // once. Shared by client verification and the charge.success webhook.
 async function applySuccessfulPayment(payment, paystackData) {
-  const deliveryCode = crypto.randomInt(0, 10000).toString().padStart(4, "0");
+  const deliveryCode = generateDeliveryCode();
 
   const result = await prisma.$transaction(async (tx) => {
     const updatedPayment = await tx.payment.update({

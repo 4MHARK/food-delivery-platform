@@ -434,19 +434,21 @@ const AppLayout = ({
 
   // ── Mobile bottom nav ──
   const BottomNav = bottomNav.length > 0 && (
-    <nav className="md:hidden fixed bottom-0 w-full z-50 flex justify-around items-center px-2 py-2 bg-white rounded-t-xl shadow-[0_-4px_20px_rgba(15,23,42,0.05)] border-t border-slate-100">
+    <nav className="md:hidden fixed bottom-0 w-full z-50 flex items-center px-1 py-2 bg-white rounded-t-xl shadow-[0_-4px_20px_rgba(15,23,42,0.05)] border-t border-slate-100">
       {bottomNav.map((tab) => (
         <button
           key={tab.label}
           onClick={() => navigate(tab.path)}
-          className={`flex flex-col items-center px-3 py-1 rounded-2xl transition ${
+          className={`flex flex-1 min-w-0 flex-col items-center justify-center px-1 py-1 rounded-2xl transition ${
             isNavActive(tab.path)
               ? "bg-amber-100 text-amber-700"
               : "text-slate-500 hover:bg-slate-100"
           }`}
         >
           <span className="material-symbols-outlined text-2xl">{tab.icon}</span>
-          <span className="text-[11px] font-semibold mt-0.5">{tab.label}</span>
+          <span className="text-[11px] font-semibold mt-0.5 max-w-full truncate">
+            {tab.label}
+          </span>
         </button>
       ))}
     </nav>
