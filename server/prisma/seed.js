@@ -1,5 +1,6 @@
 import { PrismaClient } from "@prisma/client";
 import bcrypt from "bcrypt";
+import { CAMPUS_LANDMARKS } from "./data/campus-landmarks.js";
 
 const prisma = new PrismaClient();
 
@@ -56,9 +57,45 @@ async function main() {
   const password = await bcrypt.hash(DEMO_PASSWORD, 10);
 
   // ── Campus (idempotent; the migration also creates Main Campus) ──
-  let campus = await prisma.campus.findFirst({ where: { name: "Main Campus" } });
+  // Prefer an explicit name, then the existing campus, then create one. This
+  // avoids creating a duplicate "Main Campus" when the live DB already has a
+  // named campus such as "Redeemers University".
+  let campus = await prisma.campus.findFirst({
+    where: { name: process.env.SEED_CAMPUS_NAME || "Main Campus" },
+  });
+  if (!campus) {
+    campus = await prisma.campus.findFirst({ orderBy: { id: "asc" } });
+  }
   if (!campus) {
     campus = await prisma.campus.create({ data: { name: "Main Campus", address: "Lagos, Nigeria" } });
+  }
+
+  // ── Campus landmarks (names first; coordinates may be filled in later) ──
+  let landmarksWithCoords = 0;
+  for (const landmark of CAMPUS_LANDMARKS) {
+    const hasCoords = landmark.lat != null && landmark.lng != null;
+    if (hasCoords) landmarksWithCoords += 1;
+
+    await prisma.campusLandmark.upsert({
+      where: { campusId_name: { campusId: campus.id, name: landmark.name } },
+      update: {
+        category: landmark.category,
+        aliases: landmark.aliases ?? [],
+        sortOrder: landmark.sortOrder ?? 0,
+        isActive: true,
+        // Never erase manually collected coordinates with a null seed value.
+        ...(hasCoords ? { lat: landmark.lat, lng: landmark.lng } : {}),
+      },
+      create: {
+        campusId: campus.id,
+        name: landmark.name,
+        category: landmark.category,
+        aliases: landmark.aliases ?? [],
+        lat: landmark.lat ?? null,
+        lng: landmark.lng ?? null,
+        sortOrder: landmark.sortOrder ?? 0,
+      },
+    });
   }
 
   // ── Super admin (global; no campus) ──
@@ -90,8 +127,17 @@ async function main() {
   // ── Rider profile (unique userId → upsert) ──
   await prisma.rider.upsert({
     where: { userId: riderUser.id },
-    update: {},
-    create: { userId: riderUser.id, vehicleType: "Motorcycle", licenseNumber: "LAG-12345", matricNumber: "RID-001", campusId: campus.id },
+    // Demo riders must be verified, otherwise /riders/available-orders hides
+    // the queue and the accept endpoint rejects every order in development.
+    update: { isVerified: true },
+    create: {
+      userId: riderUser.id,
+      vehicleType: "Motorcycle",
+      licenseNumber: "LAG-12345",
+      matricNumber: "RID-001",
+      campusId: campus.id,
+      isVerified: true,
+    },
   });
 
   // ── Restaurants + menu items ──
@@ -133,6 +179,8 @@ async function main() {
   }
 
   console.log("Seed complete ✅");
+  console.log(`  Campus:   ${campus.name}`);
+  console.log(`  Landmarks: ${CAMPUS_LANDMARKS.length} (${landmarksWithCoords} with coordinates)`);
   console.log(`  Admin:    ${superAdmin.email} / ${DEMO_PASSWORD}`);
   console.log(`  Owner:    ${owner.email} / ${DEMO_PASSWORD}`);
   console.log(`  Customer: ${customer.email} / ${DEMO_PASSWORD}`);

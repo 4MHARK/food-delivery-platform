@@ -1,17 +1,12 @@
-import { useEffect } from "react";
+// Permission is requested from a button (PwaPrompts), never automatically.
+export function useNotificationPermission() {}
 
-// Requests notification permission once (no-op if unsupported, granted, or denied).
-export function useNotificationPermission(enabled = true) {
-  useEffect(() => {
-    if (enabled && "Notification" in window && Notification.permission === "default") {
-      Notification.requestPermission();
-    }
-  }, [enabled]);
-}
-
-// Fire a notification only if permission is granted. No-op otherwise.
-export function notify(title, options = {}) {
-  if ("Notification" in window && Notification.permission === "granted") {
-    new Notification(title, options);
+export async function notify(title, options = {}) {
+  if (!("Notification" in window) || Notification.permission !== "granted") return;
+  try {
+    const registration = await navigator.serviceWorker?.ready;
+    if (registration) await registration.showNotification(title, options);
+  } catch {
+    // a notification must never break the page
   }
 }

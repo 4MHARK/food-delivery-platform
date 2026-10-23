@@ -161,7 +161,7 @@ const RestaurantDetail = () => {
             </p>
             <button
               onClick={() => navigate("/restaurants")}
-              className="rounded-full bg-amber-500 px-8 py-3 font-semibold text-white hover:bg-amber-600 transition active:scale-95"
+              className="rounded-full bg-amber-500 px-8 py-3 font-semibold text-slate-950 hover:bg-amber-600 transition active:scale-95"
             >
               Back to Restaurants
             </button>
@@ -292,7 +292,7 @@ const RestaurantDetail = () => {
                 <button
                   type="submit"
                   disabled={submitting}
-                  className="bg-amber-500 hover:bg-amber-600 disabled:bg-amber-300 text-white text-sm font-bold px-6 py-2.5 rounded-full transition active:scale-95"
+                  className="bg-amber-500 hover:bg-amber-600 disabled:bg-amber-300 text-slate-950 text-sm font-bold px-6 py-2.5 rounded-full transition active:scale-95"
                 >
                   {submitting ? "Submitting..." : "Submit Review"}
                 </button>
@@ -435,13 +435,13 @@ const RestaurantDetail = () => {
                             <button
                               onClick={() => addItem(item, restaurant.id, restaurant.name)}
                               disabled={!inStock || maxedOut || !orderingOpen}
-                              className="w-8 h-8 rounded-full bg-amber-500 text-white hover:bg-amber-600 disabled:bg-slate-300 disabled:cursor-not-allowed flex items-center justify-center transition active:scale-90"
+                              className="w-8 h-8 rounded-full bg-amber-500 text-slate-950 hover:bg-amber-600 disabled:bg-slate-300 disabled:cursor-not-allowed flex items-center justify-center transition active:scale-90"
                             >
                               <span className="material-symbols-outlined text-lg">add</span>
                             </button>
                           </div>
                         ) : inStock && orderingOpen ? (
-                          <button onClick={() => addItem(item, restaurant.id, restaurant.name)} className="bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold px-4 py-2 rounded-full transition active:scale-95">
+                          <button onClick={() => addItem(item, restaurant.id, restaurant.name)} className="bg-amber-500 hover:bg-amber-600 text-slate-950 text-xs font-bold px-4 py-2 rounded-full transition active:scale-95">
                             Add
                           </button>
                         ) : (

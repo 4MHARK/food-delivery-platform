@@ -1,0 +1,1270 @@
+<!doctype html>
+<html lang="en" class="scroll-smooth">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ChowZilla — Hot Food, Monster Speed</title>
+    <meta
+      name="description"
+      content="Order from the best local kitchens and get hot food delivered in minutes. Live tracking, PIN-secured drop-offs."
+    />
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            fontFamily: { sans: ["Plus Jakarta Sans", "sans-serif"] },
+            colors: {
+              brand: {
+                50: "#fff8eb",
+                100: "#ffecc6",
+                400: "#ffb020",
+                500: "#f59e0b",
+                600: "#d97706",
+              },
+              ink: "#0b1220",
+            },
+          },
+        },
+      };
+    </script>
+
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap"
+      rel="stylesheet"
+    />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,500,1,0"
+      rel="stylesheet"
+    />
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/ScrollTrigger.min.js"></script>
+
+    <style type="text/tailwindcss">
+      @layer components {
+        .container-x {
+          @apply max-w-7xl mx-auto px-4 lg:px-8;
+        }
+        .btn {
+          @apply inline-flex items-center justify-center gap-2 rounded-full font-bold text-sm transition active:scale-95;
+        }
+        .btn-primary {
+          @apply btn bg-brand-500 hover:bg-brand-600 text-white shadow-lg shadow-brand-500/30;
+        }
+        .btn-dark {
+          @apply btn bg-ink hover:bg-slate-800 text-white;
+        }
+        .btn-ghost {
+          @apply btn bg-white hover:bg-slate-100 border border-slate-200 text-ink;
+        }
+        .eyebrow {
+          @apply text-xs font-extrabold uppercase tracking-widest text-brand-600;
+        }
+        .h2 {
+          @apply text-3xl sm:text-4xl font-extrabold tracking-tight text-ink mt-2;
+        }
+        .card {
+          @apply bg-white rounded-3xl border border-slate-100 shadow-sm;
+        }
+        .chip {
+          @apply inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold bg-white border border-slate-200 text-slate-600 hover:border-brand-400 hover:text-brand-600 transition;
+        }
+        .icon {
+          @apply material-symbols-outlined align-middle;
+        }
+        .role-tab[aria-selected="true"] {
+          @apply bg-white text-ink shadow-sm;
+        }
+      }
+      body {
+        font-family: "Plus Jakarta Sans", sans-serif;
+      }
+      .material-symbols-outlined {
+        font-family: "Material Symbols Outlined";
+        font-weight: normal;
+        font-style: normal;
+        line-height: 1;
+        display: inline-block;
+        user-select: none;
+      }
+      .hero-bg {
+        background:
+          radial-gradient(
+            60% 50% at 80% 20%,
+            rgba(245, 158, 11, 0.22),
+            transparent 70%
+          ),
+          radial-gradient(
+            40% 40% at 10% 80%,
+            rgba(244, 63, 94, 0.1),
+            transparent 70%
+          );
+      }
+      .no-scrollbar::-webkit-scrollbar {
+        display: none;
+      }
+      .no-scrollbar {
+        scrollbar-width: none;
+      }
+    </style>
+  </head>
+
+  <body
+    class="bg-slate-50 text-ink antialiased overflow-x-hidden selection:bg-brand-500 selection:text-white"
+  >
+    <!-- ═════════════ NAVBAR ═════════════ -->
+    <header
+      id="navbar"
+      class="fixed inset-x-0 top-0 z-50 transition-all duration-300"
+    >
+      <div class="container-x h-16 flex items-center justify-between">
+        <a href="#" class="text-2xl font-extrabold tracking-tight text-brand-500">
+          Chow<span class="text-ink">Zilla</span>
+        </a>
+
+        <nav
+          class="hidden md:flex items-center gap-8 text-sm font-semibold text-slate-600"
+          aria-label="Primary"
+        >
+          <a href="#restaurants" class="hover:text-brand-600">Restaurants</a>
+          <a href="#how-it-works" class="hover:text-brand-600">How it works</a>
+          <a href="#roles" class="hover:text-brand-600">Partners</a>
+          <a href="#calculator" class="hover:text-brand-600">Ride with us</a>
+        </nav>
+
+        <div class="hidden md:flex items-center gap-2">
+          <a
+            href="/login"
+            class="px-4 py-2 rounded-full text-sm font-bold text-slate-700 hover:bg-slate-100"
+            >Log in</a
+          >
+          <a href="/signup" class="btn-dark px-5 py-2.5">Sign up</a>
+        </div>
+
+        <button
+          id="menu-btn"
+          class="md:hidden p-2 rounded-full hover:bg-slate-100"
+          aria-label="Open menu"
+          aria-expanded="false"
+          aria-controls="mobile-menu"
+        >
+          <span class="icon" id="menu-icon">menu</span>
+        </button>
+      </div>
+
+      <div
+        id="mobile-menu"
+        class="hidden md:hidden bg-white border-t border-slate-100 px-4 py-4 shadow-lg"
+      >
+        <nav class="grid gap-1 text-sm font-semibold text-slate-700">
+          <a href="#restaurants" class="py-2.5">Restaurants</a>
+          <a href="#how-it-works" class="py-2.5">How it works</a>
+          <a href="#roles" class="py-2.5">Partners</a>
+          <a href="#calculator" class="py-2.5">Ride with us</a>
+        </nav>
+        <div class="pt-3 mt-2 border-t border-slate-100 grid grid-cols-2 gap-3">
+          <a href="/login" class="btn-ghost py-2.5">Log in</a>
+          <a href="/signup" class="btn-primary py-2.5">Sign up</a>
+        </div>
+      </div>
+    </header>
+
+    <main>
+      <!-- ═════════════ HERO ═════════════ -->
+      <section class="relative hero-bg pt-28 pb-16 lg:pt-36 lg:pb-24">
+        <div class="container-x grid lg:grid-cols-12 gap-12 items-center">
+          <div class="lg:col-span-7 text-center lg:text-left">
+            <span
+              class="hero-anim inline-flex items-center gap-2 bg-brand-100 text-brand-600 px-3.5 py-1.5 rounded-full text-xs font-bold"
+            >
+              <span class="relative flex w-2 h-2">
+                <span
+                  class="absolute inset-0 rounded-full bg-brand-500 animate-ping"
+                ></span>
+                <span class="relative w-2 h-2 rounded-full bg-brand-500"></span>
+              </span>
+              Now delivering across campus &amp; the city
+            </span>
+
+            <h1
+              class="hero-anim mt-5 text-4xl sm:text-5xl lg:text-[4rem] font-extrabold tracking-tight leading-[1.05]"
+            >
+              Cravings crushed at
+              <span class="relative whitespace-nowrap text-brand-500">
+                monster speed.
+                <svg
+                  class="absolute -bottom-2 left-0 w-full"
+                  viewBox="0 0 300 12"
+                  fill="none"
+                  aria-hidden="true"
+                >
+                  <path
+                    d="M2 9C80 3 220 3 298 9"
+                    stroke="currentColor"
+                    stroke-width="4"
+                    stroke-linecap="round"
+                  />
+                </svg>
+              </span>
+            </h1>
+
+            <p
+              class="hero-anim mt-6 text-base sm:text-lg text-slate-600 max-w-xl mx-auto lg:mx-0"
+            >
+              Hot meals from your favourite local kitchens, tracked live to your
+              door and handed over only with your secure 4-digit PIN.
+            </p>
+
+            <!-- Address search -->
+            <form
+              id="search-form"
+              class="hero-anim mt-8 max-w-xl mx-auto lg:mx-0 bg-white rounded-full p-2 shadow-xl shadow-slate-900/5 border border-slate-100 flex items-center gap-2"
+              role="search"
+            >
+              <span class="icon text-brand-500 pl-3" aria-hidden="true"
+                >location_on</span
+              >
+              <label for="address" class="sr-only">Delivery address</label>
+              <input
+                id="address"
+                type="text"
+                placeholder="Enter your hostel or street address"
+                class="flex-1 min-w-0 bg-transparent text-sm font-medium placeholder:text-slate-400 focus:outline-none py-2"
+              />
+              <button type="submit" class="btn-primary px-5 sm:px-6 py-3">
+                <span class="hidden sm:inline">Find food</span>
+                <span class="icon text-lg" aria-hidden="true">arrow_forward</span>
+              </button>
+            </form>
+
+            <div
+              class="hero-anim mt-4 flex flex-wrap justify-center lg:justify-start gap-2"
+            >
+              <span class="text-xs font-semibold text-slate-400 self-center mr-1"
+                >Popular:</span
+              >
+              <a href="/restaurants?q=jollof" class="chip">🍛 Jollof</a>
+              <a href="/restaurants?q=shawarma" class="chip">🌯 Shawarma</a>
+              <a href="/restaurants?q=chicken" class="chip">🍗 Chicken</a>
+              <a href="/restaurants?q=pizza" class="chip">🍕 Pizza</a>
+            </div>
+
+            <div
+              class="hero-anim mt-8 flex items-center justify-center lg:justify-start gap-4"
+            >
+              <div class="flex -space-x-2" aria-hidden="true">
+                <span
+                  class="w-9 h-9 rounded-full border-2 border-white bg-rose-200 grid place-items-center text-xs font-bold"
+                  >A</span
+                >
+                <span
+                  class="w-9 h-9 rounded-full border-2 border-white bg-emerald-200 grid place-items-center text-xs font-bold"
+                  >T</span
+                >
+                <span
+                  class="w-9 h-9 rounded-full border-2 border-white bg-sky-200 grid place-items-center text-xs font-bold"
+                  >K</span
+                >
+              </div>
+              <p class="text-sm text-slate-600 text-left">
+                <b class="text-ink">15,400+ orders</b> delivered<br />
+                <span class="text-brand-500">★★★★★</span> 4.9 average rating
+              </p>
+            </div>
+          </div>
+
+          <!-- Phone mockup -->
+          <div class="lg:col-span-5 relative flex justify-center">
+            <div
+              class="float-1 hidden sm:flex absolute -left-4 top-12 z-20 card !rounded-2xl p-3 items-center gap-3 shadow-xl"
+            >
+              <span
+                class="w-10 h-10 rounded-full bg-purple-100 text-purple-600 grid place-items-center"
+                ><span class="icon">two_wheeler</span></span
+              >
+              <div>
+                <p class="text-xs font-extrabold">Zilla on it!</p>
+                <p class="text-[11px] text-slate-400">ETA ~12 mins • Bike</p>
+              </div>
+            </div>
+
+            <div
+              class="float-2 hidden sm:flex absolute -right-2 bottom-20 z-20 card !rounded-2xl p-3 items-center gap-3 shadow-xl"
+            >
+              <span
+                class="w-10 h-10 rounded-full bg-emerald-100 text-emerald-600 grid place-items-center"
+                ><span class="icon">verified</span></span
+              >
+              <div>
+                <p class="text-[11px] font-bold text-emerald-600 uppercase">
+                  Delivered
+                </p>
+                <p class="text-xs font-extrabold">PIN confirmed ✓</p>
+              </div>
+            </div>
+
+            <div
+              id="hero-phone"
+              class="w-[300px] bg-ink rounded-[2.75rem] p-3 shadow-2xl ring-4 ring-slate-800"
+            >
+              <div class="bg-slate-50 rounded-[2.2rem] overflow-hidden">
+                <div
+                  class="h-40 bg-gradient-to-br from-brand-400 to-rose-400 relative p-4 text-white"
+                >
+                  <p class="text-[11px] font-semibold opacity-90">
+                    Order #8821
+                  </p>
+                  <p class="text-lg font-extrabold leading-tight mt-1">
+                    Your food is<br />close by 🔥
+                  </p>
+                  <span
+                    class="absolute bottom-4 right-4 text-5xl"
+                    aria-hidden="true"
+                    >🛵</span
+                  >
+                </div>
+
+                <div class="p-4 space-y-3">
+                  <div class="card !rounded-2xl p-3">
+                    <div class="flex justify-between text-[11px] font-bold">
+                      <span>Mama Put Kitchen</span>
+                      <span class="text-purple-600">~3 min</span>
+                    </div>
+                    <div
+                      class="mt-2.5 h-1.5 bg-slate-100 rounded-full overflow-hidden"
+                    >
+                      <div
+                        id="phone-progress"
+                        class="h-full w-4/5 bg-brand-500 rounded-full"
+                      ></div>
+                    </div>
+                    <div
+                      class="mt-2 grid grid-cols-5 text-[8px] font-semibold text-slate-400 text-center"
+                    >
+                      <span class="text-brand-600">On it</span>
+                      <span class="text-brand-600">Kitchen</span>
+                      <span class="text-brand-600">Bagged</span>
+                      <span class="text-brand-600">Moving</span>
+                      <span class="text-ink">Close</span>
+                    </div>
+                  </div>
+
+                  <div
+                    class="card !rounded-2xl p-3 flex items-center justify-between"
+                  >
+                    <div>
+                      <p class="text-[10px] text-slate-400 font-semibold">
+                        Your delivery PIN
+                      </p>
+                      <p class="text-xl font-extrabold tracking-[0.3em]">
+                        4921
+                      </p>
+                    </div>
+                    <span
+                      class="icon text-emerald-500 text-3xl"
+                      aria-hidden="true"
+                      >lock</span
+                    >
+                  </div>
+
+                  <div class="card !rounded-2xl p-3 flex items-center gap-3">
+                    <span
+                      class="w-9 h-9 rounded-full bg-brand-500 text-white grid place-items-center text-xs font-bold"
+                      >D</span
+                    >
+                    <div class="flex-1">
+                      <p class="text-xs font-bold">David • Your rider</p>
+                      <p class="text-[10px] text-slate-400">★ 4.8 • 400 trips</p>
+                    </div>
+                    <span
+                      class="w-8 h-8 rounded-full bg-emerald-100 text-emerald-600 grid place-items-center"
+                      ><span class="icon text-base">call</span></span
+                    >
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ═════════════ CATEGORIES ═════════════ -->
+      <section class="container-x pb-12" aria-label="Food categories">
+        <div
+          id="categories"
+          class="flex gap-3 overflow-x-auto no-scrollbar pb-2 lg:justify-center"
+        ></div>
+      </section>
+
+      <!-- ═════════════ POPULAR RESTAURANTS ═════════════ -->
+      <section id="restaurants" class="container-x py-16">
+        <div class="flex items-end justify-between gap-4 mb-8">
+          <div>
+            <span class="eyebrow">Near you</span>
+            <h2 class="h2">Popular kitchens right now</h2>
+          </div>
+          <a
+            href="/restaurants"
+            class="hidden sm:inline-flex items-center gap-1 text-sm font-bold text-brand-600 hover:gap-2 transition-all"
+          >
+            View all <span class="icon text-base">arrow_forward</span>
+          </a>
+        </div>
+        <div
+          id="restaurant-grid"
+          class="grid sm:grid-cols-2 lg:grid-cols-4 gap-5"
+        ></div>
+      </section>
+
+      <!-- ═════════════ STATS ═════════════ -->
+      <section class="bg-ink text-white">
+        <div
+          class="container-x py-12 grid grid-cols-2 md:grid-cols-4 gap-8 text-center"
+        >
+          <div>
+            <p class="text-3xl lg:text-4xl font-extrabold text-brand-400">
+              <span class="counter" data-target="15400">0</span>+
+            </p>
+            <p class="stat-label">Orders delivered</p>
+          </div>
+          <div>
+            <p class="text-3xl lg:text-4xl font-extrabold">
+              <span class="counter" data-target="18">0</span> min
+            </p>
+            <p class="stat-label">Avg. delivery time</p>
+          </div>
+          <div>
+            <p class="text-3xl lg:text-4xl font-extrabold text-brand-400">
+              <span class="counter" data-target="120">0</span>+
+            </p>
+            <p class="stat-label">Local kitchens</p>
+          </div>
+          <div>
+            <p class="text-3xl lg:text-4xl font-extrabold">
+              4.9 <span class="text-brand-400">★</span>
+            </p>
+            <p class="stat-label">Customer rating</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- ═════════════ HOW IT WORKS + LIVE TRACKER ═════════════ -->
+      <section id="how-it-works" class="container-x py-20 lg:py-28">
+        <div class="grid lg:grid-cols-2 gap-12 items-center">
+          <div>
+            <span class="eyebrow">How it works</span>
+            <h2 class="h2">From craving to doorstep in 3 taps</h2>
+            <ol class="mt-8 space-y-6">
+              <li class="step flex gap-4">
+                <span class="step-num">1</span>
+                <div>
+                  <h3 class="font-bold text-lg">Pick &amp; pay</h3>
+                  <p class="text-sm text-slate-500">
+                    Browse verified kitchens and check out securely with
+                    Paystack in seconds.
+                  </p>
+                </div>
+              </li>
+              <li class="step flex gap-4">
+                <span class="step-num">2</span>
+                <div>
+                  <h3 class="font-bold text-lg">Track it live</h3>
+                  <p class="text-sm text-slate-500">
+                    A nearby rider grabs your order. Watch every stage update
+                    instantly—no refreshing.
+                  </p>
+                </div>
+              </li>
+              <li class="step flex gap-4">
+                <span class="step-num">3</span>
+                <div>
+                  <h3 class="font-bold text-lg">Share your PIN</h3>
+                  <p class="text-sm text-slate-500">
+                    Give your rider the 4-digit code on arrival. No PIN, no
+                    handover—your food never goes missing.
+                  </p>
+                </div>
+              </li>
+            </ol>
+          </div>
+
+          <div class="card p-6 sm:p-8">
+            <div class="flex items-center justify-between mb-6">
+              <div>
+                <p class="text-xs font-semibold text-slate-400">Live preview</p>
+                <p class="font-extrabold">Order #8821 · Mama Put Kitchen</p>
+              </div>
+              <span
+                class="text-[11px] font-bold bg-emerald-100 text-emerald-700 px-2.5 py-1 rounded-full"
+                >● Live</span
+              >
+            </div>
+            <ul id="tracker" class="space-y-1"></ul>
+          </div>
+        </div>
+      </section>
+
+      <!-- ═════════════ FEATURES ═════════════ -->
+      <section id="features" class="bg-white border-y border-slate-100 py-20">
+        <div class="container-x">
+          <div class="text-center max-w-2xl mx-auto mb-12">
+            <span class="eyebrow">Why ChowZilla</span>
+            <h2 class="h2">Engineered for speed &amp; trust</h2>
+          </div>
+          <div class="grid md:grid-cols-3 gap-6">
+            <article class="feature bg-slate-50 rounded-3xl p-7">
+              <span class="feature-icon bg-brand-100 text-brand-600"
+                ><span class="icon">pin</span></span
+              >
+              <h3 class="font-extrabold text-lg mt-5 mb-2">
+                PIN-secured handover
+              </h3>
+              <p class="text-sm text-slate-500">
+                Every order gets a unique 4-digit code. Delivery is only marked
+                complete when your rider enters it.
+              </p>
+            </article>
+            <article class="feature bg-slate-50 rounded-3xl p-7">
+              <span class="feature-icon bg-purple-100 text-purple-600"
+                ><span class="icon">bolt</span></span
+              >
+              <h3 class="font-extrabold text-lg mt-5 mb-2">
+                Real-time, zero refresh
+              </h3>
+              <p class="text-sm text-slate-500">
+                Status updates and alerts arrive the second they happen, so you
+                always know where your food is.
+              </p>
+            </article>
+            <article class="feature bg-slate-50 rounded-3xl p-7">
+              <span class="feature-icon bg-emerald-100 text-emerald-600"
+                ><span class="icon">payments</span></span
+              >
+              <h3 class="font-extrabold text-lg mt-5 mb-2">
+                Secure Paystack payments
+              </h3>
+              <p class="text-sm text-slate-500">
+                Pay by card, transfer, or USSD. Riders and kitchens get paid
+                out automatically.
+              </p>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <!-- ═════════════ ROLES ═════════════ -->
+      <section id="roles" class="container-x py-20 lg:py-28">
+        <div class="text-center max-w-2xl mx-auto mb-10">
+          <span class="eyebrow">One platform, three experiences</span>
+          <h2 class="h2">Built for everyone at the table</h2>
+          <div
+            class="inline-flex bg-slate-200/70 p-1.5 rounded-2xl mt-6"
+            role="tablist"
+            aria-label="Choose a role"
+          >
+            <button class="role-tab" role="tab" data-role="customer">
+              🍔 Customers
+            </button>
+            <button class="role-tab" role="tab" data-role="rider">
+              🛵 Riders
+            </button>
+            <button class="role-tab" role="tab" data-role="owner">
+              🏪 Restaurants
+            </button>
+          </div>
+        </div>
+
+        <div
+          id="role-card"
+          class="card p-6 sm:p-10 lg:p-12 grid lg:grid-cols-12 gap-8 items-center"
+          role="tabpanel"
+        >
+          <div class="lg:col-span-7 space-y-5">
+            <span
+              id="role-badge"
+              class="inline-block text-xs font-bold bg-brand-100 text-brand-600 px-3 py-1 rounded-full"
+            ></span>
+            <h3
+              id="role-title"
+              class="text-2xl sm:text-3xl font-extrabold tracking-tight"
+            ></h3>
+            <p id="role-desc" class="text-slate-600 leading-relaxed"></p>
+            <ul
+              id="role-bullets"
+              class="space-y-3 text-sm font-medium text-slate-700"
+            ></ul>
+            <a id="role-cta" href="#" class="btn-dark px-6 py-3.5">
+              <span id="role-cta-text"></span>
+              <span class="icon text-base" aria-hidden="true"
+                >arrow_forward</span
+              >
+            </a>
+          </div>
+          <div
+            id="role-preview"
+            class="lg:col-span-5 bg-slate-50 rounded-2xl p-6 border border-slate-100"
+          ></div>
+        </div>
+      </section>
+
+      <!-- ═════════════ RIDER CALCULATOR ═════════════ -->
+      <section id="calculator" class="container-x pb-20">
+        <div
+          class="bg-ink text-white rounded-[2rem] p-8 sm:p-12 grid md:grid-cols-12 gap-10 items-center relative overflow-hidden"
+        >
+          <div
+            class="absolute -top-24 -right-24 w-72 h-72 bg-brand-500/20 rounded-full blur-3xl"
+            aria-hidden="true"
+          ></div>
+
+          <div class="md:col-span-7 space-y-6 relative">
+            <span
+              class="text-xs font-bold uppercase tracking-wider bg-brand-500/20 text-brand-400 px-3 py-1 rounded-full"
+              >Ride with ChowZilla</span
+            >
+            <h2 class="text-3xl font-extrabold tracking-tight">
+              Your hours. Your ride. Your money.
+            </h2>
+            <p class="text-slate-400 text-sm">
+              Ride a bicycle with your student ID or a motorcycle with a
+              license. Go online whenever you want.
+            </p>
+
+            <fieldset>
+              <legend class="text-sm font-bold text-slate-300 mb-2">
+                Vehicle
+              </legend>
+              <div id="vehicle-group" class="grid grid-cols-3 gap-2"></div>
+            </fieldset>
+
+            <div>
+              <div class="flex justify-between text-sm font-bold mb-2">
+                <label for="trips" class="text-slate-300">Trips per day</label>
+                <output id="trips-out" class="text-brand-400">10</output>
+              </div>
+              <input
+                id="trips"
+                type="range"
+                min="2"
+                max="30"
+                value="10"
+                class="w-full accent-brand-500 cursor-pointer"
+              />
+            </div>
+
+            <div>
+              <div class="flex justify-between text-sm font-bold mb-2">
+                <label for="days" class="text-slate-300">Days per week</label>
+                <output id="days-out" class="text-brand-400">5</output>
+              </div>
+              <input
+                id="days"
+                type="range"
+                min="1"
+                max="7"
+                value="5"
+                class="w-full accent-brand-500 cursor-pointer"
+              />
+            </div>
+          </div>
+
+          <div
+            class="md:col-span-5 relative bg-white/5 border border-white/10 rounded-2xl p-6 text-center space-y-4 backdrop-blur"
+          >
+            <p class="text-xs text-slate-400 uppercase font-semibold">
+              Estimated weekly earnings
+            </p>
+            <p
+              id="weekly"
+              class="text-4xl sm:text-5xl font-extrabold text-brand-400"
+              aria-live="polite"
+            >
+              ₦0
+            </p>
+            <p class="text-sm text-slate-400 border-t border-white/10 pt-4">
+              ≈ <b id="monthly" class="text-white">₦0</b> per month
+            </p>
+            <a
+              href="/signup?role=rider"
+              class="btn w-full py-3.5 bg-brand-500 hover:bg-brand-400 text-ink"
+              >Become a Zilla Rider</a
+            >
+            <p class="text-[11px] text-slate-500">
+              Estimates only. Actual earnings vary with distance &amp; demand.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <!-- ═════════════ TESTIMONIALS ═════════════ -->
+      <section class="bg-white border-y border-slate-100 py-20">
+        <div class="container-x">
+          <div class="text-center mb-12">
+            <span class="eyebrow">Loved locally</span>
+            <h2 class="h2">Don't just take our word for it</h2>
+          </div>
+          <div id="reviews" class="grid md:grid-cols-3 gap-6"></div>
+        </div>
+      </section>
+
+      <!-- ═════════════ FINAL CTA ═════════════ -->
+      <section class="container-x py-20">
+        <div
+          class="rounded-[2rem] bg-gradient-to-br from-brand-500 to-rose-500 p-10 sm:p-14 text-white text-center relative overflow-hidden"
+        >
+          <span
+            class="absolute -left-6 -bottom-6 text-[9rem] opacity-20 select-none"
+            aria-hidden="true"
+            >🍔</span
+          >
+          <span
+            class="absolute -right-4 -top-6 text-[8rem] opacity-20 select-none"
+            aria-hidden="true"
+            >🍕</span
+          >
+          <h2 class="text-3xl sm:text-5xl font-extrabold tracking-tight">
+            Hungry? Your next meal is minutes away.
+          </h2>
+          <p class="mt-4 text-white/90 max-w-lg mx-auto">
+            Join thousands of students and city dwellers eating better, faster.
+          </p>
+          <div
+            class="mt-8 flex flex-col sm:flex-row gap-3 justify-center relative"
+          >
+            <a
+              href="/restaurants"
+              class="btn bg-white text-ink hover:bg-slate-100 px-7 py-4"
+            >
+              <span class="icon text-lg">restaurant</span> Order now
+            </a>
+            <a
+              href="/signup?role=owner"
+              class="btn border-2 border-white/70 hover:bg-white/10 px-7 py-4"
+            >
+              <span class="icon text-lg">storefront</span> List your kitchen
+            </a>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <!-- ═════════════ FOOTER ═════════════ -->
+    <footer class="bg-ink text-slate-400">
+      <div class="container-x py-14 grid sm:grid-cols-2 lg:grid-cols-4 gap-10">
+        <div>
+          <a href="#" class="text-2xl font-extrabold text-brand-500"
+            >Chow<span class="text-white">Zilla</span></a
+          >
+          <p class="mt-3 text-sm">
+            Hot food, monster speed. Campus &amp; city-wide delivery.
+          </p>
+        </div>
+        <div>
+          <h3 class="footer-h">Order</h3>
+          <ul class="footer-list">
+            <li><a href="/restaurants">Restaurants</a></li>
+            <li><a href="#how-it-works">How it works</a></li>
+            <li><a href="/help">Help centre</a></li>
+          </ul>
+        </div>
+        <div>
+          <h3 class="footer-h">Partners</h3>
+          <ul class="footer-list">
+            <li><a href="/rider">Rider portal</a></li>
+            <li><a href="/dashboard">Kitchen dashboard</a></li>
+            <li><a href="/signup?role=owner">List your kitchen</a></li>
+          </ul>
+        </div>
+        <div>
+          <h3 class="footer-h">Company</h3>
+          <ul class="footer-list">
+            <li><a href="/about">About</a></li>
+            <li><a href="/terms">Terms</a></li>
+            <li><a href="/privacy">Privacy</a></li>
+          </ul>
+        </div>
+      </div>
+      <div
+        class="container-x py-6 border-t border-white/10 text-xs flex flex-col sm:flex-row justify-between gap-2"
+      >
+        <span>© <span id="year"></span> ChowZilla Delivery. All rights reserved.</span>
+        <span>Made with 🧡 in Nigeria</span>
+      </div>
+    </footer>
+
+    <style type="text/tailwindcss">
+      .stat-label {
+        @apply text-xs text-slate-400 font-semibold uppercase tracking-wider mt-1;
+      }
+      .step-num {
+        @apply shrink-0 w-10 h-10 rounded-2xl bg-brand-100 text-brand-600 font-extrabold grid place-items-center;
+      }
+      .feature-icon {
+        @apply w-12 h-12 rounded-2xl grid place-items-center;
+      }
+      .role-tab {
+        @apply px-4 sm:px-5 py-2.5 rounded-xl text-xs sm:text-sm font-bold text-slate-600 hover:text-ink transition;
+      }
+      .footer-h {
+        @apply text-white font-bold text-sm mb-3;
+      }
+      .footer-list {
+        @apply space-y-2 text-sm [&_a:hover]:text-brand-400;
+      }
+    </style>
+
+    <script>
+      // ───────────── DATA ─────────────
+      const CATEGORIES = [
+        ["🍛", "Rice"],
+        ["🍗", "Chicken"],
+        ["🌯", "Shawarma"],
+        ["🍕", "Pizza"],
+        ["🍔", "Burgers"],
+        ["🥘", "Soups"],
+        ["🥤", "Drinks"],
+        ["🍰", "Desserts"],
+      ];
+
+      const RESTAURANTS = [
+        {
+          name: "Mama Put Kitchen",
+          tags: "Jollof • Swallow • Local",
+          rating: 4.8,
+          eta: "15–20",
+          fee: "₦400",
+          emoji: "🍛",
+          bg: "from-amber-200 to-orange-300",
+          promo: "Free drink",
+        },
+        {
+          name: "Crunchies Fried Chicken",
+          tags: "Chicken • Fries",
+          rating: 4.7,
+          eta: "20–25",
+          fee: "₦500",
+          emoji: "🍗",
+          bg: "from-rose-200 to-red-300",
+        },
+        {
+          name: "Shawarma Republic",
+          tags: "Shawarma • Wraps",
+          rating: 4.9,
+          eta: "10–15",
+          fee: "₦300",
+          emoji: "🌯",
+          bg: "from-lime-200 to-emerald-300",
+          promo: "10% off",
+        },
+        {
+          name: "Slice Lab Pizza",
+          tags: "Pizza • Pasta",
+          rating: 4.6,
+          eta: "25–30",
+          fee: "₦600",
+          emoji: "🍕",
+          bg: "from-sky-200 to-indigo-300",
+        },
+      ];
+
+      const TRACK_STEPS = [
+        ["two_wheeler", "Zilla on it", "Rider accepted your order"],
+        ["skillet", "At kitchen", "Rider is waiting at Mama Put"],
+        ["shopping_bag", "Bagged", "Your food is packed & sealed"],
+        ["route", "Moving", "On the fastest route to you"],
+        ["near_me", "Close by", "Get your PIN ready!"],
+      ];
+
+      const REVIEWS = [
+        {
+          name: "Adaeze O.",
+          role: "Student, Hostel B",
+          text: "Food arrived hot in 14 minutes. The PIN thing makes me feel so much safer ordering late.",
+        },
+        {
+          name: "Tunde A.",
+          role: "Zilla Rider",
+          text: "I ride between lectures and get paid straight to my bank after every drop. Best side hustle on campus.",
+        },
+        {
+          name: "Chef Kemi",
+          role: "Owner, Mama Put Kitchen",
+          text: "Orders come in, I tap 'Ready', and a rider shows up. Our sales doubled in two months.",
+        },
+      ];
+
+      const ROLES = {
+        customer: {
+          badge: "For hungry customers",
+          title: "Hot meals from local favourites, tracked to your door.",
+          desc: "Browse verified kitchens, pay with Paystack, and follow your rider through 5 live stages—from 'Zilla on it' to 'Close by'.",
+          bullets: [
+            "Instant updates when your food is bagged & moving",
+            "4-digit PIN so your order never ends up with someone else",
+            "Save favourite meals & rate your rider",
+          ],
+          cta: ["Start ordering", "/restaurants"],
+          preview: `
+            <div class="card !rounded-2xl p-4 space-y-3">
+              <div class="flex justify-between text-xs font-bold">
+                <span>Order #8821 • On the way</span>
+                <span class="text-brand-600">PIN 4921</span>
+              </div>
+              <div class="h-2 bg-slate-100 rounded-full overflow-hidden">
+                <div class="h-full w-4/5 bg-brand-500 rounded-full"></div>
+              </div>
+              <p class="text-xs font-bold text-purple-600">● Close by (~3 min)</p>
+            </div>`,
+        },
+        rider: {
+          badge: "For Zilla Riders",
+          title: "Zero clutter. Accept, deliver, cash out.",
+          desc: "A focused workspace built only for earning. Switch between available orders and your active delivery in one tap.",
+          bullets: [
+            "Live dispatch with audio alerts when orders are ready",
+            "Automatic Paystack payouts after every drop-off",
+            "Sign up with a driver's licence or student matric ID",
+          ],
+          cta: ["Open rider portal", "/rider"],
+          preview: `
+            <div class="card !rounded-2xl p-4 space-y-3">
+              <div class="flex justify-between items-center">
+                <span class="text-xs font-extrabold">Live dispatch</span>
+                <span class="text-[10px] font-bold bg-green-100 text-green-700 px-2 py-0.5 rounded-full">● Online</span>
+              </div>
+              <div class="flex justify-between items-center border-t border-slate-100 pt-3">
+                <div>
+                  <p class="text-xs font-bold">Order #8821</p>
+                  <p class="text-[11px] text-slate-500">Mama Put → Hostel B</p>
+                </div>
+                <span class="text-[11px] font-bold bg-green-600 text-white px-3 py-1.5 rounded-full">Accept ₦600</span>
+              </div>
+              <p class="text-xs text-slate-500">Today: <b class="text-ink">₦24,800</b></p>
+            </div>`,
+        },
+        owner: {
+          badge: "For restaurants",
+          title: "Run orders, menus and prep in real time.",
+          desc: "Accept incoming orders, move them from Preparing to Ready, and we'll dispatch the nearest rider automatically.",
+          bullets: [
+            "Instant order alerts with itemised tickets",
+            "One-tap 'Ready for pickup' dispatches a rider",
+            "Track daily revenue and best-selling items",
+          ],
+          cta: ["Open kitchen dashboard", "/dashboard"],
+          preview: `
+            <div class="card !rounded-2xl p-4 space-y-3">
+              <div class="flex justify-between items-center">
+                <span class="text-xs font-bold">Ticket #8821</span>
+                <span class="text-[10px] font-bold bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-full">Ready for pickup</span>
+              </div>
+              <p class="text-xs text-slate-600">2× Jollof Fiesta Combo • 1× Grilled Turkey</p>
+              <p class="text-xs font-bold text-emerald-600">✓ Rider assigned — arriving in 4 min</p>
+            </div>`,
+        },
+      };
+
+      const VEHICLES = [
+        { id: "bicycle", label: "🚲 Bicycle", fee: 450 },
+        { id: "bike", label: "🏍️ Motorbike", fee: 600 },
+        { id: "car", label: "🚗 Car", fee: 800 },
+        ];
+
+      // ───────────── HELPERS ─────────────
+      const $ = (sel) => document.querySelector(sel);
+      const naira = (n) => `₦${Math.round(n).toLocaleString("en-NG")}`;
+      const prefersReducedMotion = window.matchMedia(
+        "(prefers-reduced-motion: reduce)"
+      ).matches;
+
+      // ───────────── RENDER: CATEGORIES ─────────────
+      $("#categories").innerHTML = CATEGORIES.map(
+        ([emoji, label]) => `
+          <a href="/restaurants?category=${label.toLowerCase()}"
+             class="shrink-0 flex flex-col items-center gap-2 w-24 py-4 rounded-2xl bg-white border border-slate-100 hover:border-brand-400 hover:-translate-y-1 transition">
+            <span class="text-3xl" aria-hidden="true">${emoji}</span>
+            <span class="text-xs font-bold text-slate-700">${label}</span>
+          </a>`
+      ).join("");
+
+      // ───────────── RENDER: RESTAURANTS ─────────────
+      $("#restaurant-grid").innerHTML = RESTAURANTS.map(
+        (r) => `
+          <a href="/restaurants/${r.name.toLowerCase().replace(/\s+/g, "-")}"
+             class="resto group card overflow-hidden hover:shadow-xl hover:-translate-y-1 transition">
+            <div class="relative h-36 bg-gradient-to-br ${r.bg} grid place-items-center">
+              <span class="text-6xl group-hover:scale-110 transition" aria-hidden="true">${r.emoji}</span>
+              ${
+                r.promo
+                  ? `<span class="absolute top-3 left-3 text-[11px] font-bold bg-ink text-white px-2.5 py-1 rounded-full">${r.promo}</span>`
+                  : ""
+              }
+              <span class="absolute bottom-3 right-3 text-[11px] font-bold bg-white/90 px-2.5 py-1 rounded-full">${r.eta} min</span>
+            </div>
+            <div class="p-4">
+              <div class="flex justify-between items-start gap-2">
+                <h3 class="font-extrabold">${r.name}</h3>
+                <span class="shrink-0 text-xs font-bold bg-brand-50 text-brand-600 px-2 py-0.5 rounded-full">★ ${r.rating}</span>
+              </div>
+              <p class="text-xs text-slate-500 mt-1">${r.tags}</p>
+              <p class="text-xs text-slate-400 mt-3 flex items-center gap-1">
+                <span class="icon text-sm" aria-hidden="true">two_wheeler</span>
+                Delivery ${r.fee}
+              </p>
+            </div>
+          </a>`
+      ).join("");
+
+      // ───────────── RENDER: REVIEWS ─────────────
+      $("#reviews").innerHTML = REVIEWS.map(
+        (r) => `
+          <figure class="review bg-slate-50 rounded-3xl p-7 flex flex-col">
+            <span class="text-brand-500" aria-label="5 stars">★★★★★</span>
+            <blockquote class="mt-3 text-slate-700 flex-1">"${r.text}"</blockquote>
+            <figcaption class="mt-5 flex items-center gap-3">
+              <span class="w-10 h-10 rounded-full bg-brand-500 text-white grid place-items-center font-bold">${r.name[0]}</span>
+              <span>
+                <b class="block text-sm">${r.name}</b>
+                <span class="text-xs text-slate-500">${r.role}</span>
+              </span>
+            </figcaption>
+          </figure>`
+      ).join("");
+
+      // ───────────── LIVE TRACKER (auto-cycles) ─────────────
+      const tracker = $("#tracker");
+      function renderTracker(active) {
+        tracker.innerHTML = TRACK_STEPS.map(([icon, title, sub], i) => {
+          const done = i < active;
+          const current = i === active;
+          const dot = done
+            ? "bg-emerald-500 text-white"
+            : current
+              ? "bg-brand-500 text-white ring-4 ring-brand-100"
+              : "bg-slate-100 text-slate-400";
+          const line =
+            i < TRACK_STEPS.length - 1
+              ? `<span class="absolute left-5 top-11 w-0.5 h-6 ${done ? "bg-emerald-400" : "bg-slate-200"}"></span>`
+              : "";
+          return `
+            <li class="relative flex items-center gap-4 py-2">
+              <span class="w-10 h-10 shrink-0 rounded-full grid place-items-center transition ${dot}">
+                <span class="icon text-lg" aria-hidden="true">${done ? "check" : icon}</span>
+              </span>
+              ${line}
+              <div class="flex-1">
+                <p class="text-sm font-bold ${current ? "text-ink" : done ? "text-slate-700" : "text-slate-400"}">${title}</p>
+                <p class="text-xs text-slate-400">${sub}</p>
+              </div>
+              ${current ? `<span class="text-[10px] font-bold text-brand-600 animate-pulse">NOW</span>` : ""}
+            </li>`;
+        }).join("");
+      }
+
+      let trackStep = 0;
+      renderTracker(trackStep);
+      if (!prefersReducedMotion) {
+        setInterval(() => {
+          trackStep = (trackStep + 1) % TRACK_STEPS.length;
+          renderTracker(trackStep);
+        }, 2200);
+      }
+
+      // ───────────── ROLE SWITCHER ─────────────
+      const roleTabs = document.querySelectorAll(".role-tab");
+      function renderRole(key) {
+        const d = ROLES[key];
+        if (!d) return;
+        roleTabs.forEach((t) =>
+          t.setAttribute("aria-selected", String(t.dataset.role === key))
+        );
+        $("#role-badge").textContent = d.badge;
+        $("#role-title").textContent = d.title;
+        $("#role-desc").textContent = d.desc;
+        $("#role-bullets").innerHTML = d.bullets
+          .map(
+            (b) => `
+            <li class="flex items-start gap-2.5">
+              <span class="icon text-brand-500" aria-hidden="true">check_circle</span>
+              <span>${b}</span>
+            </li>`
+          )
+          .join("");
+        $("#role-cta-text").textContent = d.cta[0];
+        $("#role-cta").href = d.cta[1];
+        $("#role-preview").innerHTML = d.preview;
+
+        if (!prefersReducedMotion) {
+          gsap.fromTo(
+            "#role-card > *",
+            { opacity: 0, y: 12 },
+            { opacity: 1, y: 0, duration: 0.4, stagger: 0.08, ease: "power2.out" }
+          );
+        }
+      }
+      roleTabs.forEach((t) =>
+        t.addEventListener("click", () => renderRole(t.dataset.role))
+      );
+      renderRole("customer");
+
+      // ───────────── EARNINGS CALCULATOR ─────────────
+      let vehicle = VEHICLES[1];
+      const vehicleGroup = $("#vehicle-group");
+
+      function renderVehicles() {
+        vehicleGroup.innerHTML = VEHICLES.map(
+          (v) => `
+            <button type="button" data-id="${v.id}" aria-pressed="${v.id === vehicle.id}"
+              class="py-2.5 rounded-xl text-xs font-bold border transition ${
+                v.id === vehicle.id
+                  ? "bg-brand-500 border-brand-500 text-ink"
+                  : "border-white/15 text-slate-300 hover:border-brand-400"
+              }">
+              ${v.label}
+            </button>`
+        ).join("");
+      }
+
+      vehicleGroup.addEventListener("click", (e) => {
+        const btn = e.target.closest("button[data-id]");
+        if (!btn) return;
+        vehicle = VEHICLES.find((v) => v.id === btn.dataset.id);
+        renderVehicles();
+        updateEarnings();
+      });
+
+      const tripsInput = $("#trips");
+      const daysInput = $("#days");
+      const WEEKS_PER_MONTH = 4.33;
+
+      function updateEarnings() {
+        const trips = +tripsInput.value;
+        const days = +daysInput.value;
+        const weekly = trips * days * vehicle.fee;
+        $("#trips-out").textContent = trips;
+        $("#days-out").textContent = days;
+        $("#weekly").textContent = naira(weekly);
+        $("#monthly").textContent = naira(weekly * WEEKS_PER_MONTH);
+      }
+
+      tripsInput.addEventListener("input", updateEarnings);
+      daysInput.addEventListener("input", updateEarnings);
+      renderVehicles();
+      updateEarnings();
+
+      // ───────────── SEARCH FORM ─────────────
+      $("#search-form").addEventListener("submit", (e) => {
+        e.preventDefault();
+        const address = $("#address").value.trim();
+        if (!address) {
+          $("#address").focus();
+          return;
+        }
+        window.location.href = `/restaurants?address=${encodeURIComponent(address)}`;
+      });
+
+      // ───────────── NAVBAR (shadow on scroll) ─────────────
+      const navbar = $("#navbar");
+      const onScroll = () => {
+        const scrolled = window.scrollY > 10;
+        navbar.classList.toggle("bg-white/85", scrolled);
+        navbar.classList.toggle("backdrop-blur-md", scrolled);
+        navbar.classList.toggle("shadow-sm", scrolled);
+      };
+      window.addEventListener("scroll", onScroll, { passive: true });
+      onScroll();
+
+      // ───────────── MOBILE MENU ─────────────
+      const menuBtn = $("#menu-btn");
+      const mobileMenu = $("#mobile-menu");
+      function setMenu(open) {
+        mobileMenu.classList.toggle("hidden", !open);
+        menuBtn.setAttribute("aria-expanded", String(open));
+        menuBtn.setAttribute("aria-label", open ? "Close menu" : "Open menu");
+        $("#menu-icon").textContent = open ? "close" : "menu";
+        if (open) navbar.classList.add("bg-white");
+        else navbar.classList.remove("bg-white");
+      }
+      menuBtn.addEventListener("click", () =>
+        setMenu(mobileMenu.classList.contains("hidden"))
+      );
+      mobileMenu
+        .querySelectorAll("a")
+        .forEach((a) => a.addEventListener("click", () => setMenu(false)));
+
+      // ───────────── FOOTER YEAR ─────────────
+      $("#year").textContent = new Date().getFullYear();
+
+      // ───────────── GSAP ANIMATIONS ─────────────
+      gsap.registerPlugin(ScrollTrigger);
+
+      // Counters (run regardless of motion pref, but instantly if reduced)
+      document.querySelectorAll(".counter").forEach((el) => {
+        const target = +el.dataset.target;
+        if (prefersReducedMotion) {
+          el.textContent = target.toLocaleString();
+          return;
+        }
+        const obj = { val: 0 };
+        gsap.to(obj, {
+          val: target,
+          duration: 2,
+          ease: "power2.out",
+          scrollTrigger: { trigger: el, start: "top 90%", once: true },
+          onUpdate: () => (el.textContent = Math.floor(obj.val).toLocaleString()),
+        });
+      });
+
+      if (!prefersReducedMotion) {
+        gsap
+          .timeline({ defaults: { ease: "power3.out" } })
+          .from(".hero-anim", { y: 30, opacity: 0, duration: 0.7, stagger: 0.1 })
+          .from(
+            "#hero-phone",
+            { y: 60, opacity: 0, rotate: 3, duration: 0.9 },
+            "-=0.6"
+          )
+          .from(
+            [".float-1", ".float-2"],
+            { scale: 0.7, opacity: 0, duration: 0.5, stagger: 0.15 },
+            "-=0.4"
+          );
+
+        gsap.to(".float-1", {
+          y: -10,
+          duration: 2.2,
+          repeat: -1,
+          yoyo: true,
+          ease: "sine.inOut",
+        });
+        gsap.to(".float-2", {
+          y: 10,
+          duration: 2.6,
+          repeat: -1,
+          yoyo: true,
+          ease: "sine.inOut",
+        });
+
+        const reveal = (selector, trigger) =>
+          gsap.from(selector, {
+            y: 40,
+            opacity: 0,
+            duration: 0.6,
+            stagger: 0.12,
+            ease: "power2.out",
+            scrollTrigger: { trigger, start: "top 82%" },
+          });
+
+        reveal("#categories > a", "#categories");
+        reveal(".resto", "#restaurant-grid");
+        reveal(".step", "#how-it-works");
+        reveal(".feature", "#features");
+        reveal(".review", "#reviews");
+      }
+    </script>
+  </body>
+</html>

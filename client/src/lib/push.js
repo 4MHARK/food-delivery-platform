@@ -31,18 +31,11 @@ async function getReadyRegistration() {
   ]);
 }
 
-// Request permission, subscribe, and save the subscription on the server.
-// Safe to call on every login; no-op where unsupported.
-export async function registerPush() {
+async function subscribeToPush() {
   const registration = await getReadyRegistration();
-  if (!registration) return;
-
+  if (!registration) return false;
   try {
     const { publicKey } = await api.get("/push/public-key", { auth: false });
-
-    const permission = await Notification.requestPermission();
-    if (permission !== "granted") return;
-
     let subscription = await registration.pushManager.getSubscription();
     if (!subscription) {
       subscription = await registration.pushManager.subscribe({
@@ -50,11 +43,25 @@ export async function registerPush() {
         applicationServerKey: urlBase64ToUint8Array(publicKey),
       });
     }
-
     await api.post("/push/subscribe", { subscription });
+    return true;
   } catch (error) {
     console.error("Push registration failed:", error);
+    return false;
   }
+}
+
+// On login: only refresh if notifications are already allowed.
+export async function registerPush() {
+  if (typeof Notification === "undefined" || Notification.permission !== "granted") return;
+  await subscribeToPush();
+}
+
+// Call from a button tap.
+export async function enablePush() {
+  if (typeof Notification === "undefined") return false;
+  const permission = await Notification.requestPermission();
+  return permission === "granted" ? subscribeToPush() : false;
 }
 
 // Remove the subscription (called on logout). The local unsubscribe always runs;

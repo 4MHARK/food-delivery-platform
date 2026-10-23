@@ -5,6 +5,9 @@ import { useCart } from "../context/CartContext";
 import AppLayout from "../components/AppLayout";
 import { api } from "../lib/api";
 import { formatCurrency } from "../lib/format";
+import { loadPaystack } from "../lib/paystack";
+import LandmarkPicker from "../components/LandmarkPicker";
+import { getCurrentPosition, nearestLandmark } from "../lib/geo";
 
 const Cart = () => {
   const navigate = useNavigate();
@@ -20,6 +23,16 @@ const Cart = () => {
   const paymentHandledRef = useRef(false);
   const [feesByRestaurant, setFeesByRestaurant] = useState({});
 
+  // Campus landmark drop-off
+  const [restaurantMeta, setRestaurantMeta] = useState({}); // restaurantId -> restaurant | null
+  const [landmarks, setLandmarks] = useState([]);
+  const [landmarksLoading, setLandmarksLoading] = useState(false);
+  const [landmarksFetched, setLandmarksFetched] = useState(false);
+  const [landmarkId, setLandmarkId] = useState(null);
+  const [landmarkDetail, setLandmarkDetail] = useState("");
+  const [nearest, setNearest] = useState(null);
+  const [customAddress, setCustomAddress] = useState(false);
+
   // Group items by restaurant
   const grouped = items.reduce((acc, item) => {
     if (!acc[item.restaurantId]) {
@@ -33,59 +46,84 @@ const Cart = () => {
     return acc;
   }, {});
 
-  // Ask the browser for the customer's real coordinates, then reverse-geocode
-  // them into a readable address (via free OpenStreetMap Nominatim) so the text
-  // field matches the actual pin instead of being left blank or disagreeing
-  // with it. The address only gives building/area level — never a room number,
-  // since that data doesn't exist in any public map — so the student is
-  // prompted to add specifics on top.
-  const handleUseLocation = () => {
-    if (!("geolocation" in navigator)) {
-      setLocationStatus("error");
-      setError("Your browser doesn't support location. Please type your address manually.");
-      return;
-    }
+  const restaurantIds = [...new Set(items.map((item) => item.restaurantId))];
+  const campusIds = [
+    ...new Set(
+      restaurantIds
+        .map((id) => restaurantMeta[id]?.campusId)
+        .filter((id) => id != null)
+    ),
+  ];
+  const campusId = campusIds.length === 1 ? campusIds[0] : null;
+  const multiCampus = campusIds.length > 1;
+  const metaSettled = restaurantIds.every(
+    (id) => restaurantMeta[id] !== undefined
+  );
 
+  const selectedLandmark =
+    landmarks.find((landmark) => landmark.id === landmarkId) || null;
+  const usingCustomAddress =
+    customAddress ||
+    (metaSettled && !campusId) ||
+    (Boolean(campusId) &&
+      landmarksFetched &&
+      landmarks.length === 0);
+  const landmarkFlowReady = metaSettled && !multiCampus;
+
+  // Capture the customer's current position for the no-pin fallback and to
+  // suggest the nearest campus landmark. It never overwrites an address and no
+  // longer calls a third-party reverse geocoder.
+  const handleUseLocation = async () => {
     setLocationStatus("loading");
     setError("");
 
-    navigator.geolocation.getCurrentPosition(
-      async (position) => {
-        const { latitude, longitude } = position.coords;
-        setDeliveryLat(latitude);
-        setDeliveryLng(longitude);
-        setLocationStatus("success");
+    try {
+      const position = await getCurrentPosition();
+      setDeliveryLat(position.lat);
+      setDeliveryLng(position.lng);
+      setLocationStatus("success");
 
-        try {
-          const res = await fetch(
-            `https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}`
-          );
-          const data = await res.json();
-          if (data?.display_name) {
-            setDeliveryAddress(data.display_name);
-          }
-        } catch {
-          // Reverse geocoding failed — coordinates are still captured and valid,
-          // the student just keeps typing their address manually. Not a blocker.
-        }
-      },
-      () => {
-        setLocationStatus("error");
-        setError("Couldn't get your location. Please allow location access, or type your address manually.");
-      },
-      { enableHighAccuracy: true, timeout: 10000 }
-    );
+      const suggestion = nearestLandmark(position, landmarks, {
+        maxDistanceMeters: 300,
+      });
+      setNearest(suggestion);
+      if (suggestion) {
+        setLandmarkId(suggestion.landmark.id);
+        setCustomAddress(false);
+      }
+    } catch (e) {
+      setLocationStatus("error");
+      setError(e?.message || "Couldn't get your location.");
+    }
   };
 
   const handlePlaceOrder = async (restaurantId, restaurantItems) => {
-    if (!deliveryAddress.trim()) {
-      setError("Please enter a delivery address");
+    if (multiCampus) {
+      setError("Your cart has restaurants from different campuses. Remove items until they share one campus.");
       return;
     }
 
-    if (deliveryLat === null || deliveryLng === null) {
-      setError("Please share your location so the rider can find you — tap \"Use my current location\" above.");
-      return;
+    if (!usingCustomAddress) {
+      if (!selectedLandmark) {
+        setError("Choose your drop-off point from the campus list.");
+        return;
+      }
+      if (
+        (selectedLandmark.lat == null || selectedLandmark.lng == null) &&
+        (deliveryLat === null || deliveryLng === null)
+      ) {
+        setError("This drop-off point has no map pin yet. Tap \"Use my current location\" so the rider can find you.");
+        return;
+      }
+    } else {
+      if (!deliveryAddress.trim()) {
+        setError("Please enter a delivery address");
+        return;
+      }
+      if (deliveryLat === null || deliveryLng === null) {
+        setError("Please share your location so the rider can find you — tap \"Use my current location\" above.");
+        return;
+      }
     }
 
     // Generate an idempotency key once per checkout attempt — reused on retry.
@@ -101,28 +139,40 @@ const Cart = () => {
       setPlacing(true);
       setError("");
 
-      // Step 1: Create the order on the backend
-      const data = await api.post("/orders/checkout", {
+      // Load the SDK before creating the order, so an ad blocker or CDN failure
+      // leaves no orphaned PENDING_PAYMENT order behind.
+      await loadPaystack();
+
+      // Step 1: Create the order on the backend. In landmark mode the server
+      // owns the name/coordinates; the customer's position is only a fallback
+      // when the landmark has no map pin yet.
+      const payload = {
         restaurantId,
-        deliveryAddress: deliveryAddress.trim(),
-        deliveryLat,
-        deliveryLng,
         idempotencyKey: idempotencyKeyRef.current,
         items: restaurantItems.map((item) => ({
           menuItemId: item.menuItemId,
           quantity: item.quantity,
         })),
-      });
+      };
+
+      if (!usingCustomAddress) {
+        payload.deliveryLandmarkId = selectedLandmark.id;
+        if (landmarkDetail.trim()) {
+          payload.deliveryDetail = landmarkDetail.trim();
+        }
+        if (selectedLandmark.lat == null || selectedLandmark.lng == null) {
+          payload.deliveryLat = deliveryLat;
+          payload.deliveryLng = deliveryLng;
+        }
+      } else {
+        payload.deliveryAddress = deliveryAddress.trim();
+        payload.deliveryLat = deliveryLat;
+        payload.deliveryLng = deliveryLng;
+      }
+
+      const data = await api.post("/orders/checkout", payload);
 
       const { order, payment } = data;
-
-      // Guard: the Paystack script may have failed to load (ad blocker, CDN down).
-      // Check before committing cart state so the user can retry cleanly.
-      if (typeof window.PaystackPop === "undefined") {
-        setError("Payment system is unavailable. Please try again.");
-        setPlacing(false);
-        return;
-      }
 
       setPlacing(false);
 
@@ -208,6 +258,75 @@ const Cart = () => {
     };
   }, [items]);
 
+  // Fetch restaurant metadata so the cart can resolve its campus. This also
+  // covers carts saved in localStorage before campusId was available.
+  useEffect(() => {
+    const missing = restaurantIds.filter(
+      (id) => restaurantMeta[id] === undefined
+    );
+    if (missing.length === 0) return;
+
+    let cancelled = false;
+    (async () => {
+      const entries = await Promise.all(
+        missing.map(async (id) => {
+          try {
+            const data = await api.get(`/restaurants/${id}`, { auth: false });
+            return [id, data.restaurant || null];
+          } catch {
+            return [id, null];
+          }
+        })
+      );
+      if (!cancelled) {
+        setRestaurantMeta((prev) => ({
+          ...prev,
+          ...Object.fromEntries(entries),
+        }));
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [items, restaurantMeta]);
+
+  // Load the landmark directory for the shared campus. Multi-campus carts are
+  // blocked in the UI; a failed metadata fetch falls back to a custom address.
+  useEffect(() => {
+    if (!campusId) {
+      setLandmarks([]);
+      setLandmarksFetched(false);
+      return;
+    }
+
+    let cancelled = false;
+    setLandmarksLoading(true);
+    setLandmarksFetched(false);
+    setLandmarkId(null);
+    setCustomAddress(false);
+    setNearest(null);
+
+    api
+      .get(`/campuses/${campusId}/landmarks`, { auth: false })
+      .then((data) => {
+        if (!cancelled) setLandmarks(data.landmarks || []);
+      })
+      .catch(() => {
+        if (!cancelled) setLandmarks([]);
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setLandmarksLoading(false);
+          setLandmarksFetched(true);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [campusId]);
+
   return (
     <AppLayout onBack={() => navigate(-1)} showCart={false} showUserDropdown={false}>
       <div className="px-4 lg:px-8 max-w-2xl mx-auto pt-8 pb-24 md:pb-8">
@@ -230,7 +349,7 @@ const Cart = () => {
             <p className="text-slate-500 mb-8">Add items from a restaurant to get started.</p>
             <button
               onClick={() => navigate("/restaurants")}
-              className="rounded-full bg-amber-500 text-white font-semibold py-3 px-8 shadow-md hover:bg-amber-600 transition active:scale-95"
+              className="rounded-full bg-amber-500 text-slate-950 font-semibold py-3 px-8 shadow-md hover:bg-amber-600 transition active:scale-95"
             >
               Browse Restaurants
             </button>
@@ -240,44 +359,133 @@ const Cart = () => {
         {/* Cart items grouped by restaurant */}
         {items.length > 0 && (
           <div className="space-y-8">
-            {/* Delivery address */}
+            {/* Drop-off point */}
             <div>
-              <label htmlFor="address" className="block text-sm font-semibold text-slate-700 mb-2">Delivery Address</label>
-              <input
-                type="text" id="address"
-                placeholder={
-                  locationStatus === "success"
-                    ? "Add room/floor details (e.g. Block 3, Room 14)"
-                    : "Enter your delivery address (e.g. Block 3, Room 14, Hostel A)"
-                }
-                value={deliveryAddress} onChange={(e) => setDeliveryAddress(e.target.value)}
-                className="w-full h-12 px-4 rounded-xl border-2 border-slate-200 focus:border-amber-500 focus:ring-1 focus:ring-amber-500 outline-none transition text-sm"
-              />
-
-              <button
-                type="button"
-                onClick={handleUseLocation}
-                disabled={locationStatus === "loading"}
-                className={`mt-3 flex items-center gap-2 text-sm font-semibold rounded-xl px-4 py-2.5 transition active:scale-95 ${
-                  locationStatus === "success"
-                    ? "bg-green-50 text-green-700"
-                    : "bg-amber-50 text-amber-600 hover:bg-amber-100"
-                }`}
-              >
-                <span className="material-symbols-outlined text-lg">
-                  {locationStatus === "success" ? "check_circle" : "my_location"}
+              <div className="mb-2 flex items-center justify-between gap-3">
+                <span className="block text-sm font-semibold text-slate-700">
+                  Drop-off point
                 </span>
-                {locationStatus === "loading"
-                  ? "Getting your location..."
-                  : locationStatus === "success"
-                  ? "Location captured — rider will find you"
-                  : "Use my current location"}
-              </button>
+                {!multiCampus && metaSettled && landmarks.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setCustomAddress((prev) => !prev);
+                      setError("");
+                    }}
+                    className="text-xs font-semibold text-amber-700 hover:text-amber-800"
+                  >
+                    {usingCustomAddress
+                      ? "Choose a campus landmark"
+                      : "My building isn't listed"}
+                  </button>
+                )}
+              </div>
 
-              {locationStatus === "success" && (
-                <p className="text-xs text-slate-400 mt-1.5">
-                  We've filled in your general location — please add your room, floor, or block number above so the rider can find you exactly.
+              {multiCampus && (
+                <p className="rounded-xl bg-red-50 px-4 py-3 text-sm font-medium text-red-600">
+                  Your cart has restaurants from different campuses. Remove
+                  items until they share one campus before ordering.
                 </p>
+              )}
+
+              {!multiCampus && !metaSettled && (
+                <div className="h-24 animate-pulse rounded-2xl bg-slate-100" />
+              )}
+
+              {!multiCampus && metaSettled && !usingCustomAddress && (
+                <>
+                  <LandmarkPicker
+                    landmarks={landmarks}
+                    value={landmarkId}
+                    loading={landmarksLoading}
+                    onChange={(landmark) => {
+                      setLandmarkId(landmark.id);
+                      setError("");
+                    }}
+                  />
+
+                  {selectedLandmark && (
+                    <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
+                      <p className="text-sm font-bold text-amber-900">
+                        {selectedLandmark.name}
+                      </p>
+                      <p className="mt-0.5 text-xs text-amber-800">
+                        Add a block, floor, room, or nearby description so the
+                        rider can find you.
+                      </p>
+                      <input
+                        type="text"
+                        value={landmarkDetail}
+                        onChange={(e) =>
+                          setLandmarkDetail(e.target.value.slice(0, 120))
+                        }
+                        maxLength={120}
+                        placeholder="e.g. Block C, Room 214"
+                        className="mt-2 h-10 w-full rounded-lg border border-amber-200 bg-white px-3 text-sm outline-none focus:border-amber-500"
+                      />
+                    </div>
+                  )}
+                </>
+              )}
+
+              {!multiCampus && metaSettled && usingCustomAddress && (
+                <div>
+                  <label htmlFor="address" className="sr-only">
+                    Delivery address
+                  </label>
+                  <input
+                    type="text"
+                    id="address"
+                    placeholder="Enter your delivery address (e.g. Block 3, Room 14, Hostel A)"
+                    value={deliveryAddress}
+                    onChange={(e) => setDeliveryAddress(e.target.value)}
+                    className="w-full h-12 px-4 rounded-xl border-2 border-slate-200 focus:border-amber-500 focus:ring-1 focus:ring-amber-500 outline-none transition text-sm"
+                  />
+                  <p className="mt-1.5 text-xs text-slate-500">
+                    A campus landmark is more reliable; use this only if your
+                    building isn't listed.
+                  </p>
+                </div>
+              )}
+
+              {!multiCampus && metaSettled && (
+                <>
+                  <button
+                    type="button"
+                    onClick={handleUseLocation}
+                    disabled={locationStatus === "loading"}
+                    className={`mt-3 flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition active:scale-95 ${
+                      locationStatus === "success"
+                        ? "bg-green-50 text-green-700"
+                        : "bg-amber-50 text-amber-700 hover:bg-amber-100"
+                    }`}
+                  >
+                    <span className="material-symbols-outlined text-lg">
+                      {locationStatus === "success"
+                        ? "check_circle"
+                        : "my_location"}
+                    </span>
+                    {locationStatus === "loading"
+                      ? "Getting your location..."
+                      : locationStatus === "success"
+                        ? "Location captured"
+                        : "Use my current location"}
+                  </button>
+
+                  {locationStatus === "success" && (
+                    <p className="mt-1.5 text-xs text-slate-500">
+                      {usingCustomAddress
+                        ? "Location captured. The rider will use this pin with your written address."
+                        : nearest
+                          ? `You appear to be near ${nearest.landmark.name} (${nearest.distanceMeters} m). Confirm it above, or choose another landmark.`
+                          : selectedLandmark &&
+                              (selectedLandmark.lat == null ||
+                                selectedLandmark.lng == null)
+                            ? "Location captured. This landmark has no map pin yet, so your pin will guide the rider."
+                            : "Choose the closest landmark from the list above."}
+                    </p>
+                  )}
+                </>
               )}
             </div>
 
@@ -313,7 +521,7 @@ const Cart = () => {
                           <span className="text-sm font-bold text-slate-900 w-4 text-center">{item.quantity}</span>
                           <button
                             onClick={() => addItem({ id: item.menuItemId, name: item.name, price: item.price, imageUrl: item.imageUrl }, item.restaurantId, item.restaurantName)}
-                            className="w-8 h-8 rounded-full bg-amber-500 text-white hover:bg-amber-600 flex items-center justify-center transition active:scale-90"
+                            className="w-8 h-8 rounded-full bg-amber-500 text-slate-950 hover:bg-amber-600 flex items-center justify-center transition active:scale-90"
                           >
                             <span className="material-symbols-outlined text-lg">add</span>
                           </button>
@@ -351,8 +559,16 @@ const Cart = () => {
                       </span>
                       <button
                         onClick={() => handlePlaceOrder(group.restaurantId, group.items)}
-                        disabled={placing}
-                        className="bg-amber-500 hover:bg-amber-600 disabled:bg-amber-300 text-white text-sm font-bold px-6 py-3 rounded-full transition active:scale-95"
+                        disabled={
+                          placing ||
+                          !landmarkFlowReady ||
+                          (!usingCustomAddress &&
+                            (!selectedLandmark ||
+                              ((selectedLandmark.lat == null ||
+                                selectedLandmark.lng == null) &&
+                                deliveryLat === null)))
+                        }
+                        className="bg-amber-500 hover:bg-amber-600 disabled:bg-amber-300 disabled:opacity-60 text-slate-950 text-sm font-bold px-6 py-3 rounded-full transition active:scale-95"
                       >
                         {placing ? "Placing..." : "Place Order"}
                       </button>

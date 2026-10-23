@@ -1,0 +1,970 @@
+<!doctype html>
+<html lang="en" class="scroll-smooth">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ChowZilla — Hot Food, Monster Speed</title>
+
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            fontFamily: {
+              sans: ["Plus Jakarta Sans", "Inter", "sans-serif"],
+            },
+          },
+        },
+      };
+    </script>
+
+    <!-- Google Fonts & Material Symbols (Matches Your App) -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap"
+      rel="stylesheet"
+    />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,500,1,0"
+      rel="stylesheet"
+    />
+
+    <!-- GSAP & ScrollTrigger CDN -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/ScrollTrigger.min.js"></script>
+
+    <style>
+      body {
+        font-family: "Plus Jakarta Sans", sans-serif;
+      }
+      .material-symbols-outlined {
+        vertical-align: middle;
+      }
+      .hero-glow {
+        background: radial-gradient(
+          circle at 50% 40%,
+          rgba(245, 158, 11, 0.18) 0%,
+          rgba(15, 23, 42, 0) 70%
+        );
+      }
+    </style>
+  </head>
+
+  <body class="bg-slate-50 text-slate-900 overflow-x-hidden selection:bg-amber-500 selection:text-white">
+    <!-- ═══════════════════════════════════════════
+         NAVBAR
+    ═══════════════════════════════════════════ -->
+    <header
+      id="navbar"
+      class="fixed top-0 left-0 right-0 z-50 transition-all duration-300 bg-white/80 backdrop-blur-md border-b border-slate-100"
+    >
+      <div class="max-w-7xl mx-auto px-4 lg:px-8 h-16 flex items-center justify-between">
+        <!-- Logo -->
+        <a href="#" class="text-2xl font-extrabold tracking-tight text-amber-500">
+          Chow<span class="text-slate-900">Zilla</span>
+        </a>
+
+        <!-- Desktop Links -->
+        <nav class="hidden md:flex items-center gap-8 text-sm font-semibold text-slate-600">
+          <a href="#features" class="hover:text-amber-500 transition">Features</a>
+          <a href="#roles" class="hover:text-amber-500 transition">Explore Ecosystem</a>
+          <a href="#calculator" class="hover:text-amber-500 transition">Rider Earnings</a>
+          <a href="#how-it-works" class="hover:text-amber-500 transition">How It Works</a>
+        </nav>
+
+        <!-- Auth CTAs -->
+        <div class="hidden md:flex items-center gap-3">
+          <a
+            href="/login"
+            class="px-4 py-2 rounded-xl text-sm font-bold text-slate-700 hover:bg-slate-100 transition"
+          >
+            Log in
+          </a>
+          <a
+            href="/signup"
+            class="px-5 py-2.5 rounded-full text-sm font-bold bg-slate-900 hover:bg-slate-800 text-white shadow-sm transition active:scale-95"
+          >
+            Order Now
+          </a>
+        </div>
+
+        <!-- Mobile Menu Button -->
+        <button
+          id="mobile-menu-btn"
+          class="md:hidden p-2 rounded-full text-slate-600 hover:bg-slate-100"
+        >
+          <span class="material-symbols-outlined" id="mobile-menu-icon">menu</span>
+        </button>
+      </div>
+
+      <!-- Mobile Dropdown -->
+      <div
+        id="mobile-menu"
+        class="hidden md:hidden bg-white border-t border-slate-100 px-4 py-5 space-y-3 shadow-lg"
+      >
+        <a href="#features" class="block py-2 text-sm font-semibold text-slate-700">Features</a>
+        <a href="#roles" class="block py-2 text-sm font-semibold text-slate-700">Explore Ecosystem</a>
+        <a href="#calculator" class="block py-2 text-sm font-semibold text-slate-700">Rider Earnings</a>
+        <a href="#how-it-works" class="block py-2 text-sm font-semibold text-slate-700">How It Works</a>
+        <div class="pt-3 border-t border-slate-100 flex gap-3">
+          <a
+            href="/login"
+            class="flex-1 py-2.5 text-center rounded-xl border border-slate-200 text-sm font-bold"
+          >
+            Log in
+          </a>
+          <a
+            href="/signup"
+            class="flex-1 py-2.5 text-center rounded-xl bg-amber-500 text-white text-sm font-bold"
+          >
+            Get Started
+          </a>
+        </div>
+      </div>
+    </header>
+
+    <!-- ═══════════════════════════════════════════
+         HERO SECTION
+    ═══════════════════════════════════════════ -->
+    <section class="relative pt-28 pb-20 lg:pt-36 lg:pb-28 overflow-hidden hero-glow">
+      <div class="max-w-7xl mx-auto px-4 lg:px-8 grid lg:grid-cols-12 gap-12 items-center">
+        <!-- Left Column: Copy -->
+        <div class="lg:col-span-7 space-y-6 text-center lg:text-left">
+          <div
+            class="hero-anim inline-flex items-center gap-2 bg-amber-100/80 border border-amber-200 text-amber-800 px-3.5 py-1.5 rounded-full text-xs font-bold"
+          >
+            <span class="w-2 h-2 rounded-full bg-amber-500 animate-ping"></span>
+            Campus & City-Wide Delivery in Minutes
+          </div>
+
+          <h1
+            class="hero-anim text-4xl sm:text-5xl lg:text-6xl font-extrabold tracking-tight text-slate-900 leading-[1.1]"
+          >
+            Cravings Crushed at
+            <span class="text-amber-500"> Monster Speed.</span>
+          </h1>
+
+          <p
+            class="hero-anim text-base sm:text-lg text-slate-600 max-w-xl mx-auto lg:mx-0 leading-relaxed"
+          >
+            Order from your favorite local kitchens, track every step from
+            <span class="font-semibold text-slate-800">"At Kitchen"</span> to
+            <span class="font-semibold text-slate-800">"Close By"</span>, and
+            confirm delivery with your secure 4-digit PIN.
+          </p>
+
+          <div
+            class="hero-anim flex flex-col sm:flex-row items-center justify-center lg:justify-start gap-3 pt-2"
+          >
+            <a
+              href="/restaurants"
+              class="w-full sm:w-auto px-7 py-4 rounded-full bg-amber-500 hover:bg-amber-600 text-white font-bold text-sm shadow-lg shadow-amber-500/25 flex items-center justify-center gap-2 transition active:scale-95"
+            >
+              <span class="material-symbols-outlined text-lg">restaurant</span>
+              Find Food Near You
+            </a>
+            <a
+              href="#roles"
+              id="rider-hero-cta"
+              class="w-full sm:w-auto px-7 py-4 rounded-full bg-white hover:bg-slate-100 text-slate-900 border border-slate-200 font-bold text-sm flex items-center justify-center gap-2 transition active:scale-95"
+            >
+              <span class="material-symbols-outlined text-lg text-amber-500">
+                two_wheeler
+              </span>
+              Become a Zilla Rider
+            </a>
+          </div>
+
+          <!-- Trust Pills -->
+          <div
+            class="hero-anim pt-4 flex flex-wrap items-center justify-center lg:justify-start gap-6 text-xs font-semibold text-slate-500"
+          >
+            <span class="flex items-center gap-1.5">
+              <span class="material-symbols-outlined text-green-500 text-base">
+                verified
+              </span>
+              4-Digit PIN Security
+            </span>
+            <span class="flex items-center gap-1.5">
+              <span class="material-symbols-outlined text-amber-500 text-base">
+                bolt
+              </span>
+              Instant Rider Payouts
+            </span>
+            <span class="flex items-center gap-1.5">
+              <span class="material-symbols-outlined text-purple-500 text-base">
+                location_on
+              </span>
+              Live GPS Map Tracking
+            </span>
+          </div>
+        </div>
+
+        <!-- Right Column: Interactive Phone Mockup + Floating Cards -->
+        <div class="lg:col-span-5 relative flex justify-center">
+          <!-- Floating Badge 1: Live Status -->
+          <div
+            class="float-badge-1 hidden sm:flex absolute -left-6 top-10 z-20 bg-white rounded-2xl shadow-xl border border-slate-100 p-3.5 items-center gap-3"
+          >
+            <div class="w-10 h-10 rounded-full bg-purple-100 text-purple-600 flex items-center justify-center">
+              <span class="material-symbols-outlined">two_wheeler</span>
+            </div>
+            <div>
+              <p class="text-xs font-extrabold text-slate-900">Zilla On It!</p>
+              <p class="text-[11px] text-slate-400">ETA ~12 mins • Car</p>
+            </div>
+          </div>
+
+          <!-- Floating Badge 2: Instant Payout -->
+          <div
+            class="float-badge-2 hidden sm:flex absolute -right-4 bottom-16 z-20 bg-white rounded-2xl shadow-xl border border-emerald-100 p-3.5 items-center gap-3"
+          >
+            <div class="w-10 h-10 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center">
+              <span class="material-symbols-outlined">account_balance_wallet</span>
+            </div>
+            <div>
+              <p class="text-[11px] font-bold text-emerald-600 uppercase">
+                Payout Sent
+              </p>
+              <p class="text-sm font-extrabold text-slate-900">+₦2,400.00</p>
+            </div>
+          </div>
+
+          <!-- Phone Frame (Showing Your New Clean Rider UI!) -->
+          <div
+            id="hero-phone"
+            class="w-[320px] bg-slate-900 rounded-[2.75rem] p-3 shadow-2xl border-4 border-slate-800 relative z-10"
+          >
+            <div class="bg-slate-50 rounded-[2.2rem] overflow-hidden">
+              <!-- App Top Header -->
+              <div class="bg-white px-4 py-3 flex items-center justify-between border-b border-slate-100">
+                <div class="flex items-center gap-1.5">
+                  <span class="font-extrabold text-amber-500 text-base">
+                    Chow<span class="text-slate-900">Zilla</span>
+                  </span>
+                  <span class="text-[9px] font-bold uppercase bg-slate-900 text-amber-400 px-1.5 py-0.5 rounded-full">
+                    Rider
+                  </span>
+                </div>
+                <div class="w-7 h-7 rounded-full bg-amber-500 text-white text-xs font-bold flex items-center justify-center">
+                  D
+                </div>
+              </div>
+
+              <!-- Compact Status Card -->
+              <div class="p-3">
+                <div class="bg-white rounded-xl p-3 shadow-sm border border-slate-100 mb-3">
+                  <div class="flex items-center justify-between">
+                    <div>
+                      <div class="flex items-center gap-1.5">
+                        <span class="text-xs font-extrabold text-slate-900">
+                          Live Dispatch
+                        </span>
+                        <span class="text-[10px] font-bold bg-green-100 text-green-700 px-2 py-0.5 rounded-full">
+                          ● Online
+                        </span>
+                      </div>
+                      <p class="text-[10px] text-slate-400 mt-0.5">
+                        Car • FPI/2024/1234 • ★ 4.8 (400)
+                      </p>
+                    </div>
+                    <div class="w-9 h-5 bg-green-500 rounded-full relative flex items-center">
+                      <span class="w-3.5 h-3.5 bg-white rounded-full translate-x-4 shadow"></span>
+                    </div>
+                  </div>
+                  <div class="mt-2 pt-2 border-t border-slate-100 flex justify-between text-[10px]">
+                    <span class="text-slate-500">
+                      Earned: <b class="text-slate-900">₦24,800</b>
+                    </span>
+                    <span class="text-amber-600 font-bold">Wallet →</span>
+                  </div>
+                </div>
+
+                <!-- Segmented Switcher -->
+                <div class="grid grid-cols-2 bg-slate-200/80 p-1 rounded-xl mb-3 text-[11px] font-bold">
+                  <div class="bg-white text-slate-900 py-1.5 rounded-lg text-center shadow-sm">
+                    Available (2)
+                  </div>
+                  <div class="text-slate-500 py-1.5 text-center">
+                    My Delivery
+                  </div>
+                </div>
+
+                <!-- Order Card 1 -->
+                <div class="bg-white rounded-xl p-3 shadow-sm border border-amber-100 mb-2.5">
+                  <div class="flex justify-between items-center mb-1.5">
+                    <span class="text-xs font-bold text-slate-900">
+                      Order #8821
+                    </span>
+                    <span class="text-[9px] font-bold bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-full">
+                      Ready for Pickup
+                    </span>
+                  </div>
+                  <p class="text-[11px] font-semibold text-slate-700 flex items-center gap-1">
+                    <span class="material-symbols-outlined text-amber-500 text-sm">
+                      storefront
+                    </span>
+                    Mama Put Kitchen
+                  </p>
+                  <p class="text-[10px] text-slate-500 flex items-center gap-1 mt-1 mb-2.5">
+                    <span class="material-symbols-outlined text-slate-400 text-sm">
+                      location_on
+                    </span>
+                    Hostel B, Main Gate
+                  </p>
+                  <div class="flex items-center justify-between pt-2 border-t border-slate-100">
+                    <span class="text-xs font-extrabold text-slate-900">
+                      ₦4,500
+                    </span>
+                    <button class="bg-green-600 text-white text-[10px] font-bold px-3.5 py-1.5 rounded-full">
+                      Accept Delivery
+                    </button>
+                  </div>
+                </div>
+
+                <!-- Order Card 2 -->
+                <div class="bg-white rounded-xl p-3 shadow-sm border border-slate-100">
+                  <div class="flex justify-between items-center mb-1">
+                    <span class="text-xs font-bold text-slate-900">
+                      Order #8824
+                    </span>
+                    <span class="text-[9px] font-bold bg-orange-100 text-orange-700 px-2 py-0.5 rounded-full">
+                      Preparing
+                    </span>
+                  </div>
+                  <p class="text-[11px] font-semibold text-slate-700">
+                    Crunchies Fried Chicken
+                  </p>
+                </div>
+              </div>
+
+              <!-- Dedicated Rider Bottom Nav -->
+              <div class="bg-white border-t border-slate-100 px-2 py-2 grid grid-cols-4 text-center">
+                <div class="bg-amber-100 text-amber-700 rounded-xl py-1 flex flex-col items-center">
+                  <span class="material-symbols-outlined text-base">
+                    two_wheeler
+                  </span>
+                  <span class="text-[9px] font-bold">Deliveries</span>
+                </div>
+                <div class="text-slate-400 py-1 flex flex-col items-center">
+                  <span class="material-symbols-outlined text-base">
+                    history
+                  </span>
+                  <span class="text-[9px] font-semibold">History</span>
+                </div>
+                <div class="text-slate-400 py-1 flex flex-col items-center">
+                  <span class="material-symbols-outlined text-base">
+                    account_balance_wallet
+                  </span>
+                  <span class="text-[9px] font-semibold">Payouts</span>
+                </div>
+                <div class="text-slate-400 py-1 flex flex-col items-center">
+                  <span class="material-symbols-outlined text-base">star</span>
+                  <span class="text-[9px] font-semibold">Reviews</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ═══════════════════════════════════════════
+         ANIMATED STATS COUNTER BAR
+    ═══════════════════════════════════════════ -->
+    <section class="py-10 bg-slate-900 text-white">
+      <div class="max-w-7xl mx-auto px-4 lg:px-8 grid grid-cols-2 md:grid-cols-4 gap-8 text-center">
+        <div>
+          <p class="text-3xl lg:text-4xl font-extrabold text-amber-400">
+            <span class="stat-counter" data-target="15400">0</span>+
+          </p>
+          <p class="text-xs text-slate-400 font-semibold uppercase tracking-wider mt-1">
+            Orders Delivered
+          </p>
+        </div>
+        <div>
+          <p class="text-3xl lg:text-4xl font-extrabold text-white">
+            <span class="stat-counter" data-target="18">0</span> min
+          </p>
+          <p class="text-xs text-slate-400 font-semibold uppercase tracking-wider mt-1">
+            Avg. Delivery Time
+          </p>
+        </div>
+        <div>
+          <p class="text-3xl lg:text-4xl font-extrabold text-amber-400">
+            <span class="stat-counter" data-target="120">0</span>+
+          </p>
+          <p class="text-xs text-slate-400 font-semibold uppercase tracking-wider mt-1">
+            Local Kitchens
+          </p>
+        </div>
+        <div>
+          <p class="text-3xl lg:text-4xl font-extrabold text-white">
+            4.9 <span class="text-amber-400">★</span>
+          </p>
+          <p class="text-xs text-slate-400 font-semibold uppercase tracking-wider mt-1">
+            Rider Satisfaction
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ═══════════════════════════════════════════
+         INTERACTIVE ROLE SWITCHER (Customers / Riders / Owners)
+    ═══════════════════════════════════════════ -->
+    <section id="roles" class="py-20 lg:py-28 max-w-7xl mx-auto px-4 lg:px-8">
+      <div class="text-center max-w-2xl mx-auto mb-12">
+        <span class="text-xs font-extrabold uppercase tracking-widest text-amber-600">
+          One Platform, Three Tailored Experiences
+        </span>
+        <h2 class="text-3xl sm:text-4xl font-extrabold text-slate-900 mt-2">
+          Built for Everyone at the Table
+        </h2>
+        <p class="text-slate-500 text-sm mt-3">
+          No cluttered screens. Each role gets a dedicated workspace designed
+          specifically for what they need to do.
+        </p>
+
+        <!-- Role Pill Switcher -->
+        <div class="inline-flex bg-slate-200/80 p-1.5 rounded-2xl mt-6">
+          <button
+            data-role="customer"
+            class="role-tab px-5 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition bg-white text-slate-900 shadow-sm"
+          >
+            🍔 Customers
+          </button>
+          <button
+            data-role="rider"
+            class="role-tab px-5 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition text-slate-600 hover:text-slate-900"
+          >
+            🛵 Zilla Riders
+          </button>
+          <button
+            data-role="owner"
+            class="role-tab px-5 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition text-slate-600 hover:text-slate-900"
+          >
+            🏪 Restaurants
+          </button>
+        </div>
+      </div>
+
+      <!-- Dynamic Role Showcase Card -->
+      <div
+        id="role-card"
+        class="bg-white rounded-3xl shadow-sm border border-slate-100 p-6 sm:p-10 lg:p-12 grid lg:grid-cols-12 gap-8 items-center"
+      >
+        <div class="lg:col-span-7 space-y-5">
+          <span
+            id="role-badge"
+            class="inline-flex items-center gap-1.5 text-xs font-bold bg-amber-100 text-amber-800 px-3 py-1 rounded-full"
+          >
+            Hungry Customer Experience
+          </span>
+          <h3
+            id="role-title"
+            class="text-2xl sm:text-3xl font-extrabold text-slate-900"
+          >
+            Hot meals from local favorites, tracked to your doorstep.
+          </h3>
+          <p id="role-desc" class="text-slate-600 text-sm sm:text-base leading-relaxed">
+            Browse verified campus and city kitchens, pay seamlessly with
+            Paystack, and watch your rider progress through 5 real-time stages:
+            Zilla On It, At Kitchen, Bagged, Moving, and Close By.
+          </p>
+          <ul id="role-bullets" class="space-y-3 text-sm font-medium text-slate-700">
+            <li class="flex items-center gap-2.5">
+              <span class="material-symbols-outlined text-amber-500">
+                check_circle
+              </span>
+              Real-time SSE notifications when your food is bagged & moving
+            </li>
+            <li class="flex items-center gap-2.5">
+              <span class="material-symbols-outlined text-amber-500">
+                check_circle
+              </span>
+              4-digit delivery confirmation code so your food never gets lost
+            </li>
+            <li class="flex items-center gap-2.5">
+              <span class="material-symbols-outlined text-amber-500">
+                check_circle
+              </span>
+              Save favorite meals & rate your rider after every trip
+            </li>
+          </ul>
+          <div class="pt-2">
+            <a
+              id="role-cta"
+              href="/restaurants"
+              class="inline-flex items-center gap-2 px-6 py-3.5 rounded-full bg-slate-900 hover:bg-slate-800 text-white text-sm font-bold transition"
+            >
+              <span>Start Ordering Food</span>
+              <span class="material-symbols-outlined text-base">
+                arrow_forward
+              </span>
+            </a>
+          </div>
+        </div>
+
+        <!-- Right Visual Box -->
+        <div
+          id="role-preview"
+          class="lg:col-span-5 bg-slate-50 rounded-2xl p-6 border border-slate-100"
+        >
+          <!-- Populated dynamically via JS -->
+        </div>
+      </div>
+    </section>
+
+    <!-- ═══════════════════════════════════════════
+         BENTO GRID FEATURES
+    ═══════════════════════════════════════════ -->
+    <section id="features" class="py-16 bg-white border-y border-slate-100">
+      <div class="max-w-7xl mx-auto px-4 lg:px-8">
+        <div class="text-center max-w-2xl mx-auto mb-12">
+          <span class="text-xs font-extrabold uppercase tracking-widest text-amber-600">
+            Why ChowZilla
+          </span>
+          <h2 class="text-3xl font-extrabold text-slate-900 mt-2">
+            Engineered for Speed & Trust
+          </h2>
+        </div>
+
+        <div class="grid md:grid-cols-3 gap-6">
+          <!-- Feature 1 -->
+          <div class="bento-card bg-slate-50 rounded-3xl p-7 border border-slate-100">
+            <div class="w-12 h-12 rounded-2xl bg-amber-100 text-amber-600 flex items-center justify-center mb-5">
+              <span class="material-symbols-outlined text-2xl">pin</span>
+            </div>
+            <h3 class="text-lg font-extrabold text-slate-900 mb-2">
+              4-Digit Handshake Code
+            </h3>
+            <p class="text-sm text-slate-500 leading-relaxed">
+              Every order generates a unique 4-digit customer code. Riders enter
+              it upon arrival to mark the order delivered and trigger instant
+              payout.
+            </p>
+          </div>
+
+          <!-- Feature 2 -->
+          <div class="bento-card bg-slate-50 rounded-3xl p-7 border border-slate-100">
+            <div class="w-12 h-12 rounded-2xl bg-purple-100 text-purple-600 flex items-center justify-center mb-5">
+              <span class="material-symbols-outlined text-2xl">
+                notifications_active
+              </span>
+            </div>
+            <h3 class="text-lg font-extrabold text-slate-900 mb-2">
+              Zero-Refresh Live SSE
+            </h3>
+            <p class="text-sm text-slate-500 leading-relaxed">
+              Built on real-time Server-Sent Events. Riders get instant audio
+              and push alerts the second a kitchen marks an order ready.
+            </p>
+          </div>
+
+          <!-- Feature 3 -->
+          <div class="bento-card bg-slate-50 rounded-3xl p-7 border border-slate-100">
+            <div class="w-12 h-12 rounded-2xl bg-emerald-100 text-emerald-600 flex items-center justify-center mb-5">
+              <span class="material-symbols-outlined text-2xl">payments</span>
+            </div>
+            <h3 class="text-lg font-extrabold text-slate-900 mb-2">
+              Direct Paystack Transfers
+            </h3>
+            <p class="text-sm text-slate-500 leading-relaxed">
+              Riders verify their 10-digit Nigerian bank account once and get
+              paid automatically after every completed drop-off.
+            </p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ═══════════════════════════════════════════
+         INTERACTIVE RIDER EARNINGS CALCULATOR
+    ═══════════════════════════════════════════ -->
+    <section id="calculator" class="py-20 max-w-5xl mx-auto px-4 lg:px-8">
+      <div class="bg-slate-900 text-white rounded-3xl p-8 sm:p-12 shadow-xl grid md:grid-cols-12 gap-8 items-center">
+        <div class="md:col-span-7 space-y-4">
+          <span class="text-xs font-bold uppercase tracking-wider bg-amber-500/20 text-amber-400 px-3 py-1 rounded-full">
+            Ride With ChowZilla
+          </span>
+          <h2 class="text-2xl sm:text-3xl font-extrabold">
+            Calculate Your Potential Rider Earnings
+          </h2>
+          <p class="text-slate-400 text-sm">
+            Whether you ride a bicycle with your Student ID or a motorcycle with
+            a license, you choose when to toggle Online.
+          </p>
+
+          <div class="pt-4 space-y-2">
+            <div class="flex justify-between text-sm font-bold">
+              <span class="text-slate-300">Deliveries per day:</span>
+              <span id="trips-label" class="text-amber-400 text-lg">10 trips / day</span>
+            </div>
+            <input
+              id="trips-slider"
+              type="range"
+              min="2"
+              max="30"
+              value="10"
+              class="w-full accent-amber-500 cursor-pointer h-2 bg-slate-700 rounded-lg"
+            />
+            <div class="flex justify-between text-[11px] text-slate-500">
+              <span>2 trips (Part-time)</span>
+              <span>15 trips</span>
+              <span>30 trips (Full-time)</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="md:col-span-5 bg-slate-800/90 border border-slate-700 rounded-2xl p-6 text-center space-y-4">
+          <div>
+            <p class="text-xs text-slate-400 uppercase font-semibold">
+              Estimated Weekly Payout
+            </p>
+            <p
+              id="weekly-earnings"
+              class="text-3xl sm:text-4xl font-extrabold text-amber-400 mt-1"
+            >
+              ₦42,000
+            </p>
+          </div>
+          <div class="border-t border-slate-700 pt-3">
+            <p class="text-xs text-slate-400">
+              Monthly Estimate:
+              <span id="monthly-earnings" class="font-bold text-white">
+                ₦168,000
+              </span>
+            </p>
+          </div>
+          <a
+            href="/signup"
+            class="block w-full py-3 rounded-xl bg-amber-500 hover:bg-amber-600 text-slate-950 font-extrabold text-sm transition"
+          >
+            Register as a Rider
+          </a>
+        </div>
+      </div>
+    </section>
+
+    <!-- ═══════════════════════════════════════════
+         HOW IT WORKS
+    ═══════════════════════════════════════════ -->
+    <section id="how-it-works" class="py-16 max-w-7xl mx-auto px-4 lg:px-8">
+      <div class="text-center mb-12">
+        <h2 class="text-3xl font-extrabold text-slate-900">
+          How ChowZilla Works
+        </h2>
+      </div>
+      <div class="grid md:grid-cols-3 gap-6">
+        <div class="step-card bg-white rounded-2xl p-6 shadow-sm border border-slate-100">
+          <span class="text-xs font-black text-amber-600 bg-amber-50 px-3 py-1 rounded-full">
+            STEP 01
+          </span>
+          <h3 class="text-lg font-bold mt-4 mb-1">Tap & Order</h3>
+          <p class="text-sm text-slate-500">
+            Pick your meal from local kitchens and checkout securely in seconds.
+          </p>
+        </div>
+        <div class="step-card bg-white rounded-2xl p-6 shadow-sm border border-slate-100">
+          <span class="text-xs font-black text-amber-600 bg-amber-50 px-3 py-1 rounded-full">
+            STEP 02
+          </span>
+          <h3 class="text-lg font-bold mt-4 mb-1">Zilla On It</h3>
+          <p class="text-sm text-slate-500">
+            A nearby verified rider accepts your order and tracks the fastest
+            route on the live map.
+          </p>
+        </div>
+        <div class="step-card bg-white rounded-2xl p-6 shadow-sm border border-slate-100">
+          <span class="text-xs font-black text-amber-600 bg-amber-50 px-3 py-1 rounded-full">
+            STEP 03
+          </span>
+          <h3 class="text-lg font-bold mt-4 mb-1">Share Your 4-Digit Code</h3>
+          <p class="text-sm text-slate-500">
+            Give your rider the 4-digit PIN when they arrive to complete the
+            delivery safely.
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ═══════════════════════════════════════════
+         FOOTER
+    ═══════════════════════════════════════════ -->
+    <footer class="bg-white border-t border-slate-200 py-10">
+      <div class="max-w-7xl mx-auto px-4 lg:px-8 flex flex-col sm:flex-row items-center justify-between gap-4">
+        <div class="flex items-center gap-2">
+          <span class="text-xl font-extrabold text-amber-500">
+            Chow<span class="text-slate-900">Zilla</span>
+          </span>
+          <span class="text-xs text-slate-400">
+            © 2026 ChowZilla Delivery. All rights reserved.
+          </span>
+        </div>
+        <div class="flex gap-6 text-xs font-semibold text-slate-500">
+          <a href="/restaurants" class="hover:text-amber-500">Restaurants</a>
+          <a href="/rider" class="hover:text-amber-500">Rider Portal</a>
+          <a href="/dashboard" class="hover:text-amber-500">Partner Kitchens</a>
+        </div>
+      </div>
+    </footer>
+
+    <!-- ═══════════════════════════════════════════
+         JAVASCRIPT + GSAP ANIMATIONS
+    ═══════════════════════════════════════════ -->
+    <script>
+      gsap.registerPlugin(ScrollTrigger);
+
+      // 1. Hero Entrance Timeline
+      const heroTl = gsap.timeline({ defaults: { ease: "power3.out" } });
+      heroTl
+        .from(".hero-anim", {
+          y: 30,
+          opacity: 0,
+          duration: 0.7,
+          stagger: 0.12,
+        })
+        .from(
+          "#hero-phone",
+          {
+            y: 50,
+            opacity: 0,
+            scale: 0.94,
+            duration: 0.8,
+          },
+          "-=0.5"
+        )
+        .from(
+          [".float-badge-1", ".float-badge-2"],
+          {
+            scale: 0.8,
+            opacity: 0,
+            duration: 0.5,
+            stagger: 0.15,
+          },
+          "-=0.4"
+        );
+
+      // Continuous Floating Animation on Hero Badges
+      gsap.to(".float-badge-1", {
+        y: -10,
+        duration: 2.2,
+        repeat: -1,
+        yoyo: true,
+        ease: "sine.inOut",
+      });
+      gsap.to(".float-badge-2", {
+        y: 10,
+        duration: 2.6,
+        repeat: -1,
+        yoyo: true,
+        ease: "sine.inOut",
+      });
+
+      // 2. ScrollTrigger Counter Animations
+      gsap.utils.toArray(".stat-counter").forEach((el) => {
+        const target = parseInt(el.getAttribute("data-target"), 10);
+        const counterObj = { val: 0 };
+        gsap.to(counterObj, {
+          val: target,
+          duration: 2,
+          ease: "power2.out",
+          scrollTrigger: {
+            trigger: el,
+            start: "top 88%",
+            once: true,
+          },
+          onUpdate: () => {
+            el.textContent = Math.floor(counterObj.val).toLocaleString();
+          },
+        });
+      });
+
+      // 3. ScrollTrigger Stagger for Bento Cards & Steps
+      gsap.from(".bento-card", {
+        y: 40,
+        opacity: 0,
+        duration: 0.6,
+        stagger: 0.15,
+        scrollTrigger: {
+          trigger: "#features",
+          start: "top 80%",
+        },
+      });
+
+      gsap.from(".step-card", {
+        y: 30,
+        opacity: 0,
+        duration: 0.6,
+        stagger: 0.15,
+        scrollTrigger: {
+          trigger: "#how-it-works",
+          start: "top 82%",
+        },
+      });
+
+      // 4. Interactive Role Switcher Data & Logic
+      const ROLE_DATA = {
+        customer: {
+          badge: "Hungry Customer Experience",
+          title: "Hot meals from local favorites, tracked to your doorstep.",
+          desc: "Browse verified campus and city kitchens, pay seamlessly with Paystack, and watch your rider progress through 5 real-time stages: Zilla On It, At Kitchen, Bagged, Moving, and Close By.",
+          bullets: [
+            "Real-time SSE notifications when your food is bagged & moving",
+            "4-digit delivery confirmation code so your food never gets lost",
+            "Save favorite meals & rate your rider after every trip",
+          ],
+          ctaText: "Start Ordering Food",
+          ctaHref: "/restaurants",
+          previewHtml: `
+            <div class="bg-white rounded-2xl p-4 shadow-sm border border-slate-100 space-y-3">
+              <div class="flex items-center justify-between">
+                <span class="text-xs font-bold text-slate-900">Order #8821 • On the Way</span>
+                <span class="text-xs font-extrabold text-amber-600">PIN: 4921</span>
+              </div>
+              <div class="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
+                <div class="bg-amber-500 h-full w-4/5 rounded-full"></div>
+              </div>
+              <div class="flex items-center justify-between text-xs text-slate-500">
+                <span>Mama Put Kitchen</span>
+                <span class="font-bold text-purple-600">● Close By (~3 min)</span>
+              </div>
+            </div>
+          `,
+        },
+        rider: {
+          badge: "Dedicated 4-Tab Rider Workspace",
+          title: "Zero clutter. Accept orders, navigate, and cash out fast.",
+          desc: "We separated live dispatch from off-duty admin work. Toggle between Available Orders and My Delivery in one tap, search 400+ reviews effortlessly, and receive automatic Paystack bank payouts.",
+          bullets: [
+            "Segmented Dispatch Toggle: Available Orders vs. Active Delivery + Map",
+            "Dedicated History, Payouts, and searchable/filterable Reviews tabs",
+            "Register with either Driver's License or Student Matric ID",
+          ],
+          ctaText: "Open Rider Portal",
+          ctaHref: "/rider",
+          previewHtml: `
+            <div class="bg-white rounded-2xl p-4 shadow-sm border border-slate-100 space-y-3">
+              <div class="flex items-center justify-between">
+                <span class="text-xs font-extrabold text-slate-900">Rider Bottom Nav</span>
+                <span class="text-[10px] font-bold bg-green-100 text-green-700 px-2 py-0.5 rounded-full">Role-Isolated UI</span>
+              </div>
+              <div class="grid grid-cols-4 gap-2 text-center pt-1">
+                <div class="bg-amber-100 text-amber-700 p-2 rounded-xl text-[10px] font-bold">Deliveries</div>
+                <div class="bg-slate-100 text-slate-600 p-2 rounded-xl text-[10px] font-bold">History</div>
+                <div class="bg-slate-100 text-slate-600 p-2 rounded-xl text-[10px] font-bold">Payouts</div>
+                <div class="bg-slate-100 text-slate-600 p-2 rounded-xl text-[10px] font-bold">Reviews</div>
+              </div>
+              <p class="text-[11px] text-slate-400">No customer cart or restaurant browsing clutter—100% focused on earning.</p>
+            </div>
+          `,
+        },
+        owner: {
+          badge: "Restaurant Owner Dashboard",
+          title: "Manage incoming orders, menus, and kitchen prep in real time.",
+          desc: "Accept incoming customer orders, update prep statuses from Preparing to Ready for Pickup, and dispatch automatically to nearby Zilla Riders.",
+          bullets: [
+            "Instant order alerts with itemized ticket breakdown",
+            "One-tap 'Ready for Pickup' dispatches orders to available riders",
+            "Track daily revenue and best-selling menu items",
+          ],
+          ctaText: "Open Restaurant Dashboard",
+          ctaHref: "/dashboard",
+          previewHtml: `
+            <div class="bg-white rounded-2xl p-4 shadow-sm border border-slate-100 space-y-3">
+              <div class="flex items-center justify-between">
+                <span class="text-xs font-bold text-slate-900">Kitchen Ticket #8821</span>
+                <span class="text-[10px] font-bold bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-full">Ready for Pickup</span>
+              </div>
+              <p class="text-xs text-slate-600">2x Jollof Fiesta Combo • 1x Grilled Turkey</p>
+              <div class="text-xs font-bold text-emerald-600">✓ Rider Assigned (Car • FPI/2024/1234)</div>
+            </div>
+          `,
+        },
+      };
+
+      const roleTabs = document.querySelectorAll(".role-tab");
+      const roleBadge = document.getElementById("role-badge");
+      const roleTitle = document.getElementById("role-title");
+      const roleDesc = document.getElementById("role-desc");
+      const roleBullets = document.getElementById("role-bullets");
+      const roleCta = document.getElementById("role-cta");
+      const rolePreview = document.getElementById("role-preview");
+      const roleCard = document.getElementById("role-card");
+
+      function renderRole(roleKey) {
+        const data = ROLE_DATA[roleKey];
+        if (!data) return;
+
+        // Highlight active button
+        roleTabs.forEach((btn) => {
+          const isCurrent = btn.getAttribute("data-role") === roleKey;
+          btn.className = isCurrent
+            ? "role-tab px-5 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition bg-white text-slate-900 shadow-sm"
+            : "role-tab px-5 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition text-slate-600 hover:text-slate-900";
+        });
+
+        // Animate transition with GSAP
+        gsap.fromTo(
+          roleCard,
+          { opacity: 0.4, y: 10 },
+          { opacity: 1, y: 0, duration: 0.35, ease: "power2.out" }
+        );
+
+        roleBadge.textContent = data.badge;
+        roleTitle.textContent = data.title;
+        roleDesc.textContent = data.desc;
+        roleBullets.innerHTML = data.bullets
+          .map(
+            (b) => `
+            <li class="flex items-center gap-2.5">
+              <span class="material-symbols-outlined text-amber-500">check_circle</span>
+              <span>${b}</span>
+            </li>`
+          )
+          .join("");
+        roleCta.querySelector("span").textContent = data.ctaText;
+        roleCta.setAttribute("href", data.ctaHref);
+        rolePreview.innerHTML = data.previewHtml;
+      }
+
+      roleTabs.forEach((btn) => {
+        btn.addEventListener("click", () => {
+          renderRole(btn.getAttribute("data-role"));
+        });
+      });
+
+      // Initialize default role preview
+      renderRole("customer");
+
+      // 5. Interactive Rider Earnings Calculator (₦600 avg fee * 7 days)
+      const tripsSlider = document.getElementById("trips-slider");
+      const tripsLabel = document.getElementById("trips-label");
+      const weeklyEarnings = document.getElementById("weekly-earnings");
+      const monthlyEarnings = document.getElementById("monthly-earnings");
+      const AVG_FEE_PER_TRIP = 600;
+
+      tripsSlider.addEventListener("input", (e) => {
+        const tripsPerDay = parseInt(e.target.value, 10);
+        const weekly = tripsPerDay * AVG_FEE_PER_TRIP * 7;
+        const monthly = weekly * 4;
+
+        tripsLabel.textContent = `${tripsPerDay} trips / day`;
+        weeklyEarnings.textContent = `₦${weekly.toLocaleString()}`;
+        monthlyEarnings.textContent = `₦${monthly.toLocaleString()}`;
+      });
+
+      // 6. Mobile Menu Drawer Toggle
+      const mobileMenuBtn = document.getElementById("mobile-menu-btn");
+      const mobileMenu = document.getElementById("mobile-menu");
+      const mobileMenuIcon = document.getElementById("mobile-menu-icon");
+
+      mobileMenuBtn.addEventListener("click", () => {
+        const isHidden = mobileMenu.classList.toggle("hidden");
+        mobileMenuIcon.textContent = isHidden ? "menu" : "close";
+      });
+    </script>
+  </body>
+</html>

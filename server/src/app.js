@@ -13,6 +13,7 @@ app.use(cors({
   origin: [
     process.env.CLIENT_URL,      // deployed web app
     "http://localhost:5173",     // local web dev (Vite)
+    "http://localhost:4173",     // local production preview (Lighthouse)
     "http://localhost",          // Capacitor Android (androidScheme http)
     "https://localhost",         // Capacitor Android (androidScheme https)
     "capacitor://localhost",     // Capacitor iOS

@@ -74,6 +74,7 @@ model Campus {
   users       User[]
   restaurants Restaurant[]
   riders      Rider[]
+  landmarks   CampusLandmark[]
   createdAt   DateTime     @default(now())
   updatedAt   DateTime     @updatedAt
   emailDomain String?      @unique
@@ -110,17 +111,42 @@ model User {
 }
 
 model CustomerDeliveryLocation {
-  id        Int      @id @default(autoincrement())
-  userId    Int
-  label     String
-  address   String
-  lat       Float
-  lng       Float
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id         Int      @id @default(autoincrement())
+  userId     Int
+  label      String
+  address    String
+  lat        Float
+  lng        Float
+  // Optional link for the future saved-locations UI; checkout can keep using
+  // the plain address/coords path until that UI exists.
+  landmarkId Int?
+  landmark   CampusLandmark? @relation(fields: [landmarkId], references: [id], onDelete: SetNull)
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
 
   @@index([userId])
+  @@index([landmarkId])
+}
+
+model CampusLandmark {
+  id             Int      @id @default(autoincrement())
+  campusId       Int
+  name           String
+  category       String   @default("OTHER")
+  aliases        String[] @default([])
+  lat            Float?
+  lng            Float?
+  isActive       Boolean  @default(true)
+  sortOrder      Int      @default(0)
+  campus         Campus   @relation(fields: [campusId], references: [id], onDelete: Cascade)
+  orders         Order[]
+  savedLocations CustomerDeliveryLocation[]
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@unique([campusId, name])
+  @@index([campusId, isActive, sortOrder])
 }
 
 model Rider {
@@ -237,6 +263,9 @@ model Order {
   totalAmount           Decimal @default(0) @db.Decimal(10,2)
   paidAt DateTime?
   deliveryCode   String?
+  // Lifetime wrong-code attempts across every delivery for this order. Stops
+  // a rider cycling a delivery to reset the per-delivery counter.
+  deliveryCodeAttempts Int @default(0)
   paymentReference String?
   idempotencyKey String?
   // True while this order holds inventory; set false when stock is released.
@@ -244,10 +273,14 @@ model Order {
   payment Payment?
   delivery Delivery?
   deliveryAddress String
+  // Optional campus landmark + the block/room/floor detail for that landmark.
+  deliveryLandmarkId Int?
+  deliveryDetail     String?
   customerId      Int
   restaurantId    Int
   deliveryLat Float?
 deliveryLng Float?
+  deliveryLandmark CampusLandmark? @relation(fields: [deliveryLandmarkId], references: [id], onDelete: SetNull)
   customer        User        @relation(fields: [customerId], references: [id])
   restaurant      Restaurant  @relation(fields: [restaurantId], references: [id])
   orderItems      OrderItem[]
@@ -256,6 +289,7 @@ deliveryLng Float?
   createdAt       DateTime    @default(now())
   updatedAt       DateTime    @updatedAt
   @@index([restaurantId])
+  @@index([deliveryLandmarkId])
   @@unique([customerId, idempotencyKey])
 }
 
@@ -264,9 +298,34 @@ model Delivery {
   orderId       Int            @unique
   riderId       Int
   status        DeliveryStatus @default(ZILLA_ON_IT)
+  // Wrong handoff-code attempts for THIS rider assignment. A new delivery
+  // starts at zero, so a reassignment never inherits the previous lock.
+  codeAttempts  Int            @default(0)
   pickedUpAt    DateTime?
   deliveredAt   DateTime?
   failureReason String?
+  // Proximity evidence captured at the handoff states. closeByVerified and
+  // deliveredVerified preserve per-event results; locationVerified is the
+  // summary of the latest check.
+  // CLOSE_BY audit. closeByAt is the server receipt time; closeByCapturedAt
+  // is the client's GPS fix time.
+  closeByLat               Float?
+  closeByLng               Float?
+  closeByAccuracy          Float?
+  closeByCapturedAt        DateTime?
+  closeByAt                DateTime?
+  closeByVerified          Boolean?
+  closeByDistanceMeters    Float?
+  closeByUnverifiedReason  String?
+  // DELIVERED audit. deliveredAt is the server completion time;
+  // deliveredCapturedAt is the client's GPS fix time.
+  deliveredLat             Float?
+  deliveredLng             Float?
+  deliveredAccuracy        Float?
+  deliveredCapturedAt      DateTime?
+  deliveredVerified        Boolean?
+  deliveredDistanceMeters  Float?
+  deliveredUnverifiedReason String?
   order         Order          @relation(fields: [orderId], references: [id])
   rider         Rider          @relation(fields: [riderId], references: [id])
   createdAt     DateTime       @default(now())

@@ -6,11 +6,48 @@ import { validate } from "../middleware/validate.js";
 import { deliveryStatusSchema } from "../validation/schemas.js";
 import { notify } from "../services/events.js";
 import { settleOrderPayouts } from "../services/payouts.js";
+import {
+  buildProximityAudit,
+  decideProximityAction,
+  evaluateDropoffLocation,
+  getProximityConfig,
+} from "../utils/geo.js";
 
 const router = express.Router();
 
 // Remove the handoff code from rider-facing payloads so only the customer sees it.
 const hideDeliveryCode = (order) => { if (order) delete order.deliveryCode; return order; };
+
+// Tell eligible riders on the same campus that an order is back in the queue.
+// This is what makes a release visible immediately instead of waiting for the
+// rider dashboard to be reloaded.
+async function notifyCampusRiders(order, { excludeUserId } = {}) {
+  if (!order?.restaurant?.campusId) return;
+
+  const riders = await prisma.rider.findMany({
+    where: {
+      campusId: order.restaurant.campusId,
+      isAvailable: true,
+      isVerified: true,
+      isSuspended: false,
+      ...(excludeUserId ? { userId: { not: excludeUserId } } : {}),
+    },
+    select: { userId: true },
+  });
+
+  const riderUserIds = riders.map((r) => r.userId);
+  if (!riderUserIds.length) return;
+
+  notify("order:updated", riderUserIds, {
+    status: "READY_FOR_PICKUP",
+    // Customer/owner already received the FAILED notification; null here stops
+    // this rider-facing event from pushing to them a second time.
+    customerId: null,
+    ownerId: null,
+    riderIds: riderUserIds,
+    orderId: order.id,
+  });
+}
 
 // State machine: valid transitions
 const VALID_TRANSITIONS = {
@@ -23,6 +60,13 @@ const VALID_TRANSITIONS = {
   FAILED:      [],
 };
 
+// Brute-force protection, scoped to the rider assignment:
+// - 5 wrong guesses on a delivery → release it to the queue immediately.
+// - 15 wrong guesses on an order → require manual verification.
+// The order total stops a rider cycling deliveries to reset the counter.
+const MAX_CODE_ATTEMPTS_PER_DELIVERY = 5;
+const MAX_CODE_ATTEMPTS_PER_ORDER = 15;
+
 // Get available orders for riders (READY_FOR_PICKUP, no delivery assigned, not rejected by this rider)
 router.get("/riders/available-orders", authMiddleware, riderMiddleware, async (req, res, next) => {
   try {
@@ -34,10 +78,33 @@ router.get("/riders/available-orders", authMiddleware, riderMiddleware, async (r
       return res.status(404).json({ message: "Rider profile not found. Please register first." });
     }
 
+    // Enforcement belongs here, not only in the accept endpoint and the UI:
+    // a suspended or unverified rider should never receive the order queue.
+    if (!rider.isVerified || rider.isSuspended || !rider.isAvailable) {
+      const reason = rider.isSuspended
+        ? "Your rider account is suspended. Contact your campus admin."
+        : !rider.isVerified
+          ? "Your rider profile is pending verification."
+          : "You are offline — go online to see orders.";
+
+      return res.status(200).json({
+        message: reason,
+        orders: [],
+        eligibility: {
+          isVerified: rider.isVerified,
+          isSuspended: rider.isSuspended,
+          isAvailable: rider.isAvailable,
+        },
+      });
+    }
+
     const orders = await prisma.order.findMany({
       where: {
         status: "READY_FOR_PICKUP",
-        delivery: null, // No rider assigned yet
+        // A failed delivery keeps its row for the rider's history, but the
+        // order itself is back in the queue. Filtering on `delivery: null`
+        // alone hid those orders from every rider forever.
+        OR: [{ delivery: null }, { delivery: { status: "FAILED" } }],
         // Only this rider's campus — never expose other campuses' orders.
         restaurant: { campusId: rider.campusId },
         rejectedBy: { none: { riderId: rider.id } }, // Exclude orders this rider skipped
@@ -55,6 +122,7 @@ router.get("/riders/available-orders", authMiddleware, riderMiddleware, async (r
         customer: {
           select: { id: true, name: true },
         },
+        deliveryLandmark: { select: { id: true, name: true, category: true } },
       },
       orderBy: { createdAt: "asc" }, // Oldest first
     });
@@ -216,6 +284,7 @@ router.post("/deliveries/:orderId/accept", authMiddleware, riderMiddleware, asyn
           orderItems: { include: { menuItem: true } },
           restaurant: { select: { id: true, name: true, address: true, phone: true, ownerId: true, lat: true, lng: true } },
           customer: { select: { id: true, name: true, phone: true } },
+          deliveryLandmark: { select: { id: true, name: true, category: true } },
         },
       });
 
@@ -248,7 +317,15 @@ router.post("/deliveries/:orderId/accept", authMiddleware, riderMiddleware, asyn
 // Update delivery status
 router.put("/deliveries/:id/status", authMiddleware, riderMiddleware, validate(deliveryStatusSchema), async (req, res, next) => {
   try {
-    const { status, reason } = req.body;
+    const {
+      status,
+      reason,
+      lat,
+      lng,
+      accuracy,
+      capturedAt,
+      locationUnverifiedReason,
+    } = req.body;
 
     const deliveryId = Number(req.params.id);
     const userId = req.user.id;
@@ -260,7 +337,11 @@ router.put("/deliveries/:id/status", authMiddleware, riderMiddleware, validate(d
         where: { id: deliveryId },
         include: {
           rider: true,
-          order: true,
+          order: {
+            include: {
+              deliveryLandmark: { select: { lat: true, lng: true } },
+            },
+          },
         },
       });
 
@@ -282,6 +363,60 @@ router.put("/deliveries/:id/status", authMiddleware, riderMiddleware, validate(d
         };
       }
 
+      // Proximity gate for the handoff states. A clear "too far" reading is a
+      // hard stop; missing/unreliable GPS may proceed with a reason and flag.
+      let locationResult = null;
+      if (status === "CLOSE_BY" || status === "DELIVERED") {
+        const config = getProximityConfig();
+
+        if (config.mode !== "off") {
+          const dropoff =
+            delivery.order.deliveryLat != null &&
+            delivery.order.deliveryLng != null
+              ? {
+                  lat: delivery.order.deliveryLat,
+                  lng: delivery.order.deliveryLng,
+                }
+              : delivery.order.deliveryLandmark?.lat != null &&
+                  delivery.order.deliveryLandmark?.lng != null
+                ? {
+                    lat: delivery.order.deliveryLandmark.lat,
+                    lng: delivery.order.deliveryLandmark.lng,
+                  }
+                : null;
+
+          const evaluation = evaluateDropoffLocation({
+            dropoff,
+            input: { lat, lng, accuracy, capturedAt },
+            config,
+          });
+
+          const decision = decideProximityAction({
+            evaluation,
+            reason: locationUnverifiedReason,
+            mode: config.mode,
+          });
+
+          if (decision.action === "skip") {
+            locationResult = null;
+          } else if (decision.action === "reject") {
+            // GPS says the rider is clearly somewhere else — do not allow it.
+            return { locationError: evaluation };
+          } else if (decision.action === "needReason") {
+            return { locationError: { ...evaluation, requiresReason: true } };
+          } else if (decision.action === "warn") {
+            locationResult = evaluation;
+            console.warn("[delivery] proximity warning", {
+              deliveryId,
+              ...evaluation,
+            });
+          } else {
+            // allow / allowWithReason
+            locationResult = evaluation;
+          }
+        }
+      }
+
       // Set timestamps based on new status
       const data = { status };
       if (status === "BAGGED") {
@@ -289,9 +424,100 @@ router.put("/deliveries/:id/status", authMiddleware, riderMiddleware, validate(d
       }
       if (status === "DELIVERED") {
         data.deliveredAt = new Date();
+        data.codeAttempts = 0; // successful handoff resets this assignment
       }
       if (status === "FAILED" && reason) {
         data.failureReason = reason;
+      }
+
+      // Persist the proximity evidence for this handoff state. CLOSE_BY and
+      // DELIVERED have separate columns so neither overwrites the other.
+      if (locationResult && (status === "CLOSE_BY" || status === "DELIVERED")) {
+        Object.assign(
+          data,
+          buildProximityAudit({
+            status,
+            evaluation: locationResult,
+            input: { lat, lng, accuracy, capturedAt },
+            reason: locationUnverifiedReason,
+          })
+        );
+      }
+
+      // Verify the handoff code BEFORE updating the delivery. Wrong codes
+      // return instead of throwing, because a thrown error would roll back the
+      // attempt counters with the rest of the transaction.
+      if (status === "DELIVERED") {
+        // A paid order always has a code; if it is missing, the rider cannot
+        // complete the delivery and should not be charged an attempt for it.
+        if (!delivery.order.deliveryCode) {
+          return { codeMissing: true };
+        }
+
+        const orderAttempts = delivery.order.deliveryCodeAttempts || 0;
+        if (orderAttempts >= MAX_CODE_ATTEMPTS_PER_ORDER) {
+          return { codeBlocked: true };
+        }
+
+        const code = String(req.body.code || "").trim();
+
+        if (code !== delivery.order.deliveryCode) {
+          const attempts = (delivery.codeAttempts || 0) + 1;
+          const totalAttempts = orderAttempts + 1;
+
+          // Fifth miss on this assignment: release the order now. The customer
+          // should not wait out a lock, and the next rider gets a fresh five
+          // attempts because codeAttempts lives on the Delivery.
+          if (attempts >= MAX_CODE_ATTEMPTS_PER_DELIVERY) {
+            const failedDelivery = await tx.delivery.update({
+              where: { id: deliveryId },
+              data: {
+                status: "FAILED",
+                failureReason: "Too many incorrect delivery-code attempts",
+                codeAttempts: attempts,
+              },
+              include: {
+                order: {
+                  include: {
+                    restaurant: { select: { ownerId: true, campusId: true } },
+                    customer: { select: { id: true } },
+                  },
+                },
+              },
+            });
+
+            const requeuedOrder = await tx.order.update({
+              where: { id: delivery.orderId },
+              data: {
+                status: "READY_FOR_PICKUP",
+                deliveryCodeAttempts: totalAttempts,
+              },
+            });
+
+            return {
+              codeReleased: true,
+              delivery: failedDelivery,
+              order: requeuedOrder,
+              attempts,
+              riderUserId: delivery.rider.userId,
+            };
+          }
+
+          await tx.delivery.update({
+            where: { id: deliveryId },
+            data: { codeAttempts: attempts },
+          });
+          await tx.order.update({
+            where: { id: delivery.orderId },
+            data: { deliveryCodeAttempts: totalAttempts },
+          });
+
+          return {
+            codeError: true,
+            attempts,
+            remaining: MAX_CODE_ATTEMPTS_PER_DELIVERY - attempts,
+          };
+        }
       }
 
       const updatedDelivery = await tx.delivery.update({
@@ -301,8 +527,9 @@ router.put("/deliveries/:id/status", authMiddleware, riderMiddleware, validate(d
           order: {
             include: {
               orderItems: { include: { menuItem: true } },
-              restaurant: { select: { id: true, name: true, address: true, ownerId: true, lat: true, lng: true } },
+              restaurant: { select: { id: true, name: true, address: true, ownerId: true, campusId: true, lat: true, lng: true } },
               customer: { select: { id: true, name: true, phone: true } },
+              deliveryLandmark: { select: { id: true, name: true, category: true } },
             },
           },
           rider: {
@@ -325,29 +552,92 @@ router.put("/deliveries/:id/status", authMiddleware, riderMiddleware, validate(d
             orderItems: { include: { menuItem: true } },
             restaurant: { select: { id: true, name: true, address: true } },
             customer: { select: { id: true, name: true, phone: true } },
+            deliveryLandmark: { select: { id: true, name: true, category: true } },
           },
         });
       }
 
-      // When delivery is marked DELIVERED, also update the order
+      // When delivery is marked DELIVERED, also update the order and clear
+      // the attempt counter for this order.
       if (status === "DELIVERED") {
-        const code = String(req.body.code || "").trim();
-        if (!delivery.order.deliveryCode || code !== delivery.order.deliveryCode) {
-          throw { status: 400, message: "Incorrect delivery code. Ask the customer for their 4-digit code." };
-        }
         updatedOrder = await tx.order.update({
           where: { id: delivery.orderId },
-          data: { status: "DELIVERED" },
+          data: {
+            status: "DELIVERED",
+            deliveryCodeAttempts: 0,
+          },
           include: {
             orderItems: { include: { menuItem: true } },
             restaurant: { select: { id: true, name: true, address: true } },
             customer: { select: { id: true, name: true, phone: true } },
+            deliveryLandmark: { select: { id: true, name: true, category: true } },
           },
         });
       }
 
-      return { delivery: updatedDelivery, order: updatedOrder };
+      return {
+        delivery: updatedDelivery,
+        order: updatedOrder,
+        riderUserId: delivery.rider.userId,
+      };
     }, { timeout: 20000, maxWait: 10000 });
+
+    if (result.locationError) {
+      return res.status(422).json({
+        message: result.locationError.message,
+        code: result.locationError.code,
+        requiresReason: !!result.locationError.requiresReason,
+        distanceMeters: result.locationError.distanceMeters ?? null,
+        radiusMeters: result.locationError.radiusMeters ?? null,
+        accuracyMeters: result.locationError.accuracyMeters ?? null,
+      });
+    }
+
+    if (result.codeMissing) {
+      return res.status(409).json({
+        message:
+          "This order has no delivery code. Ask the customer to check their order, or contact support.",
+      });
+    }
+
+    if (result.codeBlocked) {
+      return res.status(429).json({
+        message:
+          "This order has had too many incorrect code attempts. Contact support to verify it manually.",
+      });
+    }
+
+    if (result.codeReleased) {
+      // The delivery is FAILED and the order is back in the queue. Reuse the
+      // normal FAILED notifications so the customer knows a new rider is coming.
+      const order = result.delivery.order;
+      const customerId = order?.customer?.id;
+      const ownerId = order?.restaurant?.ownerId;
+      notify("order:updated", [customerId, ownerId].filter(Boolean), {
+        status: "FAILED",
+        customerId,
+        ownerId,
+        orderId: order?.id,
+      });
+
+      // Wake the other riders on this campus immediately.
+      await notifyCampusRiders(order, {
+        excludeUserId: result.riderUserId,
+      });
+
+      return res.status(429).json({
+        message:
+          "Too many incorrect codes. This delivery has been released to another rider.",
+      });
+    }
+
+    if (result.codeError) {
+      return res.status(400).json({
+        message: `Incorrect delivery code. ${result.remaining} attempt${
+          result.remaining === 1 ? "" : "s"
+        } left.`,
+      });
+    }
 
     // Fire the payout transfers after the transaction commits — non-blocking so a
     // payout failure never makes the rider's "Delivered" appear to fail.
@@ -378,6 +668,14 @@ router.put("/deliveries/:id/status", authMiddleware, riderMiddleware, validate(d
         [customerId, ownerId].filter(Boolean),
         { status, customerId, ownerId, orderId: order?.id }
       );
+    }
+
+    // A manually reported failure also returns the order to the queue; ping
+    // the other campus riders so it gets picked up immediately.
+    if (status === "FAILED") {
+      await notifyCampusRiders(order, {
+        excludeUserId: result.riderUserId,
+      });
     }
 
     res.status(200).json(response);
@@ -411,6 +709,7 @@ router.get("/riders/my-deliveries", authMiddleware, riderMiddleware, async (req,
             orderItems: { include: { menuItem: true } },
             restaurant: { select: { id: true, name: true, address: true, phone: true, lat: true, lng: true } },
             customer: { select: { id: true, name: true, phone: true } },
+            deliveryLandmark: { select: { id: true, name: true, category: true } },
           },
         },
       },
@@ -438,31 +737,46 @@ router.get("/riders/stats", authMiddleware, riderMiddleware, async (req, res, ne
       return res.status(404).json({ message: "Rider profile not found." });
     }
 
-    // Completed deliveries with their order's delivery fee
     const completed = await prisma.delivery.findMany({
       where: { riderId: rider.id, status: "DELIVERED" },
-      include: {
-        order: { select: { deliveryFee: true, totalAmount: true } },
-      },
+      select: { deliveredAt: true },
     });
 
     const totalDeliveries = completed.length;
-    const totalEarnings = completed.reduce(
-      (sum, d) => sum + Number(d.order.deliveryFee),
-      0
-    );
 
     // This week's stats
     const weekStart = new Date();
     weekStart.setDate(weekStart.getDate() - weekStart.getDay());
     weekStart.setHours(0, 0, 0, 0);
 
-    const thisWeek = completed.filter((d) => d.deliveredAt && new Date(d.deliveredAt) >= weekStart);
-    const thisWeekDeliveries = thisWeek.length;
-    const thisWeekEarnings = thisWeek.reduce(
-      (sum, d) => sum + Number(d.order.deliveryFee),
-      0
-    );
+    const thisWeekDeliveries = completed.filter(
+      (d) => d.deliveredAt && new Date(d.deliveredAt) >= weekStart
+    ).length;
+
+    // Earnings follow the payout ledger, not the order total: money that
+    // failed or was reversed must never look like income. PENDING is included
+    // because it is owed/in flight (manual-mode payouts stay PENDING).
+    const payouts = await prisma.payout.findMany({
+      where: {
+        type: "RIDER",
+        order: { delivery: { riderId: rider.id } },
+        supersededBy: null,
+      },
+      select: { amount: true, status: true, createdAt: true },
+    });
+
+    const sum = (rows) =>
+      rows.reduce((total, p) => total + Number(p.amount), 0);
+
+    const paid = payouts.filter((p) => p.status === "SUCCESS");
+    const pending = payouts.filter((p) => p.status === "PENDING");
+    const earned = [...paid, ...pending];
+
+    const thisWeek = (rows) =>
+      rows.filter((p) => new Date(p.createdAt) >= weekStart);
+
+    const totalEarnings = sum(earned);
+    const thisWeekEarnings = sum(thisWeek(earned));
 
     res.status(200).json({
       message: "Rider stats fetched successfully",
@@ -471,6 +785,11 @@ router.get("/riders/stats", authMiddleware, riderMiddleware, async (req, res, ne
         totalEarnings,
         thisWeekDeliveries,
         thisWeekEarnings,
+        // Split the total so "earned" is never mistaken for "already paid".
+        paidEarnings: sum(paid),
+        pendingEarnings: sum(pending),
+        thisWeekPaid: sum(thisWeek(paid)),
+        thisWeekPending: sum(thisWeek(pending)),
       },
     });
   } catch (error) {

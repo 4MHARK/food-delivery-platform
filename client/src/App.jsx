@@ -1,26 +1,32 @@
+import { lazy, Suspense } from "react";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider, useAuth } from "./context/AuthContext";
 import { CartProvider } from "./context/CartContext";
-import Signup from "./pages/Signup";
 import Login from "./pages/Login";
-import ForgotPassword from "./pages/ForgotPassword";
-import ResetPassword from "./pages/ResetPassword";
-import Profile from "./pages/Profile";
-import RestaurantList from "./pages/RestaurantList";
-import Orders from "./pages/Orders";
-import Favorites from "./pages/Favorites";
-import RestaurantDetail from "./pages/RestaurantDetail";
-import Cart from "./pages/Cart";
-import OrderDetail from "./pages/OrderDetail";
-import Dashboard from "./pages/ManageRestaurant";
-import RiderDashboard from "./pages/RiderDashboard";
-import AdminDashboard from "./pages/AdminDashboard";
-import AdminSignup from "./pages/AdminSignup";
+
+// Route-level chunks. Login stays eager (it is the pre-auth entry point);
+// everything else — including Leaflet and the three dashboards — loads only
+// when its route is visited.
+const Signup = lazy(() => import("./pages/Signup"));
+const ForgotPassword = lazy(() => import("./pages/ForgotPassword"));
+const ResetPassword = lazy(() => import("./pages/ResetPassword"));
+const Profile = lazy(() => import("./pages/Profile"));
+const RestaurantList = lazy(() => import("./pages/RestaurantList"));
+const Orders = lazy(() => import("./pages/Orders"));
+const Favorites = lazy(() => import("./pages/Favorites"));
+const RestaurantDetail = lazy(() => import("./pages/RestaurantDetail"));
+const Cart = lazy(() => import("./pages/Cart"));
+const OrderDetail = lazy(() => import("./pages/OrderDetail"));
+const Dashboard = lazy(() => import("./pages/ManageRestaurant"));
+const RiderDashboard = lazy(() => import("./pages/RiderDashboard"));
+const AdminDashboard = lazy(() => import("./pages/AdminDashboard"));
+const AdminSignup = lazy(() => import("./pages/AdminSignup"));
 import ProtectedRoute from "./components/ProtectedRoute";
 import OwnerRoute from "./components/OwnerRoute";
 import RiderRoute from "./components/RiderRoute";
 import AdminRoute from "./components/AdminRoute";
 import PushRegistrar from "./components/PushRegistrar";
+import PwaPrompts from "./components/PwaPrompts";
 import ServiceWorkerManager from "./components/ServiceWorkerManager";
 import { isServiceWorkerAllowed } from "./lib/pwa";
 
@@ -54,7 +60,21 @@ function App() {
       {SERVICE_WORKER_ALLOWED && <ServiceWorkerManager />}
       <AuthProvider>
         <PushRegistrar />
+        <PwaPrompts />
         <CartProvider>
+          <Suspense
+            fallback={
+              <div className="min-h-screen flex items-center justify-center">
+                <span
+                  role="status"
+                  aria-label="Loading"
+                  className="material-symbols-outlined animate-spin text-4xl text-amber-600"
+                >
+                  progress_activity
+                </span>
+              </div>
+            }
+          >
           <Routes>
             <Route path="/" element={<HomeRedirect />} />
             <Route path="/signup" element={<Signup />} />
@@ -129,6 +149,7 @@ function App() {
               }
             />
           </Routes>
+          </Suspense>
         </CartProvider>
       </AuthProvider>
     </BrowserRouter>

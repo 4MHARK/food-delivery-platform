@@ -11,6 +11,7 @@ import adminRoutes from "./admin.routes.js"
 import reviewRoutes from "./review.routes.js"
 import favoriteRoutes from "./favorite.routes.js"
 import pushRoutes from "./push.routes.js"
+import campusRoutes from "./campus.routes.js"
 const router = express.Router();
 router.get("/health", (req, res) =>{
     res.status(200).json({
@@ -29,4 +30,5 @@ router.use(adminRoutes);
 router.use(reviewRoutes);
 router.use(favoriteRoutes);
 router.use(pushRoutes);
+router.use(campusRoutes);
 export default router;

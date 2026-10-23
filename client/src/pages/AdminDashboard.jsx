@@ -870,7 +870,7 @@ const CampusesSection = () => {
           <button
             type="submit"
             disabled={creating || !campusName.trim()}
-            className="px-4 py-2 rounded-full text-sm font-bold bg-amber-500 text-white hover:bg-amber-600 disabled:bg-amber-300 transition active:scale-95"
+            className="px-4 py-2 rounded-full text-sm font-bold bg-amber-500 text-slate-950 hover:bg-amber-600 disabled:bg-amber-300 transition active:scale-95"
           >
             {creating ? "Creating..." : "Create Campus"}
           </button>
@@ -933,7 +933,7 @@ const CampusesSection = () => {
                     <button
                       type="submit"
                       disabled={assigning}
-                      className="px-4 py-2 rounded-full text-sm font-bold bg-amber-500 text-white hover:bg-amber-600 disabled:bg-amber-300 transition active:scale-95"
+                      className="px-4 py-2 rounded-full text-sm font-bold bg-amber-500 text-slate-950 hover:bg-amber-600 disabled:bg-amber-300 transition active:scale-95"
                     >
                       {assigning ? "Creating..." : "Create Admin"}
                     </button>

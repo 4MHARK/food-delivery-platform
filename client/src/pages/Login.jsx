@@ -6,7 +6,6 @@ import { api, ApiError } from "../lib/api";
 import auth from "../assets/auth-bg.jpg";
 import { Capacitor } from "@capacitor/core";
 import { SecureStorage } from "@aparajita/capacitor-secure-storage";
-import InstallPrompt from "../components/InstallPrompt";
 
 const EMAIL_KEY = "rememberedEmail";
 const PASSWORD_KEY = "rememberedPassword";
@@ -157,13 +156,13 @@ const Login = () => {
        </div>
 
       {/* RIGHT SIDE */}
-      <div className="flex w-full md:w-1/2 items-center justify-center px-4 sm:px-6 animate-slide-in">
+      <main className="flex w-full md:w-1/2 items-center justify-center px-4 sm:px-6 animate-slide-in">
         <div className="w-full max-w-md p-8 rounded-2xl border border-slate-300">
 
           {/* Mobile Branding */}
           <div className="md:hidden mb-6 text-center">
             <h1 className="text-2xl font-bold">
-              <span className="text-amber-500">Chow</span>Zilla
+              <span className="text-amber-600">Chow</span>Zilla
             </h1>
           </div>
 
@@ -211,7 +210,7 @@ const Login = () => {
                 </label>
                 <Link
                   to="/forgot-password"
-                  className="text-sm font-semibold text-amber-500 hover:text-amber-600 transition-colors"
+                  className="text-sm font-semibold text-amber-700 hover:text-amber-800 transition-colors"
                 >
                   Forgot Password?
                 </Link>
@@ -243,7 +242,7 @@ const Login = () => {
             <button
               type="submit"
               disabled={loading}
-              className="w-full h-12 rounded-xl bg-amber-500 hover:bg-amber-600 transition-colors font-semibold text-white shadow-sm active:scale-[0.98]"
+              className="w-full h-12 rounded-xl bg-amber-500 hover:bg-amber-600 transition-colors font-bold text-slate-950 shadow-sm active:scale-[0.98]"
             >
               {loading ? "Signing in..." : "Sign in"}
             </button>
@@ -255,7 +254,7 @@ const Login = () => {
               <div className="w-full border-t border-slate-200"></div>
             </div>
             <div className="relative flex justify-center text-sm">
-              <span className="px-3 bg-white text-slate-400 text-xs font-semibold uppercase tracking-wider">
+              <span className="px-3 bg-white text-slate-500 text-xs font-semibold uppercase tracking-wider">
                 Or continue with
               </span>
             </div>
@@ -282,17 +281,16 @@ const Login = () => {
           {/* Sign Up Link */}
           <p className="mt-6 text-center text-base text-slate-500">
             Don&apos;t have an account?{" "}
-            <Link to="/signup" className="font-semibold text-amber-500 hover:text-amber-600 transition-colors">
+            <Link to="/signup" className="font-semibold text-amber-700 hover:text-amber-800 transition-colors">
               Sign up
             </Link>
           </p>
         </div>
-      </div>
+      </main>
 
       {/* Placed here (the pre-auth entry point) because this page has no fixed
           bottom nav for it to collide with, and it's where install intent is
           highest. */}
-      <InstallPrompt />
     </div>
   );
 };

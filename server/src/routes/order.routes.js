@@ -13,6 +13,7 @@ import crypto from "crypto";
 import { checkoutLimiter } from "../middleware/rate-limiter.js";
 import { getRefundWindowMinutes } from "../utils/refund.js";
 import { PUBLIC_RESTAURANT } from "../utils/selects.js";
+import { resolveLandmarkLocation } from "../services/deliveryLocation.js";
 
 // Owner-driven order transitions. Payment verification owns
 // PENDING_PAYMENT → PENDING_RESTAURANT_CONFIRMATION, and the delivery flow owns
@@ -34,6 +35,7 @@ async function resolveOrderItems(restaurantId, items) {
     where: { id: numericRestaurantId },
     select: {
       id: true,
+      campusId: true,
       approvalStatus: true,
       isOpen: true,
       hours: {
@@ -98,43 +100,88 @@ async function resolveOrderItems(restaurantId, items) {
     });
   }
 
-  return { validatedItems };
+  return { validatedItems, restaurant };
 }
 
 // ── Checkout: create order + payment ──
-router.post("/orders/checkout", checkoutLimiter, authMiddleware, validate(checkoutSchema), async (req, res, next) => {
+// authMiddleware must run before checkoutLimiter: the limiter keys
+// authenticated users by user id and would otherwise fall back to the IP,
+// sharing one 5/min budget across everyone on the same network.
+router.post("/orders/checkout", authMiddleware, checkoutLimiter, validate(checkoutSchema), async (req, res, next) => {
   try {
-    const { restaurantId, savedLocationId, items, idempotencyKey } = req.body;
+    const {
+      restaurantId,
+      savedLocationId,
+      deliveryLandmarkId,
+      deliveryDetail,
+      items,
+      idempotencyKey,
+    } = req.body;
 
+    // 1. Input validated by validate(checkoutSchema) middleware (zod)
+
+    // 2. Check restaurant exists + validate menu items. The restaurant's
+    //    campusId is needed before a campus landmark can be validated.
+    const { validatedItems, restaurant, error } = await resolveOrderItems(restaurantId, items);
+    if (error) return res.status(error.status).json({ message: error.message });
+
+    // 3. Resolve the drop-off. A campus landmark is owned by the server: its
+    //    name and coordinates override anything the client sent.
     let deliveryLocation;
-    if (savedLocationId) {
-      deliveryLocation = await prisma.customerDeliveryLocation.findFirst({
-        where: { id: savedLocationId, userId: req.user.id },
-        select: { address: true, lat: true, lng: true },
+    if (deliveryLandmarkId) {
+      const landmark = await prisma.campusLandmark.findUnique({
+        where: { id: Number(deliveryLandmarkId) },
+        select: {
+          id: true,
+          name: true,
+          lat: true,
+          lng: true,
+          campusId: true,
+          isActive: true,
+        },
       });
 
-      if (!deliveryLocation) return res.status(404).json({ message: "Saved delivery location not found" });
+      const resolved = resolveLandmarkLocation({
+        landmark,
+        restaurantCampusId: restaurant.campusId,
+        deliveryDetail,
+        deliveryLat: req.body.deliveryLat,
+        deliveryLng: req.body.deliveryLng,
+      });
+
+      if (resolved.error) {
+        return res.status(400).json({ message: resolved.error });
+      }
+
+      deliveryLocation = resolved.location;
+    } else if (savedLocationId) {
+      const saved = await prisma.customerDeliveryLocation.findFirst({
+        where: { id: savedLocationId, userId: req.user.id },
+        select: { address: true, lat: true, lng: true, landmarkId: true },
+      });
+
+      if (!saved) {
+        return res.status(404).json({ message: "Saved delivery location not found" });
+      }
+
+      deliveryLocation = {
+        landmarkId: saved.landmarkId ?? null,
+        detail: null,
+        address: saved.address,
+        lat: saved.lat,
+        lng: saved.lng,
+      };
     } else {
       deliveryLocation = {
+        landmarkId: null,
+        detail: null,
         address: req.body.deliveryAddress,
         lat: req.body.deliveryLat,
         lng: req.body.deliveryLng,
       };
     }
 
-    console.log("Order delivery location received:", {
-      address: deliveryLocation.address,
-      lat: deliveryLocation.lat,
-      lng: deliveryLocation.lng,
-    });
-
-    // 1. Input validated by validate(checkoutSchema) middleware (zod)
-
-    // 2. Check restaurant exists + validate menu items (exist + all belong to this restaurant)
-    const { validatedItems, error } = await resolveOrderItems(restaurantId, items);
-    if (error) return res.status(error.status).json({ message: error.message });
-
-    // 3. Calculate fees on the backend (never trust frontend totals)
+    // 4. Calculate fees on the backend (never trust frontend totals)
     const fees = calculateFees(validatedItems);
 
     // 4. Create the order, its items, and its payment in one transaction — a
@@ -176,6 +223,8 @@ router.post("/orders/checkout", checkoutLimiter, authMiddleware, validate(checko
             customerId: req.user.id,
             restaurantId: Number(restaurantId),
             deliveryAddress: deliveryLocation.address,
+            deliveryLandmarkId: deliveryLocation.landmarkId,
+            deliveryDetail: deliveryLocation.detail,
             deliveryLat: deliveryLocation.lat,
             deliveryLng: deliveryLocation.lng,
             idempotencyKey,
@@ -204,6 +253,7 @@ router.post("/orders/checkout", checkoutLimiter, authMiddleware, validate(checko
           include: {
             orderItems: { include: { menuItem: true } },
             restaurant: PUBLIC_RESTAURANT,
+            deliveryLandmark: { select: { id: true, name: true, category: true } },
             payment: true,
           },
         });
@@ -224,6 +274,7 @@ router.post("/orders/checkout", checkoutLimiter, authMiddleware, validate(checko
           include: {
             orderItems: { include: { menuItem: true } },
             restaurant: PUBLIC_RESTAURANT,
+            deliveryLandmark: { select: { id: true, name: true, category: true } },
             payment: true,
           },
         });
@@ -243,13 +294,6 @@ router.post("/orders/checkout", checkoutLimiter, authMiddleware, validate(checko
 
     // Stock changed for this restaurant's menu.
     announceMenuUpdate(Number(restaurantId));
-
-    console.log("Order delivery location saved:", {
-      orderId: order.id,
-      address: order.deliveryAddress,
-      lat: order.deliveryLat,
-      lng: order.deliveryLng,
-    });
 
     // 5. Return everything. The payment is created nested, so strip it back out
     //    of `order` to keep the response shape unchanged.
@@ -290,7 +334,8 @@ router.get("/orders", authMiddleware, async (req, res, next) => {
             menuItem:{select: {name: true}}
           }
         },
-        restaurant: PUBLIC_RESTAURANT
+        restaurant: PUBLIC_RESTAURANT,
+        deliveryLandmark: { select: { id: true, name: true, category: true } },
       },
       orderBy: {
         createdAt: "desc",
@@ -339,7 +384,7 @@ router.get("/restaurants/:id/orders", authMiddleware, async (req, res, next) => 
 
     res.status(200).json({
       message: "Orders fetched successfully",
-      orders,
+      orders: orders.map(({ deliveryCode, ...order }) => order),
     });
   } catch (error) {
    next(error)
@@ -359,6 +404,7 @@ router.get("/orders/:id", authMiddleware, async (req, res, next) => {
           },
         },
        restaurant: { select: { ...PUBLIC_RESTAURANT.select, owner: { select: { id: true, name: true } } } },
+        deliveryLandmark: { select: { id: true, name: true, category: true } },
         payment: {
           select: { status: true, paidAt: true, reference: true, amount: true },
         },
@@ -534,11 +580,24 @@ router.put("/orders/:id/status", authMiddleware, ownerMiddleware, async (req, re
     const riderUserId = order.delivery?.rider?.userId || null;
 
     if (status === "READY_FOR_PICKUP") {
-      // Customer gets "order ready"; every available rider gets a "new order" ping.
-      notify("order:updated", [order.customerId, "*"], {
+      // Only available, verified riders on this restaurant's campus get the
+      // ping — the queue itself is campus-scoped, so a global "riders" push
+      // was waking riders who could never accept the order.
+      const campusRiders = await prisma.rider.findMany({
+        where: {
+          campusId: order.restaurant.campusId,
+          isAvailable: true,
+          isVerified: true,
+          isSuspended: false,
+        },
+        select: { userId: true },
+      });
+      const riderUserIds = campusRiders.map((r) => r.userId);
+
+      notify("order:updated", [order.customerId, ...riderUserIds], {
         status,
         customerId: order.customerId,
-        riderIds: ["riders"],
+        riderIds: riderUserIds.length ? riderUserIds : null,
         orderId: order.id,
       });
     } else {

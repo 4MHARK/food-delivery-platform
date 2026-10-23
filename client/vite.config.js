@@ -58,7 +58,7 @@ export default defineConfig(({ mode }) => {
         injectManifest: {
           // jpg is included so the login hero (auth-bg.jpg, ~436 KB) renders
           // offline — it's the first thing a logged-out user sees.
-          globPatterns: ['**/*.{js,css,html,svg,png,jpg,ico,webmanifest}'],
+          globPatterns: ['**/*.{js,css,html,svg,png,jpg,ico,webmanifest,woff2}'],
           globIgnores: ['**/*.map'],
           // Workbox THROWS (it does not warn) when a file exceeds this, failing
           // the build. The main chunk is ~930 KB and the login hero ~436 KB, so

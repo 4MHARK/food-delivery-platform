@@ -40,7 +40,7 @@ const ResetPassword = () => {
             <p className="text-slate-500 text-sm mb-6">You can now sign in with your new password.</p>
             <Link
               to="/login"
-              className="inline-flex w-full h-12 rounded-xl bg-amber-500 hover:bg-amber-600 transition-colors font-semibold text-white shadow-sm active:scale-[0.98] items-center justify-center"
+              className="inline-flex w-full h-12 rounded-xl bg-amber-500 hover:bg-amber-600 transition-colors font-semibold text-slate-950 shadow-sm active:scale-[0.98] items-center justify-center"
             >
               Go to login
             </Link>
@@ -99,7 +99,7 @@ const ResetPassword = () => {
               <button
                 type="submit"
                 disabled={loading}
-                className="w-full h-12 rounded-xl bg-amber-500 hover:bg-amber-600 transition-colors font-semibold text-white shadow-sm active:scale-[0.98] disabled:bg-amber-300"
+                className="w-full h-12 rounded-xl bg-amber-500 hover:bg-amber-600 transition-colors font-semibold text-slate-950 shadow-sm active:scale-[0.98] disabled:bg-amber-300"
               >
                 {loading ? "Resetting..." : "Reset password"}
               </button>

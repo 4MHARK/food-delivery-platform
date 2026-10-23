@@ -1,0 +1,9 @@
+User-agent: *
+Allow: /
+
+# Authenticated screens — nothing here is useful to crawlers.
+Disallow: /admin
+Disallow: /dashboard
+Disallow: /cart
+Disallow: /orders
+Disallow: /profile

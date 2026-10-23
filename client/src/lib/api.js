@@ -6,10 +6,13 @@ const BASE_URL = import.meta.env.VITE_API_URL;
 
 // Thrown for any failed request (network or non-2xx). `.message` is safe to show the user.
 export class ApiError extends Error {
-  constructor(message, status) {
+  constructor(message, status, data = null) {
     super(message);
     this.name = "ApiError";
     this.status = status;
+    // Structured response body (e.g. proximity errors carry `code` and
+    // `requiresReason`). Existing callers can keep using message/status.
+    this.data = data;
   }
 }
 
@@ -44,7 +47,7 @@ async function request(method, path, { body, auth = true, signal } = {}) {
   }
 
   if (!res.ok) {
-    throw new ApiError(data?.message || "Something went wrong", res.status);
+    throw new ApiError(data?.message || "Something went wrong", res.status, data);
   }
 
   return data;

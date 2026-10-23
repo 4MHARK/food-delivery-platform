@@ -8,6 +8,22 @@ import { createTransferRecipient } from "../services/paystack.js";
 
 const router = express.Router();
 
+// Payout accounts are often registered in a different name order or include
+// extra middle names. Flag only when there is no shared name token at all.
+const nameTokens = (value) =>
+  String(value || "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim()
+    .split(" ")
+    .filter(Boolean);
+
+const accountNameDoesNotMatch = (profileName, accountName) => {
+  if (!accountName) return false;
+  const profile = new Set(nameTokens(profileName));
+  return !nameTokens(accountName).some((token) => profile.has(token));
+};
+
 // Register a rider profile
 router.post("/riders/register", authMiddleware, validate(riderRegisterSchema), async (req, res, next) => {
   try {
@@ -61,12 +77,16 @@ router.post("/riders/register", authMiddleware, validate(riderRegisterSchema), a
       data: { phone },
     });
 
-    // Default new riders to the Main Campus (explicit campus picker is a follow-up).
+    // The rider picks a campus; fall back to the first one only when the
+    // client omits it (older clients). Without this, every rider landed in
+    // campus #1 and could never see orders from their own campus.
     const { campusId } = req.body;
-    // const campusId = await prisma.campus.findUnique({where: { id: campusId}})
-    const campus = await prisma.campus.findFirst({ orderBy: { id: "asc" } });
+    const campus = campusId
+      ? await prisma.campus.findUnique({ where: { id: Number(campusId) } })
+      : await prisma.campus.findFirst({ orderBy: { id: "asc" } });
+
     if (!campus) {
-      return res.status(400).json({message: "Invalid campus select"})
+      return res.status(400).json({ message: "Select a valid campus" });
     }
 
     const rider = await prisma.rider.create({
@@ -81,7 +101,7 @@ router.post("/riders/register", authMiddleware, validate(riderRegisterSchema), a
       },
       include: {
         user: {
-          select: { id: true, name: true, email: true },
+          select: { id: true, name: true, email: true, phone: true },
         },
       },
     });
@@ -102,7 +122,7 @@ router.get("/riders/me", authMiddleware, riderMiddleware, async (req, res, next)
       where: { userId: req.user.id },
       include: {
         user: {
-          select: { id: true, name: true, email: true },
+          select: { id: true, name: true, email: true, phone: true },
         },
         _count: { select: { reviews: true } },
       },
@@ -135,7 +155,7 @@ router.get("/riders/me", authMiddleware, riderMiddleware, async (req, res, next)
 // Update rider profile
 router.put("/riders/me", authMiddleware, riderMiddleware, validate(riderUpdateSchema), async (req, res, next) => {
   try {
-    const { vehicleType, licensePlate, licenseNumber, matricNumber, phone, isAvailable } = req.body;
+    const { vehicleType, licensePlate, licenseNumber, matricNumber, phone, isAvailable, photo, campusId } = req.body;
 
     const rider = await prisma.rider.findUnique({
       where: { userId: req.user.id },
@@ -145,6 +165,39 @@ router.put("/riders/me", authMiddleware, riderMiddleware, validate(riderUpdateSc
       return res.status(404).json({
         message: "Rider profile not found. Please register first.",
       });
+    }
+
+    // Validate the resulting identification method, not just the fields that
+    // were sent — switching between license and matric requires clearing the
+    // other one in the same request.
+    const nextLicensePlate = licensePlate !== undefined ? licensePlate : rider.licensePlate;
+    const nextLicenseNumber = licenseNumber !== undefined ? licenseNumber : rider.licenseNumber;
+    const nextMatricNumber = matricNumber !== undefined ? matricNumber : rider.matricNumber;
+    const hasLicense = Boolean(nextLicensePlate || nextLicenseNumber);
+    const hasMatric = Boolean(nextMatricNumber);
+
+    if (hasLicense && hasMatric) {
+      return res.status(400).json({
+        message: "Choose either a driver's license or a matric number, not both.",
+      });
+    }
+    if (hasLicense && (!nextLicensePlate || !nextLicenseNumber)) {
+      return res.status(400).json({
+        message: "Both the license plate and license number are required.",
+      });
+    }
+    if (!hasLicense && !hasMatric) {
+      return res.status(400).json({
+        message: "Provide a driver's license or a matric number.",
+      });
+    }
+
+    let campus = null;
+    if (campusId !== undefined) {
+      campus = await prisma.campus.findUnique({ where: { id: Number(campusId) } });
+      if (!campus) {
+        return res.status(400).json({ message: "Select a valid campus" });
+      }
     }
 
     // If licenseNumber is being changed, check uniqueness
@@ -187,10 +240,12 @@ router.put("/riders/me", authMiddleware, riderMiddleware, validate(riderUpdateSc
         ...(licenseNumber !== undefined && { licenseNumber }),
         ...(matricNumber !== undefined && { matricNumber }),
         ...(isAvailable !== undefined && { isAvailable }),
+        ...(photo !== undefined && { photoUrl: photo }),
+        ...(campus && { campusId: campus.id }),
       },
       include: {
         user: {
-          select: { id: true, name: true, email: true },
+          select: { id: true, name: true, email: true, phone: true },
         },
       },
     });
@@ -228,19 +283,25 @@ router.put("/riders/me/bank", authMiddleware, riderMiddleware, validate(bankDeta
       return res.status(400).json({ message: recipient.message || "Invalid bank details" });
     }
 
+    const accountName = recipient.accountName || rider.user.name;
+    const nameMismatch = recipient.accountName
+      ? accountNameDoesNotMatch(rider.user.name, recipient.accountName)
+      : false;
+
     const updated = await prisma.rider.update({
       where: { userId: req.user.id },
       data: {
         bankName: bankName || null,
         bankCode,
         accountNumber,
-        accountName: recipient.accountName || rider.user.name,
+        accountName,
         recipientCode: recipient.recipientCode,
       },
     });
 
     res.status(200).json({
       message: "Bank details saved",
+      nameMismatch,
       rider: {
         id: updated.id,
         bankName: updated.bankName,
