@@ -10,20 +10,35 @@ export function haversineMeters(lat1, lng1, lat2, lng2) {
   return 2 * EARTH_RADIUS_M * Math.asin(Math.min(1, Math.sqrt(a)));
 }
 
-const positiveNumber = (value, fallback) => {
-  const n = Number(value);
-  return Number.isFinite(n) && n > 0 ? n : fallback;
+const firstPositive = (values) => {
+  for (const value of values) {
+    const n = Number(value);
+    if (Number.isFinite(n) && n > 0) return n;
+  }
+  return null;
 };
 
 export function getProximityConfig() {
   const mode = process.env.DELIVERY_PROXIMITY_ENFORCEMENT || "enforce";
+  const maxAgeMs =
+    firstPositive([process.env.DELIVERY_LOCATION_MAX_AGE_MS]) ??
+    (firstPositive([process.env.DELIVERY_LOCATION_MAX_AGE_SECONDS]) ?? 120) *
+      1000;
+
   return {
-    radiusMeters: positiveNumber(process.env.DELIVERY_PROXIMITY_RADIUS_METERS, 150),
-    maxAccuracyMeters: positiveNumber(process.env.DELIVERY_MAX_ACCURACY_METERS, 100),
-    maxAgeMs:
-      positiveNumber(process.env.DELIVERY_LOCATION_MAX_AGE_SECONDS, 120) * 1000,
+    radiusMeters:
+      firstPositive([
+        process.env.DELIVERY_RADIUS_METERS,
+        process.env.DELIVERY_PROXIMITY_RADIUS_METERS,
+      ]) ?? 150,
+    maxAccuracyMeters:
+      firstPositive([
+        process.env.DELIVERY_LOCATION_MAX_ACCURACY_METERS,
+        process.env.DELIVERY_MAX_ACCURACY_METERS,
+      ]) ?? 100,
+    maxAgeMs,
     maxFutureSkewMs:
-      positiveNumber(process.env.DELIVERY_CLOCK_SKEW_SECONDS, 60) * 1000,
+      (firstPositive([process.env.DELIVERY_CLOCK_SKEW_SECONDS]) ?? 60) * 1000,
     mode: ["enforce", "warn", "off"].includes(mode) ? mode : "enforce",
   };
 }
@@ -126,4 +141,50 @@ export function evaluateDropoffLocation({
     radiusMeters: config.radiusMeters,
     accuracyMeters: Number(input.accuracy),
   };
+}
+
+// Decide what the route should do with an evaluation. Pure so the
+// enforce/warn/off and reason-required branches can be unit-tested.
+export function decideProximityAction({ evaluation, reason, mode = "enforce" }) {
+  if (mode === "off") return { action: "skip" };
+  if (evaluation.ok) return { action: "allow" };
+  if (mode === "warn") return { action: "warn" };
+  if (!evaluation.requiresReason) return { action: "reject" };
+  if (!reason || !String(reason).trim()) return { action: "needReason" };
+  return { action: "allowWithReason" };
+}
+
+// Per-event audit fields. CLOSE_BY and DELIVERED must never overwrite each
+// other's reason/distance, so both events have their own columns.
+export function buildProximityAudit({
+  status,
+  evaluation,
+  input = {},
+  reason,
+  now = new Date(),
+}) {
+  if (status !== "CLOSE_BY" && status !== "DELIVERED") return {};
+
+  const prefix = status === "CLOSE_BY" ? "closeBy" : "delivered";
+  const verified = evaluation?.ok === true;
+  const capturedDate = input.capturedAt
+    ? new Date(input.capturedAt)
+    : null;
+  const capturedAt =
+    capturedDate && !Number.isNaN(capturedDate.getTime()) ? capturedDate : null;
+
+  const audit = {
+    [`${prefix}Lat`]: input.lat ?? null,
+    [`${prefix}Lng`]: input.lng ?? null,
+    [`${prefix}Accuracy`]: input.accuracy ?? null,
+    [`${prefix}CapturedAt`]: capturedAt,
+    [`${prefix}Verified`]: verified,
+    [`${prefix}DistanceMeters`]: evaluation?.distanceMeters ?? null,
+    [`${prefix}UnverifiedReason`]: verified
+      ? null
+      : reason || evaluation?.message || null,
+  };
+
+  if (status === "CLOSE_BY") audit.closeByAt = now;
+  return audit;
 }

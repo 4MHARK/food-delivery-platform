@@ -53,17 +53,35 @@ export const checkoutSchema = z
     items: orderItems,
   })
   .superRefine((data, ctx) => {
-    if (data.savedLocationId && data.deliveryLandmarkId) {
-      ctx.addIssue({ code: "custom", message: "Choose either a saved location or a campus landmark, not both" });
-    }
-    if (data.deliveryDetail && !data.deliveryLandmarkId) {
-      ctx.addIssue({ code: "custom", message: "Landmark detail requires a campus landmark" });
-    }
+    const hasSaved = Boolean(data.savedLocationId);
+    const hasLandmark = Boolean(data.deliveryLandmarkId);
+    const hasAddress = data.deliveryAddress !== undefined;
+    const hasCoords =
+      data.deliveryLat !== undefined || data.deliveryLng !== undefined;
+
     if ((data.deliveryLat === undefined) !== (data.deliveryLng === undefined)) {
       ctx.addIssue({ code: "custom", message: "Provide both latitude and longitude" });
     }
-    const hasOwnLocation = Boolean(data.deliveryLandmarkId || data.savedLocationId);
-    if (!hasOwnLocation && (!data.deliveryAddress || data.deliveryLat === undefined || data.deliveryLng === undefined)) {
+    if (data.deliveryDetail !== undefined && !hasLandmark) {
+      ctx.addIssue({ code: "custom", message: "Landmark detail requires a campus landmark" });
+    }
+
+    // Strict precedence: saved location, landmark, or custom address/coords —
+    // never a mix. A landmark may carry client coords only as the no-pin
+    // fallback, and the server still uses its own coordinates when it has them.
+    if (hasSaved && (hasLandmark || hasAddress || hasCoords || data.deliveryDetail !== undefined)) {
+      ctx.addIssue({
+        code: "custom",
+        message: "A saved location cannot be combined with a landmark or custom address/coordinates",
+      });
+    }
+    if (hasLandmark && hasAddress) {
+      ctx.addIssue({
+        code: "custom",
+        message: "A campus landmark derives the address; do not send deliveryAddress",
+      });
+    }
+    if (!hasSaved && !hasLandmark && (!data.deliveryAddress || data.deliveryLat === undefined || data.deliveryLng === undefined)) {
       ctx.addIssue({ code: "custom", message: "Choose a campus landmark, a saved location, or provide an address and coordinates" });
     }
   });

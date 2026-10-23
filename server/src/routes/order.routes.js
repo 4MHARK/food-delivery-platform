@@ -13,6 +13,7 @@ import crypto from "crypto";
 import { checkoutLimiter } from "../middleware/rate-limiter.js";
 import { getRefundWindowMinutes } from "../utils/refund.js";
 import { PUBLIC_RESTAURANT } from "../utils/selects.js";
+import { resolveLandmarkLocation } from "../services/deliveryLocation.js";
 
 // Owner-driven order transitions. Payment verification owns
 // PENDING_PAYMENT → PENDING_RESTAURANT_CONFIRMATION, and the delivery flow owns
@@ -128,39 +129,31 @@ router.post("/orders/checkout", authMiddleware, checkoutLimiter, validate(checko
     //    name and coordinates override anything the client sent.
     let deliveryLocation;
     if (deliveryLandmarkId) {
-      const landmark = await prisma.campusLandmark.findFirst({
-        where: {
-          id: Number(deliveryLandmarkId),
+      const landmark = await prisma.campusLandmark.findUnique({
+        where: { id: Number(deliveryLandmarkId) },
+        select: {
+          id: true,
+          name: true,
+          lat: true,
+          lng: true,
+          campusId: true,
           isActive: true,
-          campusId: restaurant.campusId,
         },
-        select: { id: true, name: true, lat: true, lng: true },
       });
 
-      if (!landmark) {
-        return res.status(400).json({
-          message: "That drop-off point is not available for this restaurant's campus.",
-        });
+      const resolved = resolveLandmarkLocation({
+        landmark,
+        restaurantCampusId: restaurant.campusId,
+        deliveryDetail,
+        deliveryLat: req.body.deliveryLat,
+        deliveryLng: req.body.deliveryLng,
+      });
+
+      if (resolved.error) {
+        return res.status(400).json({ message: resolved.error });
       }
 
-      const detail = deliveryDetail?.trim() || null;
-      const lat = landmark.lat ?? req.body.deliveryLat ?? null;
-      const lng = landmark.lng ?? req.body.deliveryLng ?? null;
-
-      if (lat == null || lng == null) {
-        return res.status(400).json({
-          message:
-            "This drop-off point has no map pin yet. Use your current location or choose another landmark.",
-        });
-      }
-
-      deliveryLocation = {
-        landmarkId: landmark.id,
-        detail,
-        address: [landmark.name, detail].filter(Boolean).join(" — ").slice(0, 200),
-        lat,
-        lng,
-      };
+      deliveryLocation = resolved.location;
     } else if (savedLocationId) {
       const saved = await prisma.customerDeliveryLocation.findFirst({
         where: { id: savedLocationId, userId: req.user.id },

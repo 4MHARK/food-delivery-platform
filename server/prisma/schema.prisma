@@ -307,18 +307,25 @@ model Delivery {
   // Proximity evidence captured at the handoff states. closeByVerified and
   // deliveredVerified preserve per-event results; locationVerified is the
   // summary of the latest check.
+  // CLOSE_BY audit. closeByAt is the server receipt time; closeByCapturedAt
+  // is the client's GPS fix time.
   closeByLat               Float?
   closeByLng               Float?
   closeByAccuracy          Float?
+  closeByCapturedAt        DateTime?
   closeByAt                DateTime?
   closeByVerified          Boolean?
+  closeByDistanceMeters    Float?
+  closeByUnverifiedReason  String?
+  // DELIVERED audit. deliveredAt is the server completion time;
+  // deliveredCapturedAt is the client's GPS fix time.
   deliveredLat             Float?
   deliveredLng             Float?
   deliveredAccuracy        Float?
+  deliveredCapturedAt      DateTime?
   deliveredVerified        Boolean?
-  proximityDistanceMeters  Float?
-  locationVerified         Boolean @default(false)
-  locationUnverifiedReason String?
+  deliveredDistanceMeters  Float?
+  deliveredUnverifiedReason String?
   order         Order          @relation(fields: [orderId], references: [id])
   rider         Rider          @relation(fields: [riderId], references: [id])
   createdAt     DateTime       @default(now())

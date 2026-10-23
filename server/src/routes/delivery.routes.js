@@ -6,7 +6,12 @@ import { validate } from "../middleware/validate.js";
 import { deliveryStatusSchema } from "../validation/schemas.js";
 import { notify } from "../services/events.js";
 import { settleOrderPayouts } from "../services/payouts.js";
-import { evaluateDropoffLocation, getProximityConfig } from "../utils/geo.js";
+import {
+  buildProximityAudit,
+  decideProximityAction,
+  evaluateDropoffLocation,
+  getProximityConfig,
+} from "../utils/geo.js";
 
 const router = express.Router();
 
@@ -386,21 +391,28 @@ router.put("/deliveries/:id/status", authMiddleware, riderMiddleware, validate(d
             config,
           });
 
-          if (evaluation.ok) {
+          const decision = decideProximityAction({
+            evaluation,
+            reason: locationUnverifiedReason,
+            mode: config.mode,
+          });
+
+          if (decision.action === "skip") {
+            locationResult = null;
+          } else if (decision.action === "reject") {
+            // GPS says the rider is clearly somewhere else — do not allow it.
+            return { locationError: evaluation };
+          } else if (decision.action === "needReason") {
+            return { locationError: { ...evaluation, requiresReason: true } };
+          } else if (decision.action === "warn") {
             locationResult = evaluation;
-          } else if (config.mode === "warn") {
-            locationResult = { ...evaluation, fallback: true, warning: true };
             console.warn("[delivery] proximity warning", {
               deliveryId,
               ...evaluation,
             });
-          } else if (!evaluation.requiresReason) {
-            // GPS says the rider is clearly somewhere else — do not allow it.
-            return { locationError: evaluation };
-          } else if (!locationUnverifiedReason) {
-            return { locationError: { ...evaluation, requiresReason: true } };
           } else {
-            locationResult = { ...evaluation, fallback: true };
+            // allow / allowWithReason
+            locationResult = evaluation;
           }
         }
       }
@@ -418,30 +430,18 @@ router.put("/deliveries/:id/status", authMiddleware, riderMiddleware, validate(d
         data.failureReason = reason;
       }
 
-      // Persist the proximity evidence for this handoff state.
+      // Persist the proximity evidence for this handoff state. CLOSE_BY and
+      // DELIVERED have separate columns so neither overwrites the other.
       if (locationResult && (status === "CLOSE_BY" || status === "DELIVERED")) {
-        const verified = locationResult.ok === true;
-        data.locationVerified = verified;
-        data.locationUnverifiedReason = verified
-          ? null
-          : locationUnverifiedReason || locationResult.message || null;
-
-        if (locationResult.distanceMeters != null) {
-          data.proximityDistanceMeters = locationResult.distanceMeters;
-        }
-
-        if (status === "CLOSE_BY") {
-          data.closeByLat = lat ?? null;
-          data.closeByLng = lng ?? null;
-          data.closeByAccuracy = accuracy ?? null;
-          data.closeByAt = new Date();
-          data.closeByVerified = verified;
-        } else {
-          data.deliveredLat = lat ?? null;
-          data.deliveredLng = lng ?? null;
-          data.deliveredAccuracy = accuracy ?? null;
-          data.deliveredVerified = verified;
-        }
+        Object.assign(
+          data,
+          buildProximityAudit({
+            status,
+            evaluation: locationResult,
+            input: { lat, lng, accuracy, capturedAt },
+            reason: locationUnverifiedReason,
+          })
+        );
       }
 
       // Verify the handoff code BEFORE updating the delivery. Wrong codes

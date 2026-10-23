@@ -478,7 +478,11 @@ const Cart = () => {
                         ? "Location captured. The rider will use this pin with your written address."
                         : nearest
                           ? `You appear to be near ${nearest.landmark.name} (${nearest.distanceMeters} m). Confirm it above, or choose another landmark.`
-                          : "Choose the closest landmark from the list above."}
+                          : selectedLandmark &&
+                              (selectedLandmark.lat == null ||
+                                selectedLandmark.lng == null)
+                            ? "Location captured. This landmark has no map pin yet, so your pin will guide the rider."
+                            : "Choose the closest landmark from the list above."}
                     </p>
                   )}
                 </>
@@ -558,9 +562,13 @@ const Cart = () => {
                         disabled={
                           placing ||
                           !landmarkFlowReady ||
-                          (!usingCustomAddress && !selectedLandmark)
+                          (!usingCustomAddress &&
+                            (!selectedLandmark ||
+                              ((selectedLandmark.lat == null ||
+                                selectedLandmark.lng == null) &&
+                                deliveryLat === null)))
                         }
-                        className="bg-amber-500 hover:bg-amber-600 disabled:bg-amber-300 text-slate-950 text-sm font-bold px-6 py-3 rounded-full transition active:scale-95"
+                        className="bg-amber-500 hover:bg-amber-600 disabled:bg-amber-300 disabled:opacity-60 text-slate-950 text-sm font-bold px-6 py-3 rounded-full transition active:scale-95"
                       >
                         {placing ? "Placing..." : "Place Order"}
                       </button>
