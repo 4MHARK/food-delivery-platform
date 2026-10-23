@@ -110,7 +110,7 @@ const Orders = () => {
           </p>
           <button
             onClick={() => navigate("/restaurants")}
-            className="rounded-full bg-amber-500 text-white font-semibold py-3 px-8 shadow-md hover:bg-amber-600 transition active:scale-95"
+            className="rounded-full bg-amber-500 text-slate-950 font-semibold py-3 px-8 shadow-md hover:bg-amber-600 transition active:scale-95"
           >
             Browse Restaurants
           </button>

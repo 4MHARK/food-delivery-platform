@@ -393,7 +393,7 @@ const Signup = () => {
             <button
               type="submit"
               disabled={loading}
-              className="w-full h-12 rounded-xl bg-amber-500 hover:bg-amber-600 transition-colors font-semibold text-white shadow-sm active:scale-[0.98]"
+              className="w-full h-12 rounded-xl bg-amber-500 hover:bg-amber-600 transition-colors font-semibold text-slate-950 shadow-sm active:scale-[0.98]"
             >
               {loading ? "Creating account..." : "Create account"}
             </button>

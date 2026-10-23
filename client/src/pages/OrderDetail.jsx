@@ -6,6 +6,7 @@ import { api } from "../lib/api";
 import { useSSE } from "../hooks/useSSE";
 import { useNotificationPermission, notify } from "../hooks/useNotifications";
 import { formatCurrency } from "../lib/format";
+import { loadPaystack } from "../lib/paystack";
 
 const STATUS_FLOW = [
   { key: "PENDING_PAYMENT", label: "Placed", icon: "receipt" },
@@ -117,7 +118,7 @@ function RateRider({ riderId, riderName }) {
         <button
           type="submit"
           disabled={submitting}
-          className="bg-amber-500 hover:bg-amber-600 disabled:bg-amber-300 text-white text-sm font-bold px-6 py-2.5 rounded-full transition active:scale-95"
+          className="bg-amber-500 hover:bg-amber-600 disabled:bg-amber-300 text-slate-950 text-sm font-bold px-6 py-2.5 rounded-full transition active:scale-95"
         >
           {submitting ? "Submitting..." : "Submit Rating"}
         </button>
@@ -273,12 +274,15 @@ const OrderDetail = () => {
       setError("This order can't be paid for right now.");
       return;
     }
-    if (typeof window.PaystackPop === "undefined") {
-      setError("Payment system is unavailable. Please try again.");
+    setPaying(true);
+    try {
+      await loadPaystack();
+    } catch (e) {
+      setError(e.message);
+      setPaying(false);
       return;
     }
 
-    setPaying(true);
     const handler = window.PaystackPop.setup({
       key: import.meta.env.VITE_PAYSTACK_PUBLIC_KEY,
       email: user?.email,
@@ -342,7 +346,7 @@ const OrderDetail = () => {
             <p className="text-slate-500 mb-6">{error}</p>
             <button
               onClick={() => navigate("/orders")}
-              className="rounded-full bg-amber-500 px-8 py-3 font-semibold text-white hover:bg-amber-600 transition active:scale-95"
+              className="rounded-full bg-amber-500 px-8 py-3 font-semibold text-slate-950 hover:bg-amber-600 transition active:scale-95"
             >
               Back to Order History
             </button>
@@ -402,7 +406,7 @@ const OrderDetail = () => {
                   <button
                     onClick={handlePayNow}
                     disabled={paying}
-                    className="h-10 px-5 rounded-xl bg-amber-500 hover:bg-amber-600 disabled:bg-amber-300 text-white font-semibold text-sm transition active:scale-95"
+                    className="h-10 px-5 rounded-xl bg-amber-500 hover:bg-amber-600 disabled:bg-amber-300 text-slate-950 font-semibold text-sm transition active:scale-95"
                   >
                     {paying ? "Opening payment..." : "Pay now"}
                   </button>
@@ -469,7 +473,7 @@ const OrderDetail = () => {
                     )}
                     <div
                       className={`relative z-10 w-8 h-8 rounded-full flex items-center justify-center transition ${
-                        state === "completed" ? "bg-amber-500 text-white"
+                        state === "completed" ? "bg-amber-500 text-slate-950"
                         : state === "current" ? "bg-white border-2 border-amber-500 text-amber-500"
                         : "bg-slate-100 text-slate-300"
                       }`}
@@ -499,7 +503,7 @@ const OrderDetail = () => {
                   <div key={step.key} className="flex gap-4">
                     <div className="flex flex-col items-center">
                       <div className={`w-7 h-7 rounded-full flex items-center justify-center shrink-0 transition ${
-                        state === "completed" ? "bg-amber-500 text-white"
+                        state === "completed" ? "bg-amber-500 text-slate-950"
                         : state === "current" ? "bg-white border-2 border-amber-500 text-amber-500"
                         : "bg-slate-100 text-slate-300"
                       }`}>

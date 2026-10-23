@@ -5,6 +5,7 @@ import { useCart } from "../context/CartContext";
 import AppLayout from "../components/AppLayout";
 import { api } from "../lib/api";
 import { formatCurrency } from "../lib/format";
+import { loadPaystack } from "../lib/paystack";
 
 const Cart = () => {
   const navigate = useNavigate();
@@ -101,6 +102,10 @@ const Cart = () => {
       setPlacing(true);
       setError("");
 
+      // Load the SDK before creating the order, so an ad blocker or CDN failure
+      // leaves no orphaned PENDING_PAYMENT order behind.
+      await loadPaystack();
+
       // Step 1: Create the order on the backend
       const data = await api.post("/orders/checkout", {
         restaurantId,
@@ -115,14 +120,6 @@ const Cart = () => {
       });
 
       const { order, payment } = data;
-
-      // Guard: the Paystack script may have failed to load (ad blocker, CDN down).
-      // Check before committing cart state so the user can retry cleanly.
-      if (typeof window.PaystackPop === "undefined") {
-        setError("Payment system is unavailable. Please try again.");
-        setPlacing(false);
-        return;
-      }
 
       setPlacing(false);
 
@@ -230,7 +227,7 @@ const Cart = () => {
             <p className="text-slate-500 mb-8">Add items from a restaurant to get started.</p>
             <button
               onClick={() => navigate("/restaurants")}
-              className="rounded-full bg-amber-500 text-white font-semibold py-3 px-8 shadow-md hover:bg-amber-600 transition active:scale-95"
+              className="rounded-full bg-amber-500 text-slate-950 font-semibold py-3 px-8 shadow-md hover:bg-amber-600 transition active:scale-95"
             >
               Browse Restaurants
             </button>
@@ -313,7 +310,7 @@ const Cart = () => {
                           <span className="text-sm font-bold text-slate-900 w-4 text-center">{item.quantity}</span>
                           <button
                             onClick={() => addItem({ id: item.menuItemId, name: item.name, price: item.price, imageUrl: item.imageUrl }, item.restaurantId, item.restaurantName)}
-                            className="w-8 h-8 rounded-full bg-amber-500 text-white hover:bg-amber-600 flex items-center justify-center transition active:scale-90"
+                            className="w-8 h-8 rounded-full bg-amber-500 text-slate-950 hover:bg-amber-600 flex items-center justify-center transition active:scale-90"
                           >
                             <span className="material-symbols-outlined text-lg">add</span>
                           </button>
@@ -352,7 +349,7 @@ const Cart = () => {
                       <button
                         onClick={() => handlePlaceOrder(group.restaurantId, group.items)}
                         disabled={placing}
-                        className="bg-amber-500 hover:bg-amber-600 disabled:bg-amber-300 text-white text-sm font-bold px-6 py-3 rounded-full transition active:scale-95"
+                        className="bg-amber-500 hover:bg-amber-600 disabled:bg-amber-300 text-slate-950 text-sm font-bold px-6 py-3 rounded-full transition active:scale-95"
                       >
                         {placing ? "Placing..." : "Place Order"}
                       </button>

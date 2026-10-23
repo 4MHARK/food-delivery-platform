@@ -721,7 +721,7 @@ useSSE(
               <span className="material-symbols-outlined text-4xl text-red-400">error_outline</span>
             </div>
             <h2 className="text-xl font-bold text-slate-900 mb-2">{error}</h2>
-            <button onClick={() => window.location.reload()} className="rounded-full bg-amber-500 px-8 py-3 font-semibold text-white hover:bg-amber-600 transition active:scale-95 mt-4">
+            <button onClick={() => window.location.reload()} className="rounded-full bg-amber-500 px-8 py-3 font-semibold text-slate-950 hover:bg-amber-600 transition active:scale-95 mt-4">
               Try Again
             </button>
           </div>
@@ -903,7 +903,7 @@ useSSE(
                 <SmallField label="Stock quantity (blank = unlimited)" type="number" min="0" step="1" value={editingItem.stockQuantity ?? ""} onChange={(e) => setEditingItem({ ...editingItem, stockQuantity: e.target.value })} placeholder="e.g. 20" />
                 <SmallField label="Description" textarea value={editingItem.description || ""} onChange={(e) => setEditingItem({ ...editingItem, description: e.target.value })} />
                 <div className="flex gap-2">
-                  <button type="submit" disabled={savingMenu} className="flex-1 h-10 rounded-xl bg-amber-500 hover:bg-amber-600 disabled:bg-amber-300 text-white font-bold text-sm transition active:scale-95">
+                  <button type="submit" disabled={savingMenu} className="flex-1 h-10 rounded-xl bg-amber-500 hover:bg-amber-600 disabled:bg-amber-300 text-slate-950 font-bold text-sm transition active:scale-95">
                     {savingMenu ? "Saving..." : "Save"}
                   </button>
                   <button type="button" onClick={() => setEditingItem(null)} className="px-4 h-10 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold text-sm transition">Cancel</button>

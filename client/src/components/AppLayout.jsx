@@ -16,22 +16,18 @@ const OWNER_NAV = [
 ];
 
 const RIDER_NAV = [
-  { icon: "two_wheeler", label: "Deliveries", path: "/rider" },
-  ...DEFAULT_NAV.slice(0, 3),
+  { icon: "delivery_dining", label: "Deliveries", path: "/rider" },
+  { icon: "history", label: "History", path: "/rider?tab=history" },
+  {
+    icon: "account_balance_wallet",
+    label: "Payouts",
+    path: "/rider?tab=payouts",
+  },
+  { icon: "star", label: "Reviews", path: "/rider?tab=reviews" },
 ];
 
 /**
  * Shared layout used by all authenticated pages.
- *
- * Props:
- *  children          — page content (goes inside <main>)
- *  backTo            — if provided, renders a back arrow that navigates here
- *  onBack            — custom back handler (overrides backTo)
- *  desktopNavItems   — override the default desktop nav links
- *  bottomNavItems    — override the default mobile bottom-nav links
- *  showCart          — show/hide the cart icon (default true)
- *  showUserDropdown  — show full user dropdown or just an avatar link (default true)
- *  extraHeader       — optional element rendered between header and main (search bar, etc.)
  */
 const AppLayout = ({
   children,
@@ -59,7 +55,10 @@ const AppLayout = ({
   // Close dropdowns on outside click
   useEffect(() => {
     const handleClickOutside = (e) => {
-      if (userDropdownRef.current && !userDropdownRef.current.contains(e.target)) {
+      if (
+        userDropdownRef.current &&
+        !userDropdownRef.current.contains(e.target)
+      ) {
         setUserDropdownOpen(false);
       }
       const clickedInsideMenu = mobileMenuRef.current?.contains(e.target);
@@ -80,9 +79,46 @@ const AppLayout = ({
   const isOwner = user?.role === "OWNER";
   const isRider = user?.role === "RIDER";
   const isAdmin = user?.role === "ADMIN" || user?.role === "SUPER_ADMIN";
-  const desktopNav = desktopNavItems || (isAdmin ? [] : isOwner ? OWNER_NAV : isRider ? RIDER_NAV : DEFAULT_NAV);
-  const bottomNav = bottomNavItems || (isAdmin ? [] : isOwner ? OWNER_NAV : isRider ? RIDER_NAV : DEFAULT_NAV);
+
+  const desktopNav =
+    desktopNavItems ||
+    (isAdmin
+      ? []
+      : isOwner
+        ? OWNER_NAV
+        : isRider
+          ? RIDER_NAV
+          : DEFAULT_NAV);
+
+  const bottomNav =
+    bottomNavItems ||
+    (isAdmin
+      ? []
+      : isOwner
+        ? OWNER_NAV
+        : isRider
+          ? RIDER_NAV
+          : DEFAULT_NAV);
+
   const currentPath = location.pathname;
+  const currentFullUrl = location.pathname + location.search;
+
+  // Helper to match both standard paths and query-tab paths like /rider?tab=history
+  const isNavActive = (itemPath) => {
+    if (itemPath.includes("?")) {
+      return currentFullUrl === itemPath;
+    }
+    if (itemPath === "/rider") {
+      return (
+        currentPath === "/rider" &&
+        (!location.search || location.search === "?tab=deliveries")
+      );
+    }
+    return (
+      currentPath === itemPath ||
+      (itemPath === "/restaurants" && currentPath.startsWith("/restaurants/"))
+    );
+  };
 
   // ── Header ──
   const Header = (
@@ -104,7 +140,7 @@ const AppLayout = ({
           {/* Back button */}
           {(backTo || onBack) && (
             <button
-              onClick={() => onBack ? onBack() : navigate(backTo)}
+              onClick={() => (onBack ? onBack() : navigate(backTo))}
               className="p-2 -ml-2 text-slate-600 hover:text-amber-500 rounded-full hover:bg-slate-100 transition"
             >
               <span className="material-symbols-outlined">arrow_back</span>
@@ -113,12 +149,35 @@ const AppLayout = ({
 
           {/* Logo */}
           <button
-            onClick={() => navigate(isAdmin ? "/admin" : isOwner ? "/dashboard" : isRider ? "/rider" : "/restaurants")}
-            className={`font-extrabold text-amber-500 tracking-tight ${
-              (backTo || onBack) ? "text-xl hidden sm:block" : "text-2xl"
+            onClick={() =>
+              navigate(
+                isAdmin
+                  ? "/admin"
+                  : isOwner
+                    ? "/dashboard"
+                    : isRider
+                      ? "/rider"
+                      : "/restaurants"
+              )
+            }
+            className={`font-extrabold text-amber-600 tracking-tight flex items-center gap-2 ${
+              backTo || onBack ? "text-xl hidden sm:flex" : "text-2xl"
             }`}
           >
-            Chow<span className="text-slate-900">Zilla</span>
+            <span>
+              Chow<span className="text-slate-900">Zilla</span>
+            </span>
+            {isRider && (
+              <span
+                aria-label="Rider"
+                title="Rider"
+                className="inline-flex items-center bg-slate-900 text-amber-400 px-2 py-0.5 rounded-full"
+              >
+                <span className="material-symbols-outlined text-[12px]" aria-hidden="true">
+                  delivery_dining
+                </span>
+              </span>
+            )}
           </button>
         </div>
 
@@ -129,8 +188,7 @@ const AppLayout = ({
               key={item.path}
               onClick={() => navigate(item.path)}
               className={`px-4 py-2 rounded-xl text-sm font-semibold transition ${
-                currentPath === item.path ||
-                (item.path === "/restaurants" && currentPath.startsWith("/restaurants/"))
+                isNavActive(item.path)
                   ? "bg-amber-50 text-amber-700"
                   : "text-slate-600 hover:text-slate-900 hover:bg-slate-100"
               }`}
@@ -142,18 +200,29 @@ const AppLayout = ({
 
         {/* Right */}
         <div className="flex items-center gap-2">
-          {/* Cart */}
-          {showCart && (
+          {/* Customer Cart (Hidden for Riders & Admins) */}
+          {showCart && !isRider && !isAdmin && (
             <button
               onClick={() => navigate("/cart")}
               className="relative p-2 text-slate-600 hover:text-amber-500 hover:bg-slate-100 rounded-full transition"
             >
               <span className="material-symbols-outlined">shopping_bag</span>
               {itemCount > 0 && (
-                <span className="absolute -top-0.5 -right-0.5 w-5 h-5 rounded-full bg-amber-500 text-white text-[10px] font-bold flex items-center justify-center animate-fade-up">
+                <span className="absolute -top-0.5 -right-0.5 w-5 h-5 rounded-full bg-amber-500 text-slate-950 text-[10px] font-bold flex items-center justify-center animate-fade-up">
                   {itemCount}
                 </span>
               )}
+            </button>
+          )}
+
+          {/* Mobile Profile Avatar for Riders (replaces Cart icon in top right) */}
+          {isRider && (
+            <button
+              onClick={() => navigate("/profile")}
+              className="md:hidden w-8 h-8 rounded-full bg-amber-500 flex items-center justify-center text-slate-950 text-sm font-bold shadow-sm"
+              title="Profile"
+            >
+              {userInitial}
             </button>
           )}
 
@@ -166,14 +235,14 @@ const AppLayout = ({
                   userDropdownOpen ? "bg-slate-100" : "hover:bg-slate-100"
                 }`}
               >
-                <div className="w-8 h-8 rounded-full bg-amber-500 flex items-center justify-center text-white text-sm font-bold">
+                <div className="w-8 h-8 rounded-full bg-amber-500 flex items-center justify-center text-slate-950 text-sm font-bold">
                   {userInitial}
                 </div>
                 <span className="text-sm font-semibold text-slate-700 hidden lg:block max-w-[100px] truncate">
                   {user?.name || "Guest"}
                 </span>
                 <span
-                  className={`material-symbols-outlined text-slate-400 text-sm transition ${
+                  className={`material-symbols-outlined text-slate-500 text-sm transition ${
                     userDropdownOpen ? "rotate-180" : ""
                   }`}
                 >
@@ -184,47 +253,78 @@ const AppLayout = ({
               {userDropdownOpen && (
                 <div className="absolute right-0 mt-2 w-56 bg-white rounded-2xl shadow-lg border border-slate-100 py-2 animate-fade-up">
                   <div className="px-4 py-3 border-b border-slate-100">
-                    <p className="text-sm font-semibold text-slate-900 truncate">{user?.name}</p>
-                    <p className="text-xs text-slate-400 truncate">{user?.email}</p>
+                    <p className="text-sm font-semibold text-slate-900 truncate">
+                      {user?.name}
+                    </p>
+                    <p className="text-xs text-slate-500 truncate">
+                      {user?.email}
+                    </p>
                   </div>
                   <button
-                    onClick={() => { navigate("/profile"); setUserDropdownOpen(false); }}
+                    onClick={() => {
+                      navigate("/profile");
+                      setUserDropdownOpen(false);
+                    }}
                     className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-slate-700 hover:bg-slate-50 transition font-medium"
                   >
-                    <span className="material-symbols-outlined text-slate-400 text-xl">person</span>
+                    <span className="material-symbols-outlined text-slate-500 text-xl">
+                      person
+                    </span>
                     View Profile
                   </button>
-                  <button
-                    onClick={() => { navigate("/orders"); setUserDropdownOpen(false); }}
-                    className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-slate-700 hover:bg-slate-50 transition font-medium"
-                  >
-                    <span className="material-symbols-outlined text-slate-400 text-xl">receipt_long</span>
-                    My Orders
-                  </button>
-                  {isRider && (
+                  {!isRider && !isAdmin && (
                     <button
-                      onClick={() => { navigate("/rider"); setUserDropdownOpen(false); }}
+                      onClick={() => {
+                        navigate("/orders");
+                        setUserDropdownOpen(false);
+                      }}
                       className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-slate-700 hover:bg-slate-50 transition font-medium"
                     >
-                      <span className="material-symbols-outlined text-slate-400 text-xl">two_wheeler</span>
-                      Deliveries
+                      <span className="material-symbols-outlined text-slate-500 text-xl">
+                        receipt_long
+                      </span>
+                      My Orders
+                    </button>
+                  )}
+                  {isRider && (
+                    <button
+                      onClick={() => {
+                        navigate("/rider");
+                        setUserDropdownOpen(false);
+                      }}
+                      className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-slate-700 hover:bg-slate-50 transition font-medium"
+                    >
+                      <span className="material-symbols-outlined text-slate-500 text-xl">
+                        two_wheeler
+                      </span>
+                      Rider Dashboard
                     </button>
                   )}
                   {isOwner && (
                     <button
-                      onClick={() => { navigate("/dashboard"); setUserDropdownOpen(false); }}
+                      onClick={() => {
+                        navigate("/dashboard");
+                        setUserDropdownOpen(false);
+                      }}
                       className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-slate-700 hover:bg-slate-50 transition font-medium"
                     >
-                      <span className="material-symbols-outlined text-slate-400 text-xl">dashboard</span>
+                      <span className="material-symbols-outlined text-slate-500 text-xl">
+                        dashboard
+                      </span>
                       Dashboard
                     </button>
                   )}
                   {isAdmin && (
                     <button
-                      onClick={() => { navigate("/admin"); setUserDropdownOpen(false); }}
+                      onClick={() => {
+                        navigate("/admin");
+                        setUserDropdownOpen(false);
+                      }}
                       className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-slate-700 hover:bg-slate-50 transition font-medium"
                     >
-                      <span className="material-symbols-outlined text-slate-400 text-xl">admin_panel_settings</span>
+                      <span className="material-symbols-outlined text-slate-500 text-xl">
+                        admin_panel_settings
+                      </span>
                       Admin Panel
                     </button>
                   )}
@@ -233,7 +333,9 @@ const AppLayout = ({
                       onClick={handleLogout}
                       className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-red-600 hover:bg-red-50 transition font-medium"
                     >
-                      <span className="material-symbols-outlined text-xl">logout</span>
+                      <span className="material-symbols-outlined text-xl">
+                        logout
+                      </span>
                       Log out
                     </button>
                   </div>
@@ -244,16 +346,18 @@ const AppLayout = ({
             <div className="hidden md:flex items-center gap-2">
               <button
                 onClick={() => navigate("/profile")}
-                className="w-8 h-8 rounded-full bg-amber-500 flex items-center justify-center text-white text-sm font-bold"
+                className="w-8 h-8 rounded-full bg-amber-500 flex items-center justify-center text-slate-950 text-sm font-bold"
               >
                 {userInitial}
               </button>
               <button
                 onClick={handleLogout}
-                className="p-2 text-slate-400 hover:text-red-500 rounded-full hover:bg-slate-100 transition"
+                className="p-2 text-slate-500 hover:text-red-500 rounded-full hover:bg-slate-100 transition"
                 title="Log out"
               >
-                <span className="material-symbols-outlined text-xl">logout</span>
+                <span className="material-symbols-outlined text-xl">
+                  logout
+                </span>
               </button>
             </div>
           )}
@@ -262,32 +366,56 @@ const AppLayout = ({
 
       {/* Mobile slide-down menu */}
       {menuOpen && (
-        <div ref={mobileMenuRef} className="md:hidden border-t border-slate-100 bg-white px-4 py-4 animate-fade-up">
+        <div
+          ref={mobileMenuRef}
+          className="md:hidden border-t border-slate-100 bg-white px-4 py-4 animate-fade-up"
+        >
           <div className="flex items-center gap-3 mb-4 pb-4 border-b border-slate-100">
-            <div className="w-10 h-10 rounded-full bg-amber-500 flex items-center justify-center text-white text-lg font-bold">
+            <div className="w-10 h-10 rounded-full bg-amber-500 flex items-center justify-center text-slate-950 text-lg font-bold">
               {userInitial}
             </div>
             <div>
-              <p className="text-sm font-semibold text-slate-900">{user?.name || "Guest"}</p>
-              <p className="text-xs text-slate-400">{user?.email || ""}</p>
+              <p className="text-sm font-semibold text-slate-900">
+                {user?.name || "Guest"}
+              </p>
+              <p className="text-xs text-slate-500">{user?.email || ""}</p>
             </div>
           </div>
 
           {bottomNav.map((item) => (
             <button
               key={item.path}
-              onClick={() => { navigate(item.path); setMenuOpen(false); }}
+              onClick={() => {
+                navigate(item.path);
+                setMenuOpen(false);
+              }}
               className={`w-full flex items-center gap-3 px-3 py-3 rounded-xl text-sm font-semibold transition mb-1 ${
-                currentPath === item.path ||
-                (item.path === "/restaurants" && currentPath.startsWith("/restaurants/"))
+                isNavActive(item.path)
                   ? "bg-amber-50 text-amber-700"
                   : "text-slate-600 hover:bg-slate-50"
               }`}
             >
-              <span className="material-symbols-outlined text-xl">{item.icon}</span>
+              <span className="material-symbols-outlined text-xl">
+                {item.icon}
+              </span>
               {item.label}
             </button>
           ))}
+
+          <button
+            onClick={() => {
+              navigate("/profile");
+              setMenuOpen(false);
+            }}
+            className={`w-full flex items-center gap-3 px-3 py-3 rounded-xl text-sm font-semibold transition mb-1 ${
+              currentPath === "/profile"
+                ? "bg-amber-50 text-amber-700"
+                : "text-slate-600 hover:bg-slate-50"
+            }`}
+          >
+            <span className="material-symbols-outlined text-xl">person</span>
+            Profile Settings
+          </button>
 
           <div className="border-t border-slate-100 mt-2 pt-2">
             <button
@@ -305,20 +433,19 @@ const AppLayout = ({
 
   // ── Mobile bottom nav ──
   const BottomNav = bottomNav.length > 0 && (
-    <nav className="md:hidden fixed bottom-0 w-full z-50 flex justify-around items-center px-4 py-2 bg-white rounded-t-xl shadow-[0_-4px_20px_rgba(15,23,42,0.05)]">
+    <nav className="md:hidden fixed bottom-0 w-full z-50 flex justify-around items-center px-2 py-2 bg-white rounded-t-xl shadow-[0_-4px_20px_rgba(15,23,42,0.05)] border-t border-slate-100">
       {bottomNav.map((tab) => (
         <button
           key={tab.label}
           onClick={() => navigate(tab.path)}
-          className={`flex flex-col items-center px-4 py-1 rounded-2xl transition ${
-            currentPath === tab.path ||
-            (tab.path === "/restaurants" && currentPath.startsWith("/restaurants/"))
+          className={`flex flex-col items-center px-3 py-1 rounded-2xl transition ${
+            isNavActive(tab.path)
               ? "bg-amber-100 text-amber-700"
-              : "text-slate-400 hover:bg-slate-100"
+              : "text-slate-500 hover:bg-slate-100"
           }`}
         >
           <span className="material-symbols-outlined text-2xl">{tab.icon}</span>
-          <span className="text-xs font-semibold mt-1">{tab.label}</span>
+          <span className="text-[11px] font-semibold mt-0.5">{tab.label}</span>
         </button>
       ))}
     </nav>

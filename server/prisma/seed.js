@@ -90,8 +90,17 @@ async function main() {
   // ── Rider profile (unique userId → upsert) ──
   await prisma.rider.upsert({
     where: { userId: riderUser.id },
-    update: {},
-    create: { userId: riderUser.id, vehicleType: "Motorcycle", licenseNumber: "LAG-12345", matricNumber: "RID-001", campusId: campus.id },
+    // Demo riders must be verified, otherwise /riders/available-orders hides
+    // the queue and the accept endpoint rejects every order in development.
+    update: { isVerified: true },
+    create: {
+      userId: riderUser.id,
+      vehicleType: "Motorcycle",
+      licenseNumber: "LAG-12345",
+      matricNumber: "RID-001",
+      campusId: campus.id,
+      isVerified: true,
+    },
   });
 
   // ── Restaurants + menu items ──

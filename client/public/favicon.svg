@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="ChowZilla">
+  <rect width="64" height="64" rx="14" fill="#f59e0b" />
+  <path
+    fill="#ffffff"
+    d="M32 12c-8.7 0-15.8 6.6-16.5 15h4.1c.6-4 2.8-7.3 6-9.3-2 2.4-3.2 5.6-3.4 9.3h23.7C45 18.6 39.4 12 32 12Z"
+  />
+  <path
+    fill="#ffffff"
+    d="M14 31a2 2 0 0 1 2-2h32a2 2 0 0 1 2 2v2c0 8.8-6.7 16.1-15.3 16.9V52h4.3a2 2 0 1 1 0 4H25a2 2 0 1 1 0-4h4.3v-2.1C20.7 49.1 14 41.8 14 33v-2Z"
+  />
+</svg>

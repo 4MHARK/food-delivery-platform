@@ -102,7 +102,10 @@ async function resolveOrderItems(restaurantId, items) {
 }
 
 // ── Checkout: create order + payment ──
-router.post("/orders/checkout", checkoutLimiter, authMiddleware, validate(checkoutSchema), async (req, res, next) => {
+// authMiddleware must run before checkoutLimiter: the limiter keys
+// authenticated users by user id and would otherwise fall back to the IP,
+// sharing one 5/min budget across everyone on the same network.
+router.post("/orders/checkout", authMiddleware, checkoutLimiter, validate(checkoutSchema), async (req, res, next) => {
   try {
     const { restaurantId, savedLocationId, items, idempotencyKey } = req.body;
 
@@ -121,12 +124,6 @@ router.post("/orders/checkout", checkoutLimiter, authMiddleware, validate(checko
         lng: req.body.deliveryLng,
       };
     }
-
-    console.log("Order delivery location received:", {
-      address: deliveryLocation.address,
-      lat: deliveryLocation.lat,
-      lng: deliveryLocation.lng,
-    });
 
     // 1. Input validated by validate(checkoutSchema) middleware (zod)
 
@@ -244,13 +241,6 @@ router.post("/orders/checkout", checkoutLimiter, authMiddleware, validate(checko
     // Stock changed for this restaurant's menu.
     announceMenuUpdate(Number(restaurantId));
 
-    console.log("Order delivery location saved:", {
-      orderId: order.id,
-      address: order.deliveryAddress,
-      lat: order.deliveryLat,
-      lng: order.deliveryLng,
-    });
-
     // 5. Return everything. The payment is created nested, so strip it back out
     //    of `order` to keep the response shape unchanged.
     const { payment, ...orderPayload } = order;
@@ -339,7 +329,7 @@ router.get("/restaurants/:id/orders", authMiddleware, async (req, res, next) => 
 
     res.status(200).json({
       message: "Orders fetched successfully",
-      orders,
+      orders: orders.map(({ deliveryCode, ...order }) => order),
     });
   } catch (error) {
    next(error)
@@ -534,11 +524,24 @@ router.put("/orders/:id/status", authMiddleware, ownerMiddleware, async (req, re
     const riderUserId = order.delivery?.rider?.userId || null;
 
     if (status === "READY_FOR_PICKUP") {
-      // Customer gets "order ready"; every available rider gets a "new order" ping.
-      notify("order:updated", [order.customerId, "*"], {
+      // Only available, verified riders on this restaurant's campus get the
+      // ping — the queue itself is campus-scoped, so a global "riders" push
+      // was waking riders who could never accept the order.
+      const campusRiders = await prisma.rider.findMany({
+        where: {
+          campusId: order.restaurant.campusId,
+          isAvailable: true,
+          isVerified: true,
+          isSuspended: false,
+        },
+        select: { userId: true },
+      });
+      const riderUserIds = campusRiders.map((r) => r.userId);
+
+      notify("order:updated", [order.customerId, ...riderUserIds], {
         status,
         customerId: order.customerId,
-        riderIds: ["riders"],
+        riderIds: riderUserIds.length ? riderUserIds : null,
         orderId: order.id,
       });
     } else {

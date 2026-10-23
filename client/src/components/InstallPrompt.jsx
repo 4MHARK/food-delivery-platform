@@ -110,7 +110,7 @@ export default function InstallPrompt() {
             await deferred.userChoice;
             setDeferred(null);
           }}
-          className="mt-3 w-full rounded-full bg-amber-500 py-2 text-sm font-semibold text-white transition-colors hover:bg-amber-600"
+          className="mt-3 w-full rounded-full bg-amber-500 py-2 text-sm font-bold text-slate-950 transition-colors hover:bg-amber-600"
         >
           Install app
         </button>

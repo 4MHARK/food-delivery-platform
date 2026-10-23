@@ -40,7 +40,7 @@ export default function ServiceWorkerManager() {
       <button
         type="button"
         onClick={() => updateServiceWorker(true)}
-        className="shrink-0 rounded-full bg-amber-500 px-4 py-1.5 font-semibold text-white transition-colors hover:bg-amber-600"
+        className="shrink-0 rounded-full bg-amber-500 px-4 py-1.5 font-semibold text-slate-950 transition-colors hover:bg-amber-600"
       >
         Refresh
       </button>

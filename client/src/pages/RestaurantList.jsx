@@ -161,7 +161,7 @@ const RestaurantList = () => {
                 <p className="text-slate-500 mb-8 leading-relaxed">Try a different dish or restaurant name.</p>
                 <button
                   onClick={() => setSearch("")}
-                  className="rounded-full bg-amber-500 text-white font-semibold py-3 px-8 shadow-md hover:bg-amber-600 transition active:scale-95"
+                  className="rounded-full bg-amber-500 text-slate-950 font-semibold py-3 px-8 shadow-md hover:bg-amber-600 transition active:scale-95"
                 >
                   Clear Search
                 </button>
@@ -298,7 +298,7 @@ const RestaurantList = () => {
             <p className="text-slate-500 mb-6">{error}</p>
             <button
               onClick={() => window.location.reload()}
-              className="rounded-full bg-amber-500 px-8 py-3 font-semibold text-white hover:bg-amber-600 transition active:scale-95"
+              className="rounded-full bg-amber-500 px-8 py-3 font-semibold text-slate-950 hover:bg-amber-600 transition active:scale-95"
             >
               Try again
             </button>
@@ -323,7 +323,7 @@ const RestaurantList = () => {
             </p>
             <button
               onClick={() => setActiveFilter("All")}
-              className="rounded-full bg-amber-500 text-white font-semibold py-3 px-8 shadow-md hover:bg-amber-600 transition active:scale-95"
+              className="rounded-full bg-amber-500 text-slate-950 font-semibold py-3 px-8 shadow-md hover:bg-amber-600 transition active:scale-95"
             >
               Clear Filters
             </button>

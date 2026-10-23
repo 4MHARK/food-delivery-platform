@@ -1,0 +1,15 @@
+# ChowZilla
+
+> ChowZilla is a campus food delivery platform. Customers order from campus
+> restaurants, riders deliver the food, and every order can be tracked live.
+
+## Public pages
+
+- [Restaurants](https://food-delivery-platform-gamma.vercel.app/restaurants): Browse approved campus restaurants and their menus.
+- [Login](https://food-delivery-platform-gamma.vercel.app/login): Sign in as a customer, restaurant owner, rider, or campus admin.
+- [Create account](https://food-delivery-platform-gamma.vercel.app/signup): Register to order food or to join as a delivery rider.
+
+## Notes
+
+- Restaurant and menu pages are public; cart, checkout, orders, rider, and admin pages require authentication.
+- Prices are in Nigerian Naira (NGN).

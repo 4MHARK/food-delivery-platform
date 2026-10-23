@@ -182,7 +182,7 @@ const Profile = () => {
           <p className="text-red-600 mb-4">{error}</p>
           <button
             onClick={handleLogout}
-            className="rounded-lg bg-amber-500 px-6 py-2 font-semibold text-white"
+            className="rounded-lg bg-amber-500 px-6 py-2 font-semibold text-slate-950"
           >
             Back to login
           </button>
@@ -288,7 +288,7 @@ const Profile = () => {
                 <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
                   {/* Avatar + user info */}
                   <div className="flex items-center gap-4">
-                    <div className="w-14 h-14 rounded-full bg-amber-500 flex items-center justify-center text-white text-xl font-bold shrink-0">
+                    <div className="w-14 h-14 rounded-full bg-amber-500 flex items-center justify-center text-slate-950 text-xl font-bold shrink-0">
                       {user.name.charAt(0).toUpperCase()}
                     </div>
                     <div>
@@ -425,7 +425,7 @@ const Profile = () => {
                         type="button"
                         onClick={handleSave}
                         disabled={saving}
-                        className="flex items-center gap-2 bg-amber-500 text-white font-semibold text-sm px-6 py-3 rounded-xl hover:bg-amber-600 transition-colors active:scale-95 shadow-sm disabled:opacity-50"
+                        className="flex items-center gap-2 bg-amber-500 text-slate-950 font-semibold text-sm px-6 py-3 rounded-xl hover:bg-amber-600 transition-colors active:scale-95 shadow-sm disabled:opacity-50"
                       >
                         <span className="material-symbols-outlined text-lg">save</span>
                         {saving ? "Saving..." : "Save Changes"}

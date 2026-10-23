@@ -1,5 +1,15 @@
 import { z } from "zod";
 
+// z.coerce.number() turns null into 0. Treat null/"" as "not provided" so
+// coordinates are never silently saved as (0, 0) off the coast of Africa.
+const coordinateField = (min, max, { optional = false } = {}) => {
+  const value = z.coerce.number().min(min).max(max);
+  return z.preprocess(
+    (v) => (v === null || v === "" ? undefined : v),
+    optional ? value.optional() : value
+  );
+};
+
 // ── Auth ──
 
 export const signupSchema = z.object({
@@ -35,8 +45,8 @@ export const checkoutSchema = z
     restaurantId: z.coerce.number().int("Restaurant id must be a whole number").positive("Restaurant id must be positive"),
     savedLocationId: z.coerce.number().int().positive().optional(),
     deliveryAddress: z.string().trim().min(1, "Delivery address is required").optional(),
-    deliveryLat: z.coerce.number().min(-90).max(90).optional(),
-    deliveryLng: z.coerce.number().min(-180).max(180).optional(),
+    deliveryLat: coordinateField(-90, 90, { optional: true }),
+    deliveryLng: coordinateField(-180, 180, { optional: true }),
     idempotencyKey: z.string().trim().min(1, "Idempotency key is required"),
     items: orderItems,
   })
@@ -49,8 +59,8 @@ export const checkoutSchema = z
 export const deliveryLocationSchema = z.object({
   label: z.string().trim().min(1, "Location label is required").max(50),
   address: z.string().trim().min(1, "Address is required").max(200),
-  lat: z.coerce.number().min(-90).max(90),
-  lng: z.coerce.number().min(-180).max(180),
+  lat: coordinateField(-90, 90),
+  lng: coordinateField(-180, 180),
 });
 
 export const estimateSchema = z.object({
@@ -66,8 +76,8 @@ export const restaurantSchema = z.object({
   address: z.string().trim().min(1, "Address is required").max(200, "Address must be 200 characters or less"),
   phone: z.string().trim().min(1, "Phone is required").max(20, "Phone must be 20 characters or less"),
   imageUrl: z.string().trim().max(500, "Image URL must be 500 characters or less").optional(),
-  lat: z.coerce.number().min(-90).max(90).optional(),
-  lng: z.coerce.number().min(-180).max(180).optional(),
+  lat: coordinateField(-90, 90, { optional: true }),
+  lng: coordinateField(-180, 180, { optional: true }),
 });
 
 // ── Menu item ──
@@ -181,6 +191,7 @@ export const riderRegisterSchema = z
     licensePlate: licensePlateField,
     licenseNumber: licenseNumberField,
     matricNumber: matricNumberField,
+    campusId: z.coerce.number().int().positive().optional(),
   })
   .superRefine((data, ctx) => {
     const hasLicense = Boolean(data.licensePlate || data.licenseNumber);

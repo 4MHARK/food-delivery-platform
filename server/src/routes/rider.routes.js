@@ -61,12 +61,16 @@ router.post("/riders/register", authMiddleware, validate(riderRegisterSchema), a
       data: { phone },
     });
 
-    // Default new riders to the Main Campus (explicit campus picker is a follow-up).
+    // The rider picks a campus; fall back to the first one only when the
+    // client omits it (older clients). Without this, every rider landed in
+    // campus #1 and could never see orders from their own campus.
     const { campusId } = req.body;
-    // const campusId = await prisma.campus.findUnique({where: { id: campusId}})
-    const campus = await prisma.campus.findFirst({ orderBy: { id: "asc" } });
+    const campus = campusId
+      ? await prisma.campus.findUnique({ where: { id: Number(campusId) } })
+      : await prisma.campus.findFirst({ orderBy: { id: "asc" } });
+
     if (!campus) {
-      return res.status(400).json({message: "Invalid campus select"})
+      return res.status(400).json({ message: "Select a valid campus" });
     }
 
     const rider = await prisma.rider.create({

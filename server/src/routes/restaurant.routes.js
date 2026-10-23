@@ -125,8 +125,6 @@ router.post(
         lng,
       } = req.body;
 
-      console.log("Restaurant location received:", { address, lat, lng });
-
       // Enforce 1 restaurant per owner
       const existing = await prisma.restaurant.findFirst({
         where: { ownerId: req.user.id },
@@ -172,13 +170,6 @@ router.post(
         },
       });
 
-      console.log("Restaurant location saved:", {
-        restaurantId: newRestaurant.id,
-        address: newRestaurant.address,
-        lat: newRestaurant.lat,
-        lng: newRestaurant.lng,
-      });
-
       cacheClear();
 
       return res.status(201).json({
@@ -193,7 +184,7 @@ router.post(
 //Updates restaurants per ID
 router.put("/restaurants/:id", authMiddleware, ownerMiddleware, validate(restaurantSchema), async (req, res, next) => {
   try {
-    const { name, description, address, phone, imageUrl } = req.body;
+    const { name, description, address, phone, imageUrl, lat, lng } = req.body;
     const restaurant = await prisma.restaurant.findUnique({
       where: {
         id: Number(req.params.id),
@@ -210,7 +201,13 @@ router.put("/restaurants/:id", authMiddleware, ownerMiddleware, validate(restaur
     }
     const update = await prisma.restaurant.update({
       where: { id: Number(req.params.id) },
-      data: { name, description, address, phone, imageUrl },
+      data: {
+        name, description, address, phone, imageUrl,
+        // Preserve existing coordinates when the edit form omits them; save
+        // them when the owner sets a location (or clicks "Use my location").
+        ...(lat !== undefined && { lat }),
+        ...(lng !== undefined && { lng }),
+      },
       include: {
         owner: {
           select: {

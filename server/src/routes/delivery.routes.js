@@ -34,10 +34,33 @@ router.get("/riders/available-orders", authMiddleware, riderMiddleware, async (r
       return res.status(404).json({ message: "Rider profile not found. Please register first." });
     }
 
+    // Enforcement belongs here, not only in the accept endpoint and the UI:
+    // a suspended or unverified rider should never receive the order queue.
+    if (!rider.isVerified || rider.isSuspended || !rider.isAvailable) {
+      const reason = rider.isSuspended
+        ? "Your rider account is suspended. Contact your campus admin."
+        : !rider.isVerified
+          ? "Your rider profile is pending verification."
+          : "You are offline — go online to see orders.";
+
+      return res.status(200).json({
+        message: reason,
+        orders: [],
+        eligibility: {
+          isVerified: rider.isVerified,
+          isSuspended: rider.isSuspended,
+          isAvailable: rider.isAvailable,
+        },
+      });
+    }
+
     const orders = await prisma.order.findMany({
       where: {
         status: "READY_FOR_PICKUP",
-        delivery: null, // No rider assigned yet
+        // A failed delivery keeps its row for the rider's history, but the
+        // order itself is back in the queue. Filtering on `delivery: null`
+        // alone hid those orders from every rider forever.
+        OR: [{ delivery: null }, { delivery: { status: "FAILED" } }],
         // Only this rider's campus — never expose other campuses' orders.
         restaurant: { campusId: rider.campusId },
         rejectedBy: { none: { riderId: rider.id } }, // Exclude orders this rider skipped
@@ -438,31 +461,41 @@ router.get("/riders/stats", authMiddleware, riderMiddleware, async (req, res, ne
       return res.status(404).json({ message: "Rider profile not found." });
     }
 
-    // Completed deliveries with their order's delivery fee
     const completed = await prisma.delivery.findMany({
       where: { riderId: rider.id, status: "DELIVERED" },
-      include: {
-        order: { select: { deliveryFee: true, totalAmount: true } },
-      },
+      select: { deliveredAt: true },
     });
 
     const totalDeliveries = completed.length;
-    const totalEarnings = completed.reduce(
-      (sum, d) => sum + Number(d.order.deliveryFee),
-      0
-    );
 
     // This week's stats
     const weekStart = new Date();
     weekStart.setDate(weekStart.getDate() - weekStart.getDay());
     weekStart.setHours(0, 0, 0, 0);
 
-    const thisWeek = completed.filter((d) => d.deliveredAt && new Date(d.deliveredAt) >= weekStart);
-    const thisWeekDeliveries = thisWeek.length;
-    const thisWeekEarnings = thisWeek.reduce(
-      (sum, d) => sum + Number(d.order.deliveryFee),
-      0
+    const thisWeekDeliveries = completed.filter(
+      (d) => d.deliveredAt && new Date(d.deliveredAt) >= weekStart
+    ).length;
+
+    // Earnings follow the payout ledger, not the order total: money that
+    // failed or was reversed must never look like income. PENDING is included
+    // because it is owed/in flight (manual-mode payouts stay PENDING).
+    const payouts = await prisma.payout.findMany({
+      where: {
+        type: "RIDER",
+        order: { delivery: { riderId: rider.id } },
+        supersededBy: null,
+      },
+      select: { amount: true, status: true, createdAt: true },
+    });
+
+    const earned = payouts.filter(
+      (p) => p.status === "SUCCESS" || p.status === "PENDING"
     );
+    const totalEarnings = earned.reduce((sum, p) => sum + Number(p.amount), 0);
+    const thisWeekEarnings = earned
+      .filter((p) => new Date(p.createdAt) >= weekStart)
+      .reduce((sum, p) => sum + Number(p.amount), 0);
 
     res.status(200).json({
       message: "Rider stats fetched successfully",
