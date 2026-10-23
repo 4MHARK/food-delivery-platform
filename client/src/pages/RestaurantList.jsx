@@ -57,6 +57,22 @@ const RestaurantList = () => {
     fetchRestaurants();
   }, [activeFilter]);
 
+  // Keep open/closed status current without flashing the loading skeleton.
+  useEffect(() => {
+    const timer = setInterval(async () => {
+      try {
+        const path = `/restaurants${
+          activeFilter === "All" ? "" : `?category=${encodeURIComponent(activeFilter)}`
+        }`;
+        const data = await api.get(path, { auth: false });
+        setRestaurants(data.restaurants);
+      } catch {
+        // keep the current list on a failed background refresh
+      }
+    }, 60000);
+    return () => clearInterval(timer);
+  }, [activeFilter]);
+
   // ── Debounced search — hits the new /search endpoint (food items + restaurants) ──
   useEffect(() => {
     const query = search.trim();
@@ -177,7 +193,17 @@ const RestaurantList = () => {
                             <h3 className="text-base font-bold text-slate-900 group-hover:text-amber-600 transition-colors">{item.name}</h3>
                             <p className="text-xs text-slate-500 mt-0.5">from {item.restaurant.name}</p>
                           </div>
-                          <p className="text-sm font-semibold text-slate-900 mt-2">₦{Number(item.price).toLocaleString()}</p>
+                          <div className="flex items-center justify-between gap-2 mt-2">
+                            <p className="text-sm font-semibold text-slate-900">₦{Number(item.price).toLocaleString()}</p>
+                            {item.inStock && item.lowStock && (
+                              <span className="text-[10px] font-semibold text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full">
+                                Only {item.stockQuantity} left
+                              </span>
+                            )}
+                            {item.inStock === false && (
+                              <span className="text-[10px] font-semibold text-red-500 bg-red-50 px-2 py-0.5 rounded-full">Sold out</span>
+                            )}
+                          </div>
                         </div>
                       </article>
                     ))}
@@ -205,7 +231,15 @@ const RestaurantList = () => {
                           )}
                         </div>
                         <div className="p-4">
-                          <h3 className="text-base font-bold text-slate-900 group-hover:text-amber-600 transition-colors">{r.name}</h3>
+                          <div className="flex items-center gap-2">
+                            <h3 className="text-base font-bold text-slate-900 group-hover:text-amber-600 transition-colors truncate">{r.name}</h3>
+                            {typeof r.isOpenNow === "boolean" && (
+                              <span className={`shrink-0 inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full ${r.isOpenNow ? "text-green-700 bg-green-50" : "text-red-600 bg-red-50"}`}>
+                                <span className={`w-1.5 h-1.5 rounded-full ${r.isOpenNow ? "bg-green-500" : "bg-red-500"}`} />
+                                {r.isOpenNow ? "Open" : "Closed"}
+                              </span>
+                            )}
+                          </div>
                           <p className="text-xs text-slate-500 mt-0.5 truncate">{r.address}</p>
                         </div>
                       </article>
@@ -342,7 +376,15 @@ const RestaurantList = () => {
               <div className="p-5 flex-1 flex flex-col justify-between">
                 <div>
                   <div className="flex items-start justify-between gap-2 mb-1">
-                    <h3 className="text-lg font-bold text-slate-900 group-hover:text-amber-600 transition-colors">{r.name}</h3>
+                    <div className="flex items-center gap-2 min-w-0">
+                      <h3 className="text-lg font-bold text-slate-900 group-hover:text-amber-600 transition-colors truncate">{r.name}</h3>
+                      {typeof r.isOpenNow === "boolean" && (
+                        <span className={`shrink-0 inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full ${r.isOpenNow ? "text-green-700 bg-green-50" : "text-red-600 bg-red-50"}`}>
+                          <span className={`w-1.5 h-1.5 rounded-full ${r.isOpenNow ? "bg-green-500" : "bg-red-500"}`} />
+                          {r.isOpenNow ? "Open" : "Closed"}
+                        </span>
+                      )}
+                    </div>
                     {r.reviewCount > 0 && (
                       <span className="flex items-center gap-1 shrink-0 text-xs font-bold text-slate-700 bg-amber-50 px-2 py-1 rounded-full">
                         <span className="material-symbols-outlined filled-icon text-amber-500 text-sm">star</span>

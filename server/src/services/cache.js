@@ -25,3 +25,9 @@ export function cacheSet(key, value, ttlMs = 30_000) {
 export function cacheClear() {
   store.clear();
 }
+
+// Invalidate a single key (e.g. one restaurant's menu) without flushing
+// everything else.
+export function cacheDelete(key) {
+  store.delete(key);
+}

@@ -1,6 +1,8 @@
 import express from "express";
 import prisma from "../config/prisma.js";
 import authMiddleware from "../middleware/auth.middleware.js";
+import { PUBLIC_RESTAURANT_SELECT } from "../utils/selects.js";
+import { computeOpenStatus } from "../services/hours.js";
 
 const router = express.Router();
 
@@ -10,15 +12,17 @@ router.get("/favorites", authMiddleware, async (req, res, next) => {
     const favorites = await prisma.customerFavorite.findMany({
       where: { userId: req.user.id },
       include: {
-        restaurant: {
-          include: { owner: { select: { id: true, name: true } } },
-        },
+        // Public fields only — never return bank/payout columns.
+        restaurant: { select: PUBLIC_RESTAURANT_SELECT },
       },
       orderBy: { createdAt: "desc" },
     });
     res.status(200).json({
       message: "Favorites fetched successfully",
-      favorites: favorites.map((f) => f.restaurant),
+      favorites: favorites.map((f) => ({
+        ...f.restaurant,
+        ...computeOpenStatus(f.restaurant),
+      })),
     });
   } catch (error) {
     next(error);

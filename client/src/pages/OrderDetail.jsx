@@ -253,6 +253,14 @@ const OrderDetail = () => {
       setCancelMsg(data.message);
     } catch (e) {
       setCancelMsg(e.message || "Could not cancel order.");
+      // The cancellation may have completed before a later server error.
+      // Re-sync so the user never has to reload the page manually.
+      try {
+        const fresh = await api.get(`/orders/${id}`);
+        setOrder(fresh.order);
+      } catch {
+        // keep the current view if the refresh also fails
+      }
     } finally {
       setCancelling(false);
     }

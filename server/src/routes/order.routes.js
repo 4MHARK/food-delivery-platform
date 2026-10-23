@@ -6,34 +6,70 @@ import { validate } from "../middleware/validate.js";
 import { checkoutSchema, estimateSchema } from "../validation/schemas.js";
 import { calculateFees } from "../services/feecalculator.js";
 import { notify } from "../services/events.js";
-import { refundPayment } from "../services/paystack.js";
+import { refundPaymentOnce } from "../services/refunds.js";
+import { announceMenuUpdate, releaseOrderStock } from "../services/inventory.js";
+import { computeOpenStatus } from "../services/hours.js";
 import crypto from "crypto";
 import { checkoutLimiter } from "../middleware/rate-limiter.js";
 import { getRefundWindowMinutes } from "../utils/refund.js";
+import { PUBLIC_RESTAURANT } from "../utils/selects.js";
 
-const PUBLIC_RESTAURANT = {
-  select: {
-    id: true, name: true, description: true, imageUrl: true,
-    address: true, phone: true, lat: true, lng: true, ownerId: true,
-  },
+// Owner-driven order transitions. Payment verification owns
+// PENDING_PAYMENT → PENDING_RESTAURANT_CONFIRMATION, and the delivery flow owns
+// OUT_FOR_DELIVERY → DELIVERED. Anything not listed here is terminal for the owner.
+const ORDER_TRANSITIONS = {
+  PENDING_RESTAURANT_CONFIRMATION: ["ACCEPTED", "CANCELLED"],
+  ACCEPTED: ["PREPARING", "CANCELLED"],
+  PREPARING: ["READY_FOR_PICKUP", "CANCELLED"],
+  READY_FOR_PICKUP: ["CANCELLED"],
 };
+
 const router = express.Router();
 
 // Resolve + price cart items against the DB. Shared by checkout and estimate so the
 // server stays the single source of truth for what an order actually costs.
 async function resolveOrderItems(restaurantId, items) {
+  const numericRestaurantId = Number(restaurantId);
   const restaurant = await prisma.restaurant.findUnique({
-    where: { id: Number(restaurantId) },
+    where: { id: numericRestaurantId },
+    select: {
+      id: true,
+      approvalStatus: true,
+      isOpen: true,
+      hours: {
+        select: { dayOfWeek: true, openTime: true, closeTime: true, isClosed: true },
+      },
+    },
   });
   if (!restaurant) {
     return { error: { status: 404, message: "Restaurant not found" } };
   }
 
+  // Pending, rejected, and suspended restaurants must not receive orders even
+  // if a client sends the id directly.
+  if (restaurant.approvalStatus !== "APPROVED") {
+    return {
+      error: { status: 403, message: "This restaurant is not currently accepting orders" },
+    };
+  }
+
+  // The manual switch and the weekly schedule both gate ordering.
+  if (!computeOpenStatus(restaurant).isOpenNow) {
+    return { error: { status: 403, message: "This restaurant is currently closed" } };
+  }
+
+  // One query for the whole cart instead of one per item.
+  const menuItems = await prisma.menuItem.findMany({
+    where: { id: { in: items.map((item) => item.menuItemId) } },
+  });
+  const menuItemsById = new Map(menuItems.map((menuItem) => [menuItem.id, menuItem]));
+
   const validatedItems = [];
+
+  // Iterate the cart (not the query result) so errors still point at the item
+  // the customer actually submitted.
   for (const item of items) {
-    const menuItem = await prisma.menuItem.findUnique({
-      where: { id: item.menuItemId },
-    });
+    const menuItem = menuItemsById.get(item.menuItemId);
 
     if (!menuItem) {
       return { error: { status: 404, message: `Menu item "${item.menuItemId}" not found` } };
@@ -48,10 +84,17 @@ async function resolveOrderItems(restaurantId, items) {
       };
     }
 
+    if (!menuItem.isAvailable) {
+      return {
+        error: { status: 400, message: `"${menuItem.name}" is currently unavailable` },
+      };
+    }
+
     validatedItems.push({
       unitPrice: Number(menuItem.price),
       quantity: item.quantity,
       menuItemId: item.menuItemId,
+      name: menuItem.name,
     });
   }
 
@@ -94,37 +137,81 @@ router.post("/orders/checkout", checkoutLimiter, authMiddleware, validate(checko
     // 3. Calculate fees on the backend (never trust frontend totals)
     const fees = calculateFees(validatedItems);
 
-    // 4. Create the order — idempotent: a duplicate (customerId, idempotencyKey) returns the existing order
+    // 4. Create the order, its items, and its payment in one transaction — a
+    //    failure in any part leaves no orphan order. Idempotent: a duplicate
+    //    (customerId, idempotencyKey) returns the existing order.
+    const reference = `CHOW-${Date.now()}-${crypto.randomBytes(4).toString("hex")}`;
     let order;
     try {
-      order = await prisma.order.create({
-        data: {
-          customerId: req.user.id,
-          restaurantId: Number(restaurantId),
-          deliveryAddress: deliveryLocation.address,
-          deliveryLat: deliveryLocation.lat,
-          deliveryLng: deliveryLocation.lng,
-          idempotencyKey,
-          status: "PENDING_PAYMENT",
-          subtotal: fees.subtotal,
-          deliveryFee: fees.deliveryFee,
-          serviceFee: fees.serviceFee,
-          totalAmount: fees.totalAmount,
-          orderItems: {
-            create: validatedItems.map((item) => ({
-              quantity: item.quantity,
-              unitPrice: item.unitPrice,
-              totalPrice: item.unitPrice * item.quantity,
-              menuItemId: item.menuItemId,
-            })),
+      order = await prisma.$transaction(async (tx) => {
+        // Aggregate duplicate lines, then claim stock atomically. Untracked
+        // items (null) pass the OR branch and stay null after the decrement.
+        const quantities = new Map();
+        const names = new Map();
+        for (const item of validatedItems) {
+          quantities.set(item.menuItemId, (quantities.get(item.menuItemId) || 0) + item.quantity);
+          names.set(item.menuItemId, item.name);
+        }
+
+        for (const [menuItemId, quantity] of quantities) {
+          const claimed = await tx.menuItem.updateMany({
+            where: {
+              id: menuItemId,
+              isAvailable: true,
+              OR: [{ stockQuantity: null }, { stockQuantity: { gte: quantity } }],
+            },
+            data: { stockQuantity: { decrement: quantity } },
+          });
+
+          if (claimed.count === 0) {
+            throw {
+              status: 409,
+              message: `"${names.get(menuItemId)}" just sold out. Please refresh your cart.`,
+            };
+          }
+        }
+
+        return tx.order.create({
+          data: {
+            customerId: req.user.id,
+            restaurantId: Number(restaurantId),
+            deliveryAddress: deliveryLocation.address,
+            deliveryLat: deliveryLocation.lat,
+            deliveryLng: deliveryLocation.lng,
+            idempotencyKey,
+            status: "PENDING_PAYMENT",
+            stockReserved: true,
+            subtotal: fees.subtotal,
+            deliveryFee: fees.deliveryFee,
+            serviceFee: fees.serviceFee,
+            totalAmount: fees.totalAmount,
+            orderItems: {
+              create: validatedItems.map((item) => ({
+                quantity: item.quantity,
+                unitPrice: item.unitPrice,
+                totalPrice: item.unitPrice * item.quantity,
+                menuItemId: item.menuItemId,
+              })),
+            },
+            payment: {
+              create: {
+                amount: fees.totalAmount,
+                reference,
+                status: "PENDING",
+              },
+            },
           },
-        },
-        include: {
-          orderItems: { include: { menuItem: true } },
-          restaurant: PUBLIC_RESTAURANT,
-        },
-      });
+          include: {
+            orderItems: { include: { menuItem: true } },
+            restaurant: PUBLIC_RESTAURANT,
+            payment: true,
+          },
+        });
+      }, { timeout: 15000, maxWait: 10000 });
     } catch (error) {
+      if (error.status) {
+        return res.status(error.status).json({ message: error.message });
+      }
       if (error.code === "P2002") {
         // This customer already has an order with this key → return it instead of creating a duplicate
         const existing = await prisma.order.findUnique({
@@ -141,6 +228,10 @@ router.post("/orders/checkout", checkoutLimiter, authMiddleware, validate(checko
           },
         });
 
+        // P2002 could also be a payment-reference collision; only replay when
+        // the idempotency key is the one that matched.
+        if (!existing) throw error;
+
         return res.status(200).json({
           message: "Order already exists",
           order: existing,
@@ -150,6 +241,9 @@ router.post("/orders/checkout", checkoutLimiter, authMiddleware, validate(checko
       throw error;
     }
 
+    // Stock changed for this restaurant's menu.
+    announceMenuUpdate(Number(restaurantId));
+
     console.log("Order delivery location saved:", {
       orderId: order.id,
       address: order.deliveryAddress,
@@ -157,21 +251,12 @@ router.post("/orders/checkout", checkoutLimiter, authMiddleware, validate(checko
       lng: order.deliveryLng,
     });
 
-    // 5. Create payment record
-    const reference = `CHOW-${Date.now()}-${crypto.randomBytes(4).toString("hex")}`;
-    const payment = await prisma.payment.create({
-      data: {
-        orderId: order.id,
-        amount: fees.totalAmount,
-        reference,
-        status: "PENDING",
-      },
-    });
-
-    // 6. Return everything
+    // 5. Return everything. The payment is created nested, so strip it back out
+    //    of `order` to keep the response shape unchanged.
+    const { payment, ...orderPayload } = order;
     res.status(201).json({
       message: "Order created — payment pending",
-      order,
+      order: orderPayload,
       payment,
       fees,
     });
@@ -342,6 +427,7 @@ router.put("/orders/:id/status", authMiddleware, ownerMiddleware, async (req, re
       where: { id: Number(req.params.id) },
       include: {
         restaurant: true,
+        payment: { select: { id: true, status: true, reference: true, gatewayResponse: true } },
         delivery: { include: { rider: { select: { userId: true } } } },
       },
     });
@@ -354,34 +440,94 @@ router.put("/orders/:id/status", authMiddleware, ownerMiddleware, async (req, re
       return res.status(403).json({ message: "You can only update orders for your restaurant" });
     }
 
-    // Refund the customer before cancelling a paid order — otherwise they lose
-    // both their food and their money. The `order.status !== "CANCELLED"` guard
-    // stops a second "Cancel" click from refunding an already-cancelled order twice.
-    if (status === "CANCELLED" && order.status !== "CANCELLED") {
-      const payment = await prisma.payment.findUnique({
-        where: { orderId: order.id },
+    const orderIncludes = {
+      orderItems: { include: { menuItem: true } },
+      restaurant: true,
+    };
+
+    // Repeating the current status is a no-op (double-click friendly).
+    if (status === order.status) {
+      const unchanged = await prisma.order.findUnique({
+        where: { id: order.id },
+        include: orderIncludes,
+      });
+      if (unchanged) delete unchanged.deliveryCode;
+      return res.status(200).json({ message: "Order status unchanged", order: unchanged });
+    }
+
+    const allowed = ORDER_TRANSITIONS[order.status] || [];
+    if (!allowed.includes(status)) {
+      return res.status(409).json({
+        message: `Cannot change order from ${order.status} to ${status}`,
+      });
+    }
+
+    if (status === "ACCEPTED" && order.payment?.status !== "SUCCESS") {
+      return res.status(409).json({ message: "Order has not been paid yet" });
+    }
+
+    if (status === "CANCELLED") {
+      const previousStatus = order.status;
+
+      // Atomic claim: only one request can make this transition, so a double
+      // click can never refund twice.
+      const claim = await prisma.order.updateMany({
+        where: { id: order.id, status: previousStatus },
+        data: { status: "CANCELLED", deliveryCode: null },
       });
 
-      // Only orders that actually took the customer's money get refunded.
-      if (payment && payment.status === "SUCCESS") {
-        const { refunded } = await refundPayment(payment.reference);
+      if (claim.count === 0) {
+        return res.status(409).json({ message: "Order status changed — refresh and try again" });
+      }
 
-        if (!refunded) {
+      // Refund paid orders. If Paystack refuses, put the order back so the
+      // owner can retry instead of ending up cancelled without a refund.
+      if (order.payment?.status === "SUCCESS") {
+        let refund;
+        try {
+          refund = await refundPaymentOnce(order.payment);
+        } catch (error) {
+          console.error("[orders/status] refund failed", error);
+          refund = { ok: false };
+        }
+
+        if (!refund.ok) {
+          await prisma.order.updateMany({
+            where: { id: order.id, status: "CANCELLED" },
+            data: { status: previousStatus, deliveryCode: order.deliveryCode },
+          });
           return res.status(502).json({
-            message: "Refund failed — order was NOT cancelled. Please try again.",
+            message: "We couldn't start the refund, so the order was NOT cancelled. Please try again.",
           });
         }
       }
+
+      // Release the inventory this order held (idempotent via stockReserved).
+      try {
+        await prisma.$transaction((tx) => releaseOrderStock(order.id, tx));
+        announceMenuUpdate(order.restaurantId);
+      } catch (error) {
+        console.error("[orders/status] stock release failed", error);
+      }
+    } else {
+      // Same atomic-claim pattern for every forward transition.
+      const transition = await prisma.order.updateMany({
+        where: { id: order.id, status: order.status },
+        data: { status },
+      });
+
+      if (transition.count === 0) {
+        return res.status(409).json({ message: "Order status changed — refresh and try again" });
+      }
     }
 
-    const updated = await prisma.order.update({
-      where: { id: Number(req.params.id) },
-      data: { status },
-      include: {
-        orderItems: { include: { menuItem: true } },
-        restaurant: true,
-      },
+    const updated = await prisma.order.findUnique({
+      where: { id: order.id },
+      include: orderIncludes,
     });
+
+    // Never expose the customer's handoff code to the restaurant.
+    if (updated) delete updated.deliveryCode;
 
     // Notify everyone who should know about this change. `order.delivery?.rider`
     // only exists once a rider has been assigned (e.g. a mid-delivery cancel).
@@ -443,30 +589,63 @@ router.post("/orders/:id/cancel", authMiddleware, async (req, res, next) => {
       return res.status(400).json({ message: "Order can no longer be cancelled" });
     }
 
-    // Refund paid orders — but only while they're still inside the free-cancel
-    // window. After it lapses the customer still cancels, just without a refund.
+    // Work out refund eligibility before claiming the cancellation.
     const payment = await prisma.payment.findUnique({ where: { orderId: order.id } });
-    let refunded = false;
+    let refundDue = false;
 
     if (payment && payment.status === "SUCCESS" && payment.paidAt) {
       const windowMinutes = getRefundWindowMinutes();
       const elapsed = Date.now() - new Date(payment.paidAt).getTime();
-
-      if (elapsed <= windowMinutes * 60 * 1000) {
-        const { refunded: ok } = await refundPayment(payment.reference);
-        if (!ok) {
-          return res.status(502).json({
-            message: "Refund failed — order was NOT cancelled. Please try again.",
-          });
-        }
-        refunded = true;
-      }
+      refundDue = elapsed <= windowMinutes * 60 * 1000;
     }
 
-    const updated = await prisma.order.update({
-      where: { id: order.id },
-      data: { status: "CANCELLED" },
+    // Atomic claim: concurrent cancels cannot both proceed to a refund.
+    const previousStatus = order.status;
+    const claim = await prisma.order.updateMany({
+      where: { id: order.id, status: previousStatus },
+      data: { status: "CANCELLED", deliveryCode: null },
     });
+
+    if (claim.count === 0) {
+      return res.status(409).json({ message: "Order status changed — refresh and try again" });
+    }
+
+    let refunded = false;
+    if (refundDue) {
+      let refund;
+      try {
+        refund = await refundPaymentOnce(payment);
+      } catch (error) {
+        console.error("[orders/cancel] refund failed", error);
+        refund = { ok: false };
+      }
+
+      if (!refund.ok) {
+        // Restore the order so the customer can retry.
+        await prisma.order.updateMany({
+          where: { id: order.id, status: "CANCELLED" },
+          data: { status: previousStatus, deliveryCode: order.deliveryCode },
+        });
+        return res.status(502).json({
+          message: "We couldn't start your refund, so the order was NOT cancelled. Please try again.",
+        });
+      }
+
+      refunded = true;
+    }
+
+    // Put the reserved stock back on the menu (idempotent). A stock failure
+    // must not turn a successful cancellation into an error; the sweep will
+    // retry orders left with stockReserved = true.
+    try {
+      await prisma.$transaction((tx) => releaseOrderStock(order.id, tx));
+      announceMenuUpdate(order.restaurantId);
+    } catch (error) {
+      console.error("[orders/cancel] stock release failed", error);
+    }
+
+    const updated = await prisma.order.findUnique({ where: { id: order.id } });
+    if (updated) delete updated.deliveryCode;
 
     // The customer initiated this, so only the owner needs a push. SSE still
     // refreshes both sides (customer's other devices + the owner's dashboard).

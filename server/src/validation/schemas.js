@@ -72,13 +72,67 @@ export const restaurantSchema = z.object({
 
 // ── Menu item ──
 
+// Empty string means "not stock-tracked" (unlimited), not zero.
+const stockQuantityField = z.preprocess(
+  (value) => (value === "" ? null : value),
+  z.coerce
+    .number()
+    .int("Stock must be a whole number")
+    .min(0, "Stock cannot be negative")
+    .max(1_000_000, "Stock is too large")
+    .nullable()
+    .optional()
+);
+
+// ── Restaurant opening hours ──
+
+const timeOfDay = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, "Time must use HH:MM (24-hour)");
+
+const hoursDaySchema = z
+  .object({
+    dayOfWeek: z.coerce.number().int().min(0).max(6),
+    isClosed: z.boolean(),
+    openTime: timeOfDay.nullable().optional(),
+    closeTime: timeOfDay.nullable().optional(),
+  })
+  .superRefine((day, ctx) => {
+    if (!day.isClosed && (!day.openTime || !day.closeTime)) {
+      ctx.addIssue({
+        code: "custom",
+        message: "Open and close times are required for open days",
+      });
+    }
+  });
+
+export const restaurantHoursSchema = z.object({
+  hours: z
+    .array(hoursDaySchema)
+    .max(7, "At most 7 days can be supplied")
+    .refine(
+      (hours) => new Set(hours.map((day) => day.dayOfWeek)).size === hours.length,
+      "Each day can appear only once"
+    ),
+});
+
 export const menuItemSchema = z.object({
   name: z.string().trim().min(1, "Name is required").max(100, "Name must be 100 characters or less"),
   description: z.string().trim().max(1000, "Description must be 1000 characters or less").optional(),
   price: z.coerce.number().positive("Price must be a positive number"),
   category: z.string().trim().min(1, "Category is required").max(50, "Category must be 50 characters or less"),
   imageUrl: z.string().trim().max(500, "Image URL must be 500 characters or less").optional(),
+  stockQuantity: stockQuantityField,
 });
+
+// Quick owner controls on a menu row: change stock, track/untrack it, or toggle
+// manual availability without submitting the whole item form.
+export const inventoryUpdateSchema = z
+  .object({
+    stockQuantity: stockQuantityField,
+    isAvailable: z.boolean().optional(),
+  })
+  .refine((data) => data.stockQuantity !== undefined || data.isAvailable !== undefined, {
+    message: "Provide stockQuantity or isAvailable",
+  });
 
 // ── Rider ──
 

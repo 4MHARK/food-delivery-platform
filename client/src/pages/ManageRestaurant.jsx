@@ -125,7 +125,16 @@ function OrderCard({ order, statusInfo, highlight, muted, actions, rightSlot, sh
 }
 
 const initialRestForm = { name: "", description: "", address: "", phone: "", imageUrl: "" };
-const initialMenuForm = { name: "", description: "", price: "", category: "", imageUrl: "" };
+const initialMenuForm = { name: "", description: "", price: "", category: "", imageUrl: "", stockQuantity: "" };
+
+const DAY_LABELS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+const defaultHoursForm = () =>
+  DAY_LABELS.map((_, dayOfWeek) => ({
+    dayOfWeek,
+    isClosed: false,
+    openTime: "09:00",
+    closeTime: "22:00",
+  }));
 
 const Dashboard = () => {
   const navigate = useNavigate();
@@ -153,6 +162,10 @@ const Dashboard = () => {
   const [showAddMenu, setShowAddMenu] = useState(false);
   const [savingMenu, setSavingMenu] = useState(false);
   const [deletingId, setDeletingId] = useState(null);
+  const [updatingInventoryId, setUpdatingInventoryId] = useState(null);
+  const [hoursForm, setHoursForm] = useState(defaultHoursForm);
+  const [savingHours, setSavingHours] = useState(false);
+  const [savingAvailability, setSavingAvailability] = useState(false);
 
   // Orders
   const [activeTab, setActiveTab] = useState("menu");
@@ -195,6 +208,21 @@ const Dashboard = () => {
         setLocationStatus(r.lat != null ? "success" : "idle");
         setBankForm({ accountNumber: r.accountNumber || "", bankCode: r.bankCode || "", bankName: r.bankName || "" });
         setResolvedName(r.accountName || null);
+
+        const savedHours = r.hours || [];
+        setHoursForm(
+          DAY_LABELS.map((_, dayOfWeek) => {
+            const row = savedHours.find((h) => h.dayOfWeek === dayOfWeek);
+            return row
+              ? {
+                  dayOfWeek,
+                  isClosed: row.isClosed,
+                  openTime: row.openTime || "09:00",
+                  closeTime: row.closeTime || "22:00",
+                }
+              : { dayOfWeek, isClosed: false, openTime: "09:00", closeTime: "22:00" };
+          })
+        );
       }
       return r;
     } catch (err) {
@@ -327,6 +355,8 @@ useSSE(
       // on whether the order list itself gets updated.
       setOrders(freshOrders);
       setLastUpdated(new Date());
+      // Keep stock levels live when other customers place or cancel orders.
+      await fetchMenu(restaurant.id);
 
       if (currentPending > prevPendingRef.current) {
         const diff = currentPending - prevPendingRef.current;
@@ -478,7 +508,11 @@ useSSE(
     }
     try {
       setSavingMenu(true);
-      await api.post(`/restaurants/${restaurant.id}/menu-items`, { ...menuForm, price: Number(menuForm.price) });
+      await api.post(`/restaurants/${restaurant.id}/menu-items`, {
+        ...menuForm,
+        price: Number(menuForm.price),
+        stockQuantity: menuForm.stockQuantity === "" ? null : Number(menuForm.stockQuantity),
+      });
       await fetchMenu(restaurant.id);
       setMenuForm(initialMenuForm);
       setShowAddMenu(false);
@@ -498,6 +532,7 @@ useSSE(
         name: editingItem.name, description: editingItem.description,
         price: Number(editingItem.price), category: editingItem.category,
         imageUrl: editingItem.imageUrl || "",
+        stockQuantity: editingItem.stockQuantity === "" ? null : Number(editingItem.stockQuantity),
       });
       await fetchMenu(restaurant.id);
       setEditingItem(null);
@@ -507,6 +542,87 @@ useSSE(
     } finally {
       setSavingMenu(false);
     }
+  };
+
+  const updateHoursDay = (dayOfWeek, patch) => {
+    setHoursForm((prev) =>
+      prev.map((day) => (day.dayOfWeek === dayOfWeek ? { ...day, ...patch } : day))
+    );
+  };
+
+  const handleToggleAvailability = async () => {
+    if (!restaurant) return;
+    try {
+      setSavingAvailability(true);
+      const data = await api.put(`/restaurants/${restaurant.id}/availability`, {
+        isOpen: !restaurant.isOpen,
+      });
+      setRestaurant((prev) => ({
+        ...prev,
+        isOpen: data.isOpen,
+        isOpenNow: data.isOpenNow,
+      }));
+      showMsg(data.message);
+    } catch (e) {
+      setError(e.message || "Failed to update availability");
+    } finally {
+      setSavingAvailability(false);
+    }
+  };
+
+  const handleSaveHours = async () => {
+    if (!restaurant) return;
+    try {
+      setSavingHours(true);
+      const data = await api.put(`/restaurants/${restaurant.id}/hours`, {
+        hours: hoursForm.map((day) => ({
+          dayOfWeek: day.dayOfWeek,
+          isClosed: day.isClosed,
+          openTime: day.isClosed ? null : day.openTime,
+          closeTime: day.isClosed ? null : day.closeTime,
+        })),
+      });
+      setRestaurant((prev) => ({
+        ...prev,
+        hours: data.hours,
+        isOpenNow: data.isOpenNow,
+      }));
+      showMsg("Opening hours saved");
+    } catch (e) {
+      setError(e.message || "Failed to save opening hours");
+    } finally {
+      setSavingHours(false);
+    }
+  };
+
+  const updateMenuItemInventory = async (item, payload, { silent = false } = {}) => {
+    try {
+      setUpdatingInventoryId(item.id);
+      const data = await api.put(`/menu-items/${item.id}/inventory`, payload);
+      setMenuItems((prev) =>
+        prev.map((menuItem) =>
+          menuItem.id === item.id ? { ...menuItem, ...data.item } : menuItem
+        )
+      );
+      if (!silent) showMsg(data.message);
+    } catch (e) {
+      setError(e.message || "Failed to update stock");
+    } finally {
+      setUpdatingInventoryId(null);
+    }
+  };
+
+  const handleStockStep = (item, delta) => {
+    if (item.stockQuantity == null) return;
+    updateMenuItemInventory(
+      item,
+      { stockQuantity: Math.max(0, item.stockQuantity + delta) },
+      { silent: true }
+    );
+  };
+
+  const handleToggleMenuItemAvailability = (item) => {
+    updateMenuItemInventory(item, { isAvailable: !item.isAvailable });
   };
 
   const handleDeleteMenuItem = async (itemId) => {
@@ -682,10 +798,10 @@ useSSE(
         </div>
 
         {/* ── Tabs ── */}
-        <div className="flex gap-1 bg-slate-100 rounded-xl p-1 mb-6">
+        <div className="flex gap-1 bg-slate-100 rounded-xl p-1 mb-6 overflow-x-auto no-scrollbar">
           <button
             onClick={() => setActiveTab("menu")}
-            className={`flex-1 py-2.5 px-4 rounded-lg text-sm font-bold transition ${
+            className={`flex-1 py-2.5 px-2 sm:px-4 rounded-lg text-sm font-bold transition whitespace-nowrap ${
               activeTab === "menu" ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-700"
             }`}
           >
@@ -694,8 +810,17 @@ useSSE(
             <span className="ml-1.5 text-slate-400 text-xs font-normal">({menuItems.length})</span>
           </button>
           <button
+            onClick={() => setActiveTab("hours")}
+            className={`flex-1 py-2.5 px-2 sm:px-4 rounded-lg text-sm font-bold transition whitespace-nowrap ${
+              activeTab === "hours" ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-700"
+            }`}
+          >
+            <span className="material-symbols-outlined text-sm mr-1.5 align-middle">schedule</span>
+            Hours
+          </button>
+          <button
             onClick={() => { setActiveTab("orders"); fetchOrders(restaurant.id); }}
-            className={`flex-1 py-2.5 px-4 rounded-lg text-sm font-bold transition relative ${
+            className={`flex-1 py-2.5 px-2 sm:px-4 rounded-lg text-sm font-bold transition whitespace-nowrap relative ${
               activeTab === "orders" ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-700"
             }`}
           >
@@ -709,7 +834,7 @@ useSSE(
           </button>
           <button
             onClick={() => { setActiveTab("payouts"); fetchPayouts(restaurant.id); }}
-            className={`flex-1 py-2.5 px-4 rounded-lg text-sm font-bold transition ${
+            className={`flex-1 py-2.5 px-2 sm:px-4 rounded-lg text-sm font-bold transition whitespace-nowrap ${
               activeTab === "payouts" ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-700"
             }`}
           >
@@ -718,7 +843,7 @@ useSSE(
           </button>
           <button
             onClick={() => { setActiveTab("reviews"); fetchReviews(restaurant.id); }}
-            className={`flex-1 py-2.5 px-4 rounded-lg text-sm font-bold transition ${
+            className={`flex-1 py-2.5 px-2 sm:px-4 rounded-lg text-sm font-bold transition whitespace-nowrap ${
               activeTab === "reviews" ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-700"
             }`}
           >
@@ -755,6 +880,7 @@ useSSE(
                   <SmallField label="Price (₦) *" type="number" step="0.01" value={menuForm.price} onChange={(e) => setMenuForm({ ...menuForm, price: e.target.value })} placeholder="e.g. 3500" />
                   <SmallField label="Image URL" value={menuForm.imageUrl} onChange={(e) => setMenuForm({ ...menuForm, imageUrl: e.target.value })} placeholder="Optional" />
                 </div>
+                <SmallField label="Stock quantity (blank = unlimited)" type="number" min="0" step="1" value={menuForm.stockQuantity} onChange={(e) => setMenuForm({ ...menuForm, stockQuantity: e.target.value })} placeholder="e.g. 20" />
                 <SmallField label="Description" textarea value={menuForm.description} onChange={(e) => setMenuForm({ ...menuForm, description: e.target.value })} placeholder="Describe the dish..." />
                 <button type="submit" disabled={savingMenu} className="w-full h-10 rounded-xl bg-slate-900 hover:bg-slate-800 disabled:bg-slate-400 text-white font-bold text-sm transition active:scale-[0.98]">
                   {savingMenu ? "Adding..." : "Add to Menu"}
@@ -774,6 +900,7 @@ useSSE(
                   <SmallField label="Price (₦)" type="number" step="0.01" value={editingItem.price} onChange={(e) => setEditingItem({ ...editingItem, price: e.target.value })} />
                   <SmallField label="Image URL" value={editingItem.imageUrl || ""} onChange={(e) => setEditingItem({ ...editingItem, imageUrl: e.target.value })} />
                 </div>
+                <SmallField label="Stock quantity (blank = unlimited)" type="number" min="0" step="1" value={editingItem.stockQuantity ?? ""} onChange={(e) => setEditingItem({ ...editingItem, stockQuantity: e.target.value })} placeholder="e.g. 20" />
                 <SmallField label="Description" textarea value={editingItem.description || ""} onChange={(e) => setEditingItem({ ...editingItem, description: e.target.value })} />
                 <div className="flex gap-2">
                   <button type="submit" disabled={savingMenu} className="flex-1 h-10 rounded-xl bg-amber-500 hover:bg-amber-600 disabled:bg-amber-300 text-white font-bold text-sm transition active:scale-95">
@@ -798,7 +925,9 @@ useSSE(
             {/* Menu list */}
             {menuItems.length > 0 && (
               <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
-                {menuItems.map((item, idx) => (
+                {menuItems.map((item, idx) => {
+                  const busy = updatingInventoryId === item.id;
+                  return (
                   <div key={item.id} className={`px-5 py-4 flex items-center justify-between ${idx < menuItems.length - 1 ? "border-b border-slate-50" : ""}`}>
                     <div className="flex items-center gap-3 min-w-0">
                       <div className="w-10 h-10 rounded-lg bg-slate-100 flex items-center justify-center shrink-0">
@@ -813,11 +942,94 @@ useSSE(
                         <div className="flex items-center gap-2">
                           <span className="text-xs text-slate-400">{item.category}</span>
                           <span className="text-xs font-bold text-slate-700">{formatCurrency(Number(item.price))}</span>
+                          <span className={`text-xs font-semibold ${item.stockQuantity === 0 ? "text-red-500" : item.lowStock ? "text-amber-600" : "text-slate-400"}`}>
+                            {item.stockQuantity === null || item.stockQuantity === undefined
+                              ? "Unlimited stock"
+                              : item.stockQuantity === 0
+                                ? "Sold out"
+                                : `${item.stockQuantity} in stock`}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
+                          {item.stockQuantity !== null && item.stockQuantity !== undefined ? (
+                            <>
+                              <button
+                                type="button"
+                                onClick={() => handleStockStep(item, -1)}
+                                disabled={busy || item.stockQuantity === 0}
+                                aria-label="Decrease stock"
+                                className="w-6 h-6 rounded-md bg-slate-100 text-slate-700 hover:bg-slate-200 disabled:opacity-40 text-sm font-bold leading-none"
+                              >
+                                −
+                              </button>
+                              <span className="w-6 text-center text-[11px] font-bold text-slate-700">{item.stockQuantity}</span>
+                              <button
+                                type="button"
+                                onClick={() => handleStockStep(item, 1)}
+                                disabled={busy}
+                                aria-label="Increase stock"
+                                className="w-6 h-6 rounded-md bg-slate-100 text-slate-700 hover:bg-slate-200 disabled:opacity-40 text-sm font-bold leading-none"
+                              >
+                                +
+                              </button>
+                              {item.stockQuantity === 0 ? (
+                                <button
+                                  type="button"
+                                  onClick={() => updateMenuItemInventory(item, { stockQuantity: 10 })}
+                                  disabled={busy}
+                                  className="px-2 py-0.5 rounded-md bg-green-50 text-green-700 text-[10px] font-bold hover:bg-green-100 disabled:opacity-40"
+                                >
+                                  Restock 10
+                                </button>
+                              ) : (
+                                <button
+                                  type="button"
+                                  onClick={() => updateMenuItemInventory(item, { stockQuantity: 0 })}
+                                  disabled={busy}
+                                  className="px-2 py-0.5 rounded-md bg-red-50 text-red-600 text-[10px] font-bold hover:bg-red-100 disabled:opacity-40"
+                                >
+                                  Sold out
+                                </button>
+                              )}
+                              <button
+                                type="button"
+                                onClick={() => updateMenuItemInventory(item, { stockQuantity: null })}
+                                disabled={busy}
+                                className="px-2 py-0.5 rounded-md bg-slate-100 text-slate-500 text-[10px] font-bold hover:bg-slate-200 disabled:opacity-40"
+                              >
+                                Stop tracking
+                              </button>
+                            </>
+                          ) : (
+                            <>
+                              <span className="text-[10px] text-slate-400">Unlimited</span>
+                              <button
+                                type="button"
+                                onClick={() => updateMenuItemInventory(item, { stockQuantity: 10 })}
+                                disabled={busy}
+                                className="px-2 py-0.5 rounded-md bg-amber-50 text-amber-700 text-[10px] font-bold hover:bg-amber-100 disabled:opacity-40"
+                              >
+                                Track stock
+                              </button>
+                            </>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => handleToggleMenuItemAvailability(item)}
+                            disabled={busy}
+                            className={`px-2 py-0.5 rounded-md text-[10px] font-bold disabled:opacity-40 ${
+                              item.isAvailable
+                                ? "bg-slate-100 text-slate-500 hover:bg-slate-200"
+                                : "bg-green-50 text-green-700 hover:bg-green-100"
+                            }`}
+                          >
+                            {item.isAvailable ? "Mark unavailable" : "Make available"}
+                          </button>
                         </div>
                       </div>
                     </div>
                     <div className="flex items-center gap-1 shrink-0">
-                      <button onClick={() => setEditingItem({ ...item, price: String(item.price) })} className="p-1.5 text-slate-400 hover:text-amber-500 hover:bg-amber-50 rounded-lg transition">
+                      <button onClick={() => setEditingItem({ ...item, price: String(item.price), stockQuantity: item.stockQuantity == null ? "" : String(item.stockQuantity) })} className="p-1.5 text-slate-400 hover:text-amber-500 hover:bg-amber-50 rounded-lg transition">
                         <span className="material-symbols-outlined text-sm">edit</span>
                       </button>
                       <button onClick={() => handleDeleteMenuItem(item.id)} disabled={deletingId === item.id} className="p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition disabled:opacity-50">
@@ -829,13 +1041,100 @@ useSSE(
                       </button>
                     </div>
                   </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </section>
         )}
 
         {/* ══════════════ ORDERS TAB ══════════════ */}
+        {activeTab === "hours" && (
+          <section>
+            <div className="bg-white rounded-2xl shadow-sm p-5 mb-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div>
+                  <h3 className="text-sm font-bold text-slate-900">Accepting orders</h3>
+                  <p className="text-xs text-slate-500 mt-1">
+                    When paused, customers cannot place orders regardless of the schedule.
+                  </p>
+                  <p className={`text-xs font-semibold mt-2 ${restaurant.isOpenNow ? "text-green-600" : "text-red-500"}`}>
+                    Current status: {restaurant.isOpenNow ? "Open" : "Closed"}
+                  </p>
+                </div>
+                <button
+                  onClick={handleToggleAvailability}
+                  disabled={savingAvailability}
+                  className={`h-10 px-5 rounded-xl font-bold text-sm transition active:scale-[0.98] ${
+                    restaurant.isOpen
+                      ? "bg-red-50 text-red-600 border border-red-200 hover:bg-red-100"
+                      : "bg-green-600 text-white hover:bg-green-700 disabled:bg-green-300"
+                  }`}
+                >
+                  {savingAvailability ? "Saving..." : restaurant.isOpen ? "Pause orders" : "Resume orders"}
+                </button>
+              </div>
+            </div>
+
+            <div className="bg-white rounded-2xl shadow-sm p-5">
+              <h3 className="text-sm font-bold text-slate-900">Weekly opening hours</h3>
+              <p className="text-xs text-slate-500 mt-1 mb-4">
+                Times are Africa/Lagos (WAT). A window like 18:00–02:00 crosses midnight.
+              </p>
+              {(!restaurant.hours || restaurant.hours.length === 0) && (
+                <p className="text-xs text-amber-700 bg-amber-50 rounded-lg px-3 py-2 mb-4">
+                  No schedule is saved yet, so this restaurant is treated as always open. Saving the times below will apply them.
+                </p>
+              )}
+              <div className="space-y-2">
+                {hoursForm.map((day) => (
+                  <div key={day.dayOfWeek} className="grid grid-cols-[64px_1fr_1fr_auto] items-center gap-2">
+                    <span className="text-xs font-medium text-slate-700">{DAY_LABELS[day.dayOfWeek]}</span>
+                    <input
+                      type="time"
+                      value={day.openTime}
+                      disabled={day.isClosed}
+                      onChange={(e) => updateHoursDay(day.dayOfWeek, { openTime: e.target.value })}
+                      className="h-9 rounded-lg border border-slate-200 px-1.5 text-xs text-slate-700 disabled:bg-slate-50 disabled:text-slate-300"
+                    />
+                    <input
+                      type="time"
+                      value={day.closeTime}
+                      disabled={day.isClosed}
+                      onChange={(e) => updateHoursDay(day.dayOfWeek, { closeTime: e.target.value })}
+                      className="h-9 rounded-lg border border-slate-200 px-1.5 text-xs text-slate-700 disabled:bg-slate-50 disabled:text-slate-300"
+                    />
+                    <label className="flex items-center gap-1.5 text-[10px] text-slate-500 whitespace-nowrap">
+                      <input
+                        type="checkbox"
+                        checked={day.isClosed}
+                        onChange={(e) => updateHoursDay(day.dayOfWeek, { isClosed: e.target.checked })}
+                      />
+                      Closed
+                    </label>
+                  </div>
+                ))}
+              </div>
+              <div className="flex items-center gap-3 mt-5">
+                <button
+                  onClick={handleSaveHours}
+                  disabled={savingHours}
+                  className="h-10 px-5 rounded-xl bg-slate-900 hover:bg-slate-800 disabled:bg-slate-400 text-white font-bold text-sm transition active:scale-[0.98]"
+                >
+                  {savingHours ? "Saving..." : "Save hours"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setHoursForm(defaultHoursForm())}
+                  className="h-10 px-4 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold text-sm transition"
+                >
+                  Reset
+                </button>
+              </div>
+            </div>
+          </section>
+        )}
+
         {activeTab === "orders" && (
           <section>
             <div className="flex items-center justify-between mb-4">
@@ -1094,7 +1393,7 @@ useSSE(
                       <p className="text-xs text-slate-400">{fmtDateYear(p.createdAt)}</p>
                     </div>
                     <div className="flex items-center gap-3">
-                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${p.status === "SUCCESS" ? "bg-green-100 text-green-700" : p.status === "FAILED" ? "bg-red-100 text-red-700" : "bg-amber-100 text-amber-700"}`}>{p.status}</span>
+                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${p.status === "SUCCESS" ? "bg-green-100 text-green-700" : p.status === "FAILED" ? "bg-red-100 text-red-700" : p.status === "REVERSED" ? "bg-purple-100 text-purple-700" : "bg-amber-100 text-amber-700"}`}>{p.status}</span>
                       <span className="text-sm font-bold text-slate-900">{formatCurrency(p.amount)}</span>
                     </div>
                   </div>

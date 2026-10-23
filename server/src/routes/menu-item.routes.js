@@ -2,9 +2,12 @@ import express from "express";
 import prisma from "../config/prisma.js";
 import authMiddleware from "../middleware/auth.middleware.js";
 import ownerMiddleware from "../middleware/owner.middleware.js";
+import optionalAuthMiddleware from "../middleware/optional-auth.middleware.js";
 import { validate } from "../middleware/validate.js";
-import { menuItemSchema } from "../validation/schemas.js";
+import { menuItemSchema, inventoryUpdateSchema } from "../validation/schemas.js";
 import { cacheGet, cacheSet, cacheClear } from "../services/cache.js";
+import { serializeMenuItem, announceMenuUpdate } from "../services/inventory.js";
+import { computeOpenStatus } from "../services/hours.js";
 
 const router = express.Router();
 
@@ -15,6 +18,7 @@ router.get("/categories", async (req, res, next) => {
     if (cached) return res.status(200).json(cached);
 
     const categories = await prisma.menuItem.findMany({
+      where: { restaurant: { approvalStatus: "APPROVED" } },
       distinct: ["category"],
       select: { category: true },
       orderBy: { category: "asc" },
@@ -32,7 +36,7 @@ router.get("/categories", async (req, res, next) => {
 
 router.post("/restaurants/:id/menu-items", authMiddleware, ownerMiddleware, validate(menuItemSchema), async (req, res, next) => {
   try {
-    const { name, description, imageUrl, price, category } = req.body;
+    const { name, description, imageUrl, price, category, stockQuantity } = req.body;
     const restaurant = await prisma.restaurant.findUnique({
       where: { id: Number(req.params.id) },
     });
@@ -53,6 +57,7 @@ router.post("/restaurants/:id/menu-items", authMiddleware, ownerMiddleware, vali
         imageUrl,
         price,
         category,
+        stockQuantity: stockQuantity ?? null,
         restaurantId: Number(req.params.id),
       },
       include: {
@@ -66,6 +71,7 @@ router.post("/restaurants/:id/menu-items", authMiddleware, ownerMiddleware, vali
       },
     });
     cacheClear();
+    announceMenuUpdate(Number(req.params.id));
     res.status(201).json({
       message: " Menu created successfully",
       menu: newMenu,
@@ -75,31 +81,49 @@ router.post("/restaurants/:id/menu-items", authMiddleware, ownerMiddleware, vali
   }
 });
 
-router.get("/restaurants/:id/menu-items", async (req, res, next) => {
+router.get("/restaurants/:id/menu-items", optionalAuthMiddleware, async (req, res, next) => {
   try {
-    const cacheKey = `menu:${req.params.id}`;
-    const cached = cacheGet(cacheKey);
-    if (cached) return res.status(200).json(cached);
-
     const restaurant = await prisma.restaurant.findUnique({
       where: { id: Number(req.params.id) },
+      select: { id: true, ownerId: true, approvalStatus: true },
     });
     if (!restaurant) {
       return res.status(404).json({
         message: "restaurant not found",
       });
     }
-    const restaurantId = Number(req.params.id);
+
+    const isOwner = req.user?.id === restaurant.ownerId;
+    const isAdmin = ["ADMIN", "SUPER_ADMIN"].includes(req.user?.role);
+
+    // Unapproved menus are visible only to their owner or an admin.
+    if (!isOwner && !isAdmin && restaurant.approvalStatus !== "APPROVED") {
+      return res.status(404).json({
+        message: "restaurant not found",
+      });
+    }
+
+    // Owners and admins need unavailable items so they can re-enable them; the
+    // public menu only shows items that can actually be ordered.
+    const includeUnavailable = isOwner || isAdmin;
+    const cacheKey = includeUnavailable ? null : `menu:${restaurant.id}`;
+
+    if (cacheKey) {
+      const cached = cacheGet(cacheKey);
+      if (cached) return res.status(200).json(cached);
+    }
+
     const menuItems = await prisma.menuItem.findMany({
       where: {
-        restaurantId,
+        restaurantId: restaurant.id,
+        ...(includeUnavailable ? {} : { isAvailable: true }),
       },
     });
     const body = {
       message: "Menu-item fetched successfully",
-      menuItems,
+      menuItems: menuItems.map(serializeMenuItem),
     };
-    cacheSet(cacheKey, body);
+    if (cacheKey) cacheSet(cacheKey, body);
     res.status(200).json(body);
   } catch (error) {
   next(error)
@@ -108,7 +132,7 @@ router.get("/restaurants/:id/menu-items", async (req, res, next) => {
 
 router.put("/menu-items/:id", authMiddleware, ownerMiddleware, validate(menuItemSchema), async (req, res, next) => {
   try {
-    const { name, description, price, imageUrl, category } = req.body;
+    const { name, description, price, imageUrl, category, stockQuantity } = req.body;
     const menuItem = await prisma.menuItem.findUnique({
       where: { id: Number(req.params.id) },
       include: { restaurant: true },
@@ -125,7 +149,14 @@ router.put("/menu-items/:id", authMiddleware, ownerMiddleware, validate(menuItem
     }
     const update = await prisma.menuItem.update({
       where: { id: Number(req.params.id) },
-      data: { name, description, price, category, imageUrl },
+      data: {
+        name,
+        description,
+        price,
+        category,
+        imageUrl,
+        ...(stockQuantity !== undefined ? { stockQuantity } : {}),
+      },
       include: {
         restaurant: {
           include: {
@@ -137,12 +168,55 @@ router.put("/menu-items/:id", authMiddleware, ownerMiddleware, validate(menuItem
       },
     });
     cacheClear();
+    announceMenuUpdate(menuItem.restaurantId);
     res.status(200).json({
       message: "Menu items updated successfully",
       update,
     });
   } catch (error) {
    next(error)
+  }
+});
+
+// Fast inventory controls from the owner's menu list. Accepts a new stock
+// quantity (null = untrack/unlimited) and/or a manual availability toggle.
+router.put("/menu-items/:id/inventory", authMiddleware, ownerMiddleware, validate(inventoryUpdateSchema), async (req, res, next) => {
+  try {
+    const menuItem = await prisma.menuItem.findUnique({
+      where: { id: Number(req.params.id) },
+      select: {
+        id: true,
+        restaurantId: true,
+        restaurant: { select: { ownerId: true } },
+      },
+    });
+
+    if (!menuItem) {
+      return res.status(404).json({ message: "Menu item not found" });
+    }
+    if (menuItem.restaurant.ownerId !== req.user.id) {
+      return res.status(403).json({ message: "You can only update your menu items" });
+    }
+
+    const { stockQuantity, isAvailable } = req.body;
+
+    const updated = await prisma.menuItem.update({
+      where: { id: menuItem.id },
+      data: {
+        ...(stockQuantity !== undefined ? { stockQuantity } : {}),
+        ...(isAvailable !== undefined ? { isAvailable } : {}),
+      },
+    });
+
+    cacheClear();
+    announceMenuUpdate(menuItem.restaurantId);
+
+    res.status(200).json({
+      message: "Stock updated",
+      item: serializeMenuItem(updated),
+    });
+  } catch (error) {
+    next(error);
   }
 });
 
@@ -182,6 +256,7 @@ router.delete("/menu-items/:id", authMiddleware,ownerMiddleware ,async (req, res
       },
     });
     cacheClear();
+    announceMenuUpdate(menuItem.restaurantId);
     res.status(200).json({
       message: "Items deleted successfully",
       deleteMenuItem,
@@ -217,15 +292,29 @@ router.get("/search", async (req, res, next) => {
           approvalStatus: "APPROVED",
           name: { contains: q, mode: "insensitive" },
         },
-        select: { id: true, name: true, imageUrl: true, address: true, description: true },
+        select: {
+          id: true,
+          name: true,
+          imageUrl: true,
+          address: true,
+          description: true,
+          isOpen: true,
+          hours: {
+            select: { dayOfWeek: true, openTime: true, closeTime: true, isClosed: true },
+            orderBy: { dayOfWeek: "asc" },
+          },
+        },
         take: 10,
       }),
     ]);
 
     res.status(200).json({
       message: "Search results fetched successfully",
-      menuItems,
-      restaurants,
+      menuItems: menuItems.map(serializeMenuItem),
+      restaurants: restaurants.map((restaurant) => ({
+        ...restaurant,
+        ...computeOpenStatus(restaurant),
+      })),
     });
   } catch (error) {
     next(error);

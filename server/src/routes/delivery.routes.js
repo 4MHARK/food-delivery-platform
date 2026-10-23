@@ -30,13 +30,17 @@ router.get("/riders/available-orders", authMiddleware, riderMiddleware, async (r
       where: { userId: req.user.id },
     });
 
+    if (!rider) {
+      return res.status(404).json({ message: "Rider profile not found. Please register first." });
+    }
+
     const orders = await prisma.order.findMany({
       where: {
         status: "READY_FOR_PICKUP",
         delivery: null, // No rider assigned yet
-        rejectedBy: rider
-          ? { none: { riderId: rider.id } } // Exclude orders this rider skipped
-          : undefined,
+        // Only this rider's campus — never expose other campuses' orders.
+        restaurant: { campusId: rider.campusId },
+        rejectedBy: { none: { riderId: rider.id } }, // Exclude orders this rider skipped
       },
       include: {
         orderItems: {
@@ -44,11 +48,12 @@ router.get("/riders/available-orders", authMiddleware, riderMiddleware, async (r
             menuItem: true,
           },
         },
-       restaurant: {
-  select: { id: true, name: true, address: true, phone: true, lat: true, lng: true },
-},
+        restaurant: {
+          select: { id: true, name: true, address: true, phone: true, lat: true, lng: true },
+        },
+        // Phone is revealed by the accept response, after assignment.
         customer: {
-          select: { id: true, name: true, phone: true },
+          select: { id: true, name: true },
         },
       },
       orderBy: { createdAt: "asc" }, // Oldest first
@@ -79,10 +84,15 @@ router.post("/riders/reject-order/:orderId", authMiddleware, riderMiddleware, as
     // Verify the order exists and is still available
     const order = await prisma.order.findUnique({
       where: { id: orderId },
+      include: { restaurant: { select: { campusId: true } } },
     });
 
     if (!order) {
       return res.status(404).json({ message: "Order not found" });
+    }
+
+    if (order.restaurant.campusId !== rider.campusId) {
+      return res.status(403).json({ message: "This order is outside your campus." });
     }
 
     if (order.status !== "READY_FOR_PICKUP") {
@@ -163,11 +173,18 @@ router.post("/deliveries/:orderId/accept", authMiddleware, riderMiddleware, asyn
       // Verify order exists and is in READY_FOR_PICKUP status
       const order = await tx.order.findUnique({
         where: { id: orderId },
-        include: { delivery: true },
+        include: {
+          delivery: true,
+          restaurant: { select: { campusId: true } },
+        },
       });
 
       if (!order) {
         throw { status: 404, message: "Order not found" };
+      }
+
+      if (order.restaurant.campusId !== rider.campusId) {
+        throw { status: 403, message: "This order is outside your campus." };
       }
 
       if (order.status !== "READY_FOR_PICKUP") {

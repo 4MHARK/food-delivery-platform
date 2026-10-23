@@ -110,10 +110,14 @@ export async function settleOrderPayouts(orderId) {
     include: {
       restaurant: { select: { recipientCode: true, name: true } },
       delivery: { include: { rider: { select: { recipientCode: true } } } },
+      payment: { select: { status: true } },
     },
   });
 
   if (!order) return;
+
+  // Never pay for an order that was not completed and paid for.
+  if (order.status !== "DELIVERED" || order.payment?.status !== "SUCCESS") return;
 
   const payouts = [
     {

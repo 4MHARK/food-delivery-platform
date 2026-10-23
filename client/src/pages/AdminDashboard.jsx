@@ -119,7 +119,7 @@ const AdminDashboard = () => {
             {activeSection === "customers" && <CustomersSection />}
             {activeSection === "orders" && <OrdersSection />}
             {activeSection === "payments" && <PaymentsSection />}
-            {activeSection === "payouts" && <PayoutsSection />}
+            {activeSection === "payouts" && <PayoutsSection isSuperAdmin={isSuperAdmin} />}
             {activeSection === "campuses" && <CampusesSection />}
           </div>
         </main>
@@ -1238,15 +1238,22 @@ const PAYOUT_STATUS_STYLE = {
   PENDING: "bg-amber-100 text-amber-700",
   SUCCESS: "bg-green-100 text-green-700",
   FAILED: "bg-red-100 text-red-700",
+  REVERSED: "bg-purple-100 text-purple-700",
 };
 
-const PayoutsSection = () => {
+const PayoutsSection = ({ isSuperAdmin }) => {
   const [payouts, setPayouts] = useState([]);
   const [unpaid, setUnpaid] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [reconciling, setReconciling] = useState(false);
   const [reconcileMsg, setReconcileMsg] = useState("");
+  const [confirmReconcile, setConfirmReconcile] = useState(false);
+  const [verifyingPending, setVerifyingPending] = useState(false);
+  const [verifyMsg, setVerifyMsg] = useState("");
+  const [confirmRetryId, setConfirmRetryId] = useState(null);
+  const [retryingId, setRetryingId] = useState(null);
+  const [retryMsg, setRetryMsg] = useState("");
   const [markingKey, setMarkingKey] = useState(null);
   const [markMsg, setMarkMsg] = useState("");
 
@@ -1300,6 +1307,39 @@ const PayoutsSection = () => {
       setReconcileMsg(err.message || "Reconciliation failed.");
     } finally {
       setReconciling(false);
+      setConfirmReconcile(false);
+    }
+  };
+
+  const handleVerifyPending = async () => {
+    try {
+      setVerifyingPending(true);
+      setVerifyMsg("");
+      const data = await api.post("/admin/payouts/verify-pending", { olderThanMinutes: 10 });
+      setVerifyMsg(
+        `Checked ${data.checked} payout${data.checked !== 1 ? "s" : ""} · updated ${data.updated}, ` +
+        `still pending ${data.stillPending}, not found ${data.notFound}, errors ${data.errors}.`
+      );
+      await Promise.all([fetchPayouts(), fetchUnpaid()]);
+    } catch (err) {
+      setVerifyMsg(err.message || "Verification failed.");
+    } finally {
+      setVerifyingPending(false);
+    }
+  };
+
+  const handleRetry = async (payoutId) => {
+    try {
+      setRetryingId(payoutId);
+      setRetryMsg("");
+      const data = await api.post(`/admin/payouts/${payoutId}/retry`);
+      setRetryMsg(`Retry created for payout #${payoutId} (attempt ${data.attempt}).`);
+      await Promise.all([fetchPayouts(), fetchUnpaid()]);
+    } catch (err) {
+      setRetryMsg(err.message || "Retry failed.");
+    } finally {
+      setRetryingId(null);
+      setConfirmRetryId(null);
     }
   };
 
@@ -1336,10 +1376,63 @@ const PayoutsSection = () => {
             {payouts.length} payout{payouts.length !== 1 ? "s" : ""} · Unpaid balances to settle, plus payout history.
           </p>
         </div>
-        <button onClick={handleReconcile} disabled={reconciling} className="shrink-0 h-10 px-4 rounded-xl bg-slate-900 hover:bg-slate-800 disabled:bg-slate-400 text-white font-bold text-sm transition active:scale-[0.98]">
-          {reconciling ? "Reconciling..." : "Reconcile"}
-        </button>
+        <div className="shrink-0 flex flex-col items-end gap-2">
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleVerifyPending}
+              disabled={verifyingPending}
+              className="h-10 px-4 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 disabled:opacity-50 text-slate-700 font-bold text-sm transition active:scale-[0.98]"
+            >
+              {verifyingPending ? "Verifying..." : "Verify pending"}
+            </button>
+            {isSuperAdmin && (
+              <button onClick={() => setConfirmReconcile(true)} disabled={reconciling} className="h-10 px-4 rounded-xl bg-slate-900 hover:bg-slate-800 disabled:bg-slate-400 text-white font-bold text-sm transition active:scale-[0.98]">
+                {reconciling ? "Reconciling..." : "Reconcile"}
+              </button>
+            )}
+          </div>
+          {!isSuperAdmin && (
+            <p className="max-w-[220px] text-right text-xs text-slate-400">
+              Only super admins can reconcile payouts.
+            </p>
+          )}
+        </div>
       </div>
+
+      {confirmReconcile && (
+        <div className="rounded-2xl border border-red-200 bg-red-50 p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div>
+            <p className="text-sm font-bold text-red-800">Create real Paystack transfers?</p>
+            <p className="text-xs text-red-600 mt-1">
+              Reconcile pays every delivered order that has no payout rows. This moves real money and cannot be undone.
+            </p>
+          </div>
+          <div className="flex gap-2 shrink-0">
+            <button
+              onClick={() => setConfirmReconcile(false)}
+              className="px-4 h-9 rounded-xl text-xs font-bold text-slate-500 hover:bg-white transition"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleReconcile}
+              disabled={reconciling}
+              className="px-4 h-9 rounded-xl bg-red-600 hover:bg-red-700 disabled:bg-red-300 text-white text-xs font-bold transition active:scale-[0.98]"
+            >
+              {reconciling ? "Reconciling..." : "Confirm Reconcile"}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {verifyMsg && (
+        <p className="text-sm text-slate-500">{verifyMsg}</p>
+      )}
+
+      {retryMsg && (
+        <p className="text-sm text-amber-600">{retryMsg}</p>
+      )}
+
       {reconcileMsg && (
         <p className="text-sm text-amber-600">{reconcileMsg}</p>
       )}
@@ -1417,11 +1510,49 @@ const PayoutsSection = () => {
                     <span className={`inline-flex items-center text-[10px] font-bold px-2 py-0.5 rounded-full ${PAYOUT_STATUS_STYLE[p.status] || "bg-slate-100 text-slate-600"}`}>
                       {p.status}
                     </span>
+                    {p.attempt > 1 && (
+                      <span className="inline-flex items-center text-[10px] font-bold px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-700">
+                        Attempt {p.attempt}
+                      </span>
+                    )}
+                    {p.supersededBy && (
+                      <span className="inline-flex items-center text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-500">
+                        Superseded by #{p.supersededBy}
+                      </span>
+                    )}
                   </div>
                   <p className="text-xs text-slate-400">{p.customer} · {new Date(p.createdAt).toLocaleDateString()}</p>
                   <p className="text-[11px] text-slate-300 mt-1 font-mono truncate">{p.reference}</p>
                 </div>
-                <span className="text-sm font-bold text-slate-900 shrink-0">{formatCurrency(p.amount)}</span>
+                <div className="shrink-0 flex flex-col items-end gap-2">
+                  <span className="text-sm font-bold text-slate-900">{formatCurrency(p.amount)}</span>
+                  {p.status === "FAILED" && !p.supersededBy && (
+                    confirmRetryId === p.id ? (
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => setConfirmRetryId(null)}
+                          className="px-2 py-1 rounded-lg text-[11px] font-bold text-slate-500 hover:bg-slate-100 transition"
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          onClick={() => handleRetry(p.id)}
+                          disabled={retryingId === p.id}
+                          className="px-3 py-1.5 rounded-lg bg-red-600 hover:bg-red-700 disabled:bg-red-300 text-white text-[11px] font-bold transition active:scale-[0.98]"
+                        >
+                          {retryingId === p.id ? "Retrying..." : "Confirm retry"}
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        onClick={() => setConfirmRetryId(p.id)}
+                        className="px-3 py-1.5 rounded-lg border border-red-200 text-red-600 hover:bg-red-50 text-[11px] font-bold transition active:scale-[0.98]"
+                      >
+                        Retry
+                      </button>
+                    )
+                  )}
+                </div>
               </div>
             </div>
           ))}

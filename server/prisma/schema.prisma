@@ -174,11 +174,28 @@ model Restaurant {
   lat  Float?
   lng  Float?
   approvalStatus RestaurantApprovalStatus @default(PENDING)
+  // Manual "accepting orders" switch; schedule is applied on top of this.
+  isOpen Boolean @default(true)
+  hours RestaurantHours[]
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@index([ownerId])
   @@index([campusId])
+}
+
+model RestaurantHours {
+  id           Int        @id @default(autoincrement())
+  restaurantId Int
+  // 0 = Sunday … 6 = Saturday, in the restaurant timezone.
+  dayOfWeek    Int
+  openTime     String?
+  closeTime    String?
+  isClosed     Boolean    @default(false)
+  restaurant   Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+
+  @@unique([restaurantId, dayOfWeek])
+  @@index([restaurantId])
 }
 
 model CustomerFavorite {
@@ -201,6 +218,8 @@ model MenuItem {
   restaurant Restaurant @relation(fields: [restaurantId], references: [id])
   category String
   isAvailable Boolean @default (true)
+  // null = not stock-tracked (unlimited); 0 = sold out.
+  stockQuantity Int?
   orderItems OrderItem[]
   imageUrl  String
   createdAt DateTime @default(now())
@@ -220,6 +239,8 @@ model Order {
   deliveryCode   String?
   paymentReference String?
   idempotencyKey String?
+  // True while this order holds inventory; set false when stock is released.
+  stockReserved Boolean @default(false)
   payment Payment?
   delivery Delivery?
   deliveryAddress String
@@ -291,6 +312,8 @@ model Payment {
   currency String @default("NGN")
   status PaymentStatus @default(PENDING)
   paidAt DateTime?
+  refundedAt DateTime?
+  refundReference String?
   gatewayResponse Json?
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt

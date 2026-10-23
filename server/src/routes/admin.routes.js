@@ -8,6 +8,7 @@ import superAdminMiddleware from "../middleware/superAdmin.middleware.js";
 import { validate } from "../middleware/validate.js";
 import { adminRegisterSchema } from "../validation/schemas.js";
 import { settleOrderPayouts, verifyPendingPayouts, retryPayout } from "../services/payouts.js";
+import { cacheClear } from "../services/cache.js";
 
 const router = express.Router();
 
@@ -466,6 +467,9 @@ router.put("/admin/restaurants/:id/status", async (req, res, next) => {
       data: { approvalStatus: status },
     });
 
+    // Approval changes alter what the public list/menu may serve.
+    cacheClear();
+
     res.status(200).json({
       message: `Restaurant ${status.toLowerCase()}`,
       restaurant: { id: updated.id, approvalStatus: updated.approvalStatus },
@@ -630,7 +634,8 @@ router.get("/admin/payouts", async (req, res, next) => {
 // Also the safety net for a crash between "delivered" and "payout created".
 // For each order it settles to whatever bank the restaurant/rider has linked
 // *now* — so old orders pay out once they add their bank details.
-router.post("/admin/payouts/reconcile", async (req, res, next) => {
+// Super-admin only: with AUTO_PAYOUTS on, this fires real transfers.
+router.post("/admin/payouts/reconcile", superAdminMiddleware, async (req, res, next) => {
   try {
     const where = {
       status: "DELIVERED",
