@@ -168,6 +168,8 @@ model Rider {
   isAvailable   Boolean     @default(true)
   isVerified    Boolean     @default(false)
   isSuspended   Boolean     @default(false)
+  // Shown to the rider and kept only while suspended; cleared on unsuspend.
+  suspensionReason String?
   // Accountability counters. failureCount is the lifetime total; the automatic
   // review flag is driven by a rolling window (see services/accountability.js).
   failureCount      Int       @default(0)

@@ -9,6 +9,7 @@ import { validate } from "../middleware/validate.js";
 import { adminRegisterSchema } from "../validation/schemas.js";
 import { AUTO_PAYOUTS, settleOrderPayouts, verifyPendingPayouts, retryPayout } from "../services/payouts.js";
 import { cacheClear } from "../services/cache.js";
+import { notify } from "../services/events.js";
 
 const router = express.Router();
 
@@ -138,6 +139,7 @@ router.get("/admin/riders", async (req, res, next) => {
       isAvailable: r.isAvailable,
       isVerified: r.isVerified,
       isSuspended: r.isSuspended,
+      suspensionReason: r.suspensionReason,
       // The failed Delivery row is deleted on reassignment, so the permanent
       // counter is the reliable number (DeliveryFailure is the audit trail).
       failureCount: r.failureCount,
@@ -227,16 +229,90 @@ router.put("/admin/riders/:id/suspend", async (req, res, next) => {
       return res.status(403).json({ message: "You can only manage riders in your campus." });
     }
 
+    const suspending = !rider.isSuspended;
+    const reason =
+      typeof req.body?.reason === "string"
+        ? req.body.reason.trim().slice(0, 300) || null
+        : null;
+
     const updated = await prisma.rider.update({
       where: { id: riderId },
-      data: { isSuspended: !rider.isSuspended },
+      data: {
+        isSuspended: suspending,
+        // Keep the reason only while suspended; unsuspending clears it.
+        suspensionReason: suspending ? reason : null,
+      },
+    });
+
+    // A banner on the next page load is not enough when accepting orders has
+    // just stopped working — push the change and the reason.
+    notify("user:notification", [rider.userId], {
+      title: suspending ? "Account suspended" : "Account restored",
+      body: suspending
+        ? reason || "Your rider account was suspended. Contact your campus admin."
+        : "Your rider account has been restored. You can accept deliveries again.",
+      url: "/rider",
     });
 
     res.status(200).json({
       message: updated.isSuspended
         ? `${rider.user.name} has been suspended`
         : `${rider.user.name} has been unsuspended`,
-      rider: { id: updated.id, name: rider.user.name, isSuspended: updated.isSuspended },
+      rider: {
+        id: updated.id,
+        name: rider.user.name,
+        isSuspended: updated.isSuspended,
+        suspensionReason: updated.suspensionReason,
+      },
+    });
+  } catch (error) {
+    next(error)
+  }
+});
+
+// ── Riders: failure history ──
+// The evidence behind the "Needs review" flag. DeliveryFailure survives the
+// Delivery row being deleted on reassignment, so this is the complete record.
+router.get("/admin/riders/:id/failures", async (req, res, next) => {
+  try {
+    const riderId = Number(req.params.id);
+
+    const rider = await prisma.rider.findUnique({
+      where: { id: riderId },
+      select: { id: true, campusId: true },
+    });
+
+    if (!rider) {
+      return res.status(404).json({ message: "Rider not found" });
+    }
+
+    // School admins can only inspect riders in their own campus.
+    if (req.user.role !== "SUPER_ADMIN" && rider.campusId !== req.user.campusId) {
+      return res.status(403).json({ message: "You can only manage riders in your campus." });
+    }
+
+    const failures = await prisma.deliveryFailure.findMany({
+      where: { riderId },
+      orderBy: { createdAt: "desc" },
+      take: 50,
+      include: {
+        order: {
+          select: { id: true, restaurant: { select: { name: true } } },
+        },
+      },
+    });
+
+    res.status(200).json({
+      message: "Failure history fetched successfully",
+      failures: failures.map((f) => ({
+        id: f.id,
+        orderId: f.orderId,
+        restaurant: f.order?.restaurant?.name || null,
+        kind: f.kind,
+        reason: f.reason,
+        codeAttempts: f.codeAttempts,
+        createdAt: f.createdAt,
+      })),
     });
   } catch (error) {
     next(error)

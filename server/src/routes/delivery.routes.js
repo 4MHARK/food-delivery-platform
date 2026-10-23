@@ -820,7 +820,9 @@ router.get("/riders/stats", authMiddleware, riderMiddleware, async (req, res, ne
     const payouts = await prisma.payout.findMany({
       where: {
         type: "RIDER",
-        order: { delivery: { riderId: rider.id } },
+        // Keyed on the payout ledger, not the delivery row: the latter is
+        // deleted when an order is reassigned.
+        riderId: rider.id,
         supersededBy: null,
       },
       select: { amount: true, status: true, createdAt: true },

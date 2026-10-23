@@ -108,14 +108,19 @@ async function failStaleDelivery(delivery, cutoff, timeoutMinutes) {
 
   const customerId = order.customer?.id;
   const ownerId = order.restaurant?.ownerId;
-  notify("order:updated", [customerId, ownerId].filter(Boolean), {
+  const riderUserId = delivery.rider?.userId || null;
+
+  notify("order:updated", [customerId, ownerId, riderUserId].filter(Boolean), {
     status: "FAILED",
     customerId,
     ownerId,
+    // The rider whose delivery timed out gets told too — it was not their
+    // action, and their app needs to drop the active delivery.
+    riderIds: riderUserId ? [riderUserId] : [],
     orderId: order.id,
   });
 
-  await notifyCampusRiders(order, { excludeUserId: delivery.rider.userId });
+  await notifyCampusRiders(order, { excludeUserId: riderUserId });
 
   return order;
 }

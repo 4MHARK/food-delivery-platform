@@ -5,6 +5,7 @@ import riderMiddleware from "../middleware/rider.middleware.js";
 import { validate } from "../middleware/validate.js";
 import { riderRegisterSchema, riderUpdateSchema, bankDetailsSchema } from "../validation/schemas.js";
 import { createTransferRecipient } from "../services/paystack.js";
+import { notify } from "../services/events.js";
 
 const router = express.Router();
 
@@ -22,6 +23,15 @@ const accountNameDoesNotMatch = (profileName, accountName) => {
   if (!accountName) return false;
   const profile = new Set(nameTokens(profileName));
   return !nameTokens(accountName).some((token) => profile.has(token));
+};
+
+// Turn a Prisma unique-constraint violation into the field-specific message a
+// rider can act on. Used when two requests race past the friendly checks.
+const uniqueFieldMessage = (error, suffix = "already registered") => {
+  const target = String(error.meta?.target || "");
+  if (target.includes("matricNumber")) return `This matriculation number is ${suffix}`;
+  if (target.includes("licenseNumber")) return `This license number is ${suffix}`;
+  return "These rider details are already registered";
 };
 
 // Register a rider profile
@@ -129,7 +139,14 @@ router.post("/riders/register", authMiddleware, validate(riderRegisterSchema), a
       rider,
     });
   } catch (error) {
-   next(error)
+    // Two concurrent registrations can both pass the findUnique checks; the DB
+    // unique constraints are the real guard, so translate their error.
+    if (error.code === "P2002") {
+      return res.status(400).json({
+        message: uniqueFieldMessage(error, "already registered"),
+      });
+    }
+    next(error)
   }
 });
 
@@ -291,6 +308,16 @@ router.put("/riders/me", authMiddleware, riderMiddleware, validate(riderUpdateSc
       },
     });
 
+    if (identityChanged || campusChanged) {
+      // The rider is told in the response too, but a push reaches them even if
+      // they close the app before reading it.
+      notify("user:notification", [req.user.id], {
+        title: "Re-verification required",
+        body: "Your profile details changed, so a campus admin needs to verify your account again.",
+        url: "/rider",
+      });
+    }
+
     res.status(200).json({
       message:
         identityChanged || campusChanged
@@ -299,7 +326,12 @@ router.put("/riders/me", authMiddleware, riderMiddleware, validate(riderUpdateSc
       rider: updated,
     });
   } catch (error) {
-   next(error)
+    if (error.code === "P2002") {
+      return res.status(400).json({
+        message: uniqueFieldMessage(error, "already registered to another rider"),
+      });
+    }
+    next(error)
   }
 });
 
@@ -396,7 +428,52 @@ router.get("/riders/payouts", authMiddleware, riderMiddleware, async (req, res, 
         orderId: p.orderId,
         amount: Number(p.amount),
         status: p.status,
+        // A held payout is PENDING like any other owed payout, but it is
+        // waiting on bank-detail approval rather than on an admin to pay.
+        held: p.gatewayResponse?.state === "held",
+        holdReason: p.gatewayResponse?.state === "held" ? p.gatewayResponse.reason || null : null,
         createdAt: p.createdAt,
+      })),
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// The rider's own failure record. Delivery rows are deleted when an order is
+// reassigned, so the audit table is the only complete history.
+router.get("/riders/failures", authMiddleware, riderMiddleware, async (req, res, next) => {
+  try {
+    const rider = await prisma.rider.findUnique({
+      where: { userId: req.user.id },
+      select: { id: true },
+    });
+
+    if (!rider) {
+      return res.status(404).json({ message: "Rider profile not found. Please register first." });
+    }
+
+    const failures = await prisma.deliveryFailure.findMany({
+      where: { riderId: rider.id },
+      orderBy: { createdAt: "desc" },
+      take: 50,
+      include: {
+        order: {
+          select: { id: true, restaurant: { select: { name: true } } },
+        },
+      },
+    });
+
+    res.status(200).json({
+      message: "Failure history fetched successfully",
+      failures: failures.map((f) => ({
+        id: f.id,
+        orderId: f.orderId,
+        restaurant: f.order?.restaurant?.name || null,
+        kind: f.kind,
+        reason: f.reason,
+        codeAttempts: f.codeAttempts,
+        createdAt: f.createdAt,
       })),
     });
   } catch (error) {

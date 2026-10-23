@@ -242,6 +242,7 @@ const RiderDashboard = () => {
   // Orders & deliveries
   const [availableOrders, setAvailableOrders] = useState([]);
   const [myDeliveries, setMyDeliveries] = useState([]);
+  const [failures, setFailures] = useState([]);
   const [stats, setStats] = useState(null);
   const [dataLoading, setDataLoading] = useState(false);
   const [dataError, setDataError] = useState("");
@@ -375,10 +376,11 @@ const RiderDashboard = () => {
         setDataError("");
       }
 
-      const [ordersRes, deliveriesRes, statsRes] = await Promise.all([
+      const [ordersRes, deliveriesRes, statsRes, failuresRes] = await Promise.all([
         api.get("/riders/available-orders").catch(() => null),
         api.get("/riders/my-deliveries").catch(() => null),
         api.get("/riders/stats").catch(() => null),
+        api.get("/riders/failures").catch(() => null),
       ]);
 
       let nextAvailable = [];
@@ -391,6 +393,9 @@ const RiderDashboard = () => {
       }
       if (statsRes) {
         setStats(statsRes.stats);
+      }
+      if (failuresRes) {
+        setFailures(failuresRes.failures || []);
       }
 
       setLastUpdated(new Date());
@@ -495,7 +500,8 @@ const RiderDashboard = () => {
       setRider((prev) => ({ ...prev, ...data.rider }));
       resetProfileForm(data.rider);
       setEditingProfile(false);
-      showMsg("Profile updated.");
+      // The server explains when an identity/campus change reset verification.
+      showMsg(data.message || "Profile updated.");
       // Campus/availability changes affect which orders this rider sees.
       fetchData();
     } catch (e) {
@@ -805,10 +811,13 @@ const RiderDashboard = () => {
       const data = await api.get("/campuses", { auth: false });
       const list = data.campuses || [];
       setCampuses(list);
+      // The account's campus wins; only campus-less accounts fall back to the
+      // first one, and the server binds them to whichever they choose.
+      const preferred = user?.campusId ?? list[0]?.id;
       setRiderForm((prev) =>
-        prev.campusId || list.length === 0
+        prev.campusId || preferred == null
           ? prev
-          : { ...prev, campusId: String(list[0].id) }
+          : { ...prev, campusId: String(preferred) }
       );
     } catch {
       setCampuses([]);
@@ -1080,7 +1089,8 @@ const RiderDashboard = () => {
                 onChange={(e) =>
                   setRiderForm({ ...riderForm, campusId: e.target.value })
                 }
-                className="w-full h-12 px-4 rounded-xl border-2 border-slate-200 focus:border-amber-500 focus:ring-1 focus:ring-amber-500 outline-none transition text-sm bg-white"
+                disabled={Boolean(user?.campusId)}
+                className="w-full h-12 px-4 rounded-xl border-2 border-slate-200 focus:border-amber-500 focus:ring-1 focus:ring-amber-500 outline-none transition text-sm bg-white disabled:bg-slate-50 disabled:text-slate-500"
               >
                 <option value="">
                   {campuses.length ? "Select your campus..." : "Loading campuses..."}
@@ -1091,6 +1101,11 @@ const RiderDashboard = () => {
                   </option>
                 ))}
               </select>
+              {user?.campusId && (
+                <p className="mt-1 text-[11px] text-slate-400">
+                  Your rider profile must use your account's campus.
+                </p>
+              )}
             </div>
             <div>
               <label className="block text-sm font-semibold text-slate-700 mb-2">
@@ -1340,7 +1355,9 @@ const RiderDashboard = () => {
                   Account suspended
                 </p>
                 <p className="text-xs text-red-700 mt-0.5">
-                  Contact your campus admin to restore your rider account.
+                  {rider.suspensionReason
+                    ? `Reason: ${rider.suspensionReason}`
+                    : "Contact your campus admin to restore your rider account."}
                 </p>
               </div>
             </div>
@@ -1497,13 +1514,12 @@ const RiderDashboard = () => {
                   <label className="block text-sm font-semibold text-slate-700 mb-1.5">
                     Campus
                   </label>
+                  {/* The account's campus is authoritative — the server refuses
+                      a change, so the selector is read-only. */}
                   <select
                     value={profileForm.campusId}
-                    onChange={(e) =>
-                      setProfileForm({ ...profileForm, campusId: e.target.value })
-                    }
-                    disabled={!editingProfile}
-                    className="w-full h-11 px-3 rounded-xl border border-slate-200 bg-white text-sm text-slate-700 focus:border-amber-500 focus:ring-1 focus:ring-amber-500 outline-none disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-500"
+                    disabled
+                    className="w-full h-11 px-3 rounded-xl border border-slate-200 bg-white text-sm text-slate-700 outline-none disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-500"
                   >
                     <option value="">
                       {campuses.length ? "Select your campus..." : "Loading campuses..."}
@@ -1514,6 +1530,10 @@ const RiderDashboard = () => {
                       </option>
                     ))}
                   </select>
+                  <p className="mt-1 text-[11px] text-slate-400">
+                    Your campus is tied to your account. Contact a campus admin
+                    to change it.
+                  </p>
                 </div>
 
                 <div>
@@ -2357,6 +2377,46 @@ const RiderDashboard = () => {
                   )}
                 </>
               )}
+
+              {/* Failure history — the Delivery row is deleted on
+                  reassignment, so DeliveryFailure is the complete record. */}
+              {failures.length > 0 && (
+                <div className="space-y-3">
+                  <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500 px-1">
+                    Failure history
+                  </h3>
+                  <div className="bg-white rounded-2xl shadow-sm overflow-hidden border border-slate-100">
+                    {failures.map((f, idx) => (
+                      <div
+                        key={f.id}
+                        className={`px-5 py-3.5 ${
+                          idx < failures.length - 1 ? "border-b border-slate-100" : ""
+                        }`}
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <p className="text-sm font-semibold text-slate-900">
+                              Order #{f.orderId}
+                              {f.restaurant ? ` · ${f.restaurant}` : ""}
+                            </p>
+                            <p className="text-xs text-slate-500 mt-0.5">
+                              {f.kind === "CODE_ATTEMPTS"
+                                ? `Too many wrong codes (${f.codeAttempts})`
+                                : f.reason ||
+                                  (f.kind === "STALE"
+                                    ? "Timed out"
+                                    : "Reported failure")}
+                            </p>
+                          </div>
+                          <span className="shrink-0 text-xs text-slate-500">
+                            {new Date(f.createdAt).toLocaleDateString()}
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
@@ -2566,20 +2626,27 @@ const RiderDashboard = () => {
                           <p className="text-xs text-slate-500">
                             {new Date(p.createdAt).toLocaleDateString()}
                           </p>
+                          {p.held && (
+                            <p className="text-[11px] font-medium text-amber-600 mt-0.5">
+                              Bank details awaiting approval
+                            </p>
+                          )}
                         </div>
                         <div className="flex items-center gap-3">
                           <span
                             className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                              p.status === "SUCCESS"
-                                ? "bg-green-100 text-green-700"
-                                : p.status === "FAILED"
-                                  ? "bg-red-100 text-red-700"
-                                  : p.status === "REVERSED"
-                                    ? "bg-purple-100 text-purple-700"
-                                    : "bg-amber-100 text-amber-700"
+                              p.held
+                                ? "bg-amber-100 text-amber-700"
+                                : p.status === "SUCCESS"
+                                  ? "bg-green-100 text-green-700"
+                                  : p.status === "FAILED"
+                                    ? "bg-red-100 text-red-700"
+                                    : p.status === "REVERSED"
+                                      ? "bg-purple-100 text-purple-700"
+                                      : "bg-amber-100 text-amber-700"
                             }`}
                           >
-                            {p.status}
+                            {p.held ? "ON HOLD" : p.status}
                           </span>
                           <span className="text-sm font-bold text-slate-900">
                             {formatCurrency(p.amount)}
