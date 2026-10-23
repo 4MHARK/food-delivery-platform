@@ -4,7 +4,7 @@ import authMiddleware from "../middleware/auth.middleware.js";
 import ownerMiddleware from "../middleware/owner.middleware.js";
 import optionalAuthMiddleware from "../middleware/optional-auth.middleware.js";
 import { validate } from "../middleware/validate.js";
-import { menuItemSchema } from "../validation/schemas.js";
+import { menuItemSchema, inventoryUpdateSchema } from "../validation/schemas.js";
 import { cacheGet, cacheSet, cacheClear } from "../services/cache.js";
 import { serializeMenuItem, announceMenuUpdate } from "../services/inventory.js";
 import { computeOpenStatus } from "../services/hours.js";
@@ -175,6 +175,48 @@ router.put("/menu-items/:id", authMiddleware, ownerMiddleware, validate(menuItem
     });
   } catch (error) {
    next(error)
+  }
+});
+
+// Fast inventory controls from the owner's menu list. Accepts a new stock
+// quantity (null = untrack/unlimited) and/or a manual availability toggle.
+router.put("/menu-items/:id/inventory", authMiddleware, ownerMiddleware, validate(inventoryUpdateSchema), async (req, res, next) => {
+  try {
+    const menuItem = await prisma.menuItem.findUnique({
+      where: { id: Number(req.params.id) },
+      select: {
+        id: true,
+        restaurantId: true,
+        restaurant: { select: { ownerId: true } },
+      },
+    });
+
+    if (!menuItem) {
+      return res.status(404).json({ message: "Menu item not found" });
+    }
+    if (menuItem.restaurant.ownerId !== req.user.id) {
+      return res.status(403).json({ message: "You can only update your menu items" });
+    }
+
+    const { stockQuantity, isAvailable } = req.body;
+
+    const updated = await prisma.menuItem.update({
+      where: { id: menuItem.id },
+      data: {
+        ...(stockQuantity !== undefined ? { stockQuantity } : {}),
+        ...(isAvailable !== undefined ? { isAvailable } : {}),
+      },
+    });
+
+    cacheClear();
+    announceMenuUpdate(menuItem.restaurantId);
+
+    res.status(200).json({
+      message: "Stock updated",
+      item: serializeMenuItem(updated),
+    });
+  } catch (error) {
+    next(error);
   }
 });
 

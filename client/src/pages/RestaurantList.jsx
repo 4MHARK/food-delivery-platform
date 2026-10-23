@@ -193,7 +193,17 @@ const RestaurantList = () => {
                             <h3 className="text-base font-bold text-slate-900 group-hover:text-amber-600 transition-colors">{item.name}</h3>
                             <p className="text-xs text-slate-500 mt-0.5">from {item.restaurant.name}</p>
                           </div>
-                          <p className="text-sm font-semibold text-slate-900 mt-2">₦{Number(item.price).toLocaleString()}</p>
+                          <div className="flex items-center justify-between gap-2 mt-2">
+                            <p className="text-sm font-semibold text-slate-900">₦{Number(item.price).toLocaleString()}</p>
+                            {item.inStock && item.lowStock && (
+                              <span className="text-[10px] font-semibold text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full">
+                                Only {item.stockQuantity} left
+                              </span>
+                            )}
+                            {item.inStock === false && (
+                              <span className="text-[10px] font-semibold text-red-500 bg-red-50 px-2 py-0.5 rounded-full">Sold out</span>
+                            )}
+                          </div>
                         </div>
                       </article>
                     ))}
@@ -223,8 +233,11 @@ const RestaurantList = () => {
                         <div className="p-4">
                           <div className="flex items-center gap-2">
                             <h3 className="text-base font-bold text-slate-900 group-hover:text-amber-600 transition-colors truncate">{r.name}</h3>
-                            {r.isOpenNow === false && (
-                              <span className="shrink-0 text-[10px] font-bold text-red-600 bg-red-50 px-2 py-0.5 rounded-full">Closed</span>
+                            {typeof r.isOpenNow === "boolean" && (
+                              <span className={`shrink-0 inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full ${r.isOpenNow ? "text-green-700 bg-green-50" : "text-red-600 bg-red-50"}`}>
+                                <span className={`w-1.5 h-1.5 rounded-full ${r.isOpenNow ? "bg-green-500" : "bg-red-500"}`} />
+                                {r.isOpenNow ? "Open" : "Closed"}
+                              </span>
                             )}
                           </div>
                           <p className="text-xs text-slate-500 mt-0.5 truncate">{r.address}</p>
@@ -365,8 +378,11 @@ const RestaurantList = () => {
                   <div className="flex items-start justify-between gap-2 mb-1">
                     <div className="flex items-center gap-2 min-w-0">
                       <h3 className="text-lg font-bold text-slate-900 group-hover:text-amber-600 transition-colors truncate">{r.name}</h3>
-                      {r.isOpenNow === false && (
-                        <span className="shrink-0 text-[10px] font-bold text-red-600 bg-red-50 px-2 py-0.5 rounded-full">Closed</span>
+                      {typeof r.isOpenNow === "boolean" && (
+                        <span className={`shrink-0 inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full ${r.isOpenNow ? "text-green-700 bg-green-50" : "text-red-600 bg-red-50"}`}>
+                          <span className={`w-1.5 h-1.5 rounded-full ${r.isOpenNow ? "bg-green-500" : "bg-red-500"}`} />
+                          {r.isOpenNow ? "Open" : "Closed"}
+                        </span>
                       )}
                     </div>
                     {r.reviewCount > 0 && (

@@ -162,6 +162,7 @@ const Dashboard = () => {
   const [showAddMenu, setShowAddMenu] = useState(false);
   const [savingMenu, setSavingMenu] = useState(false);
   const [deletingId, setDeletingId] = useState(null);
+  const [updatingInventoryId, setUpdatingInventoryId] = useState(null);
   const [hoursForm, setHoursForm] = useState(defaultHoursForm);
   const [savingHours, setSavingHours] = useState(false);
   const [savingAvailability, setSavingAvailability] = useState(false);
@@ -594,6 +595,36 @@ useSSE(
     }
   };
 
+  const updateMenuItemInventory = async (item, payload, { silent = false } = {}) => {
+    try {
+      setUpdatingInventoryId(item.id);
+      const data = await api.put(`/menu-items/${item.id}/inventory`, payload);
+      setMenuItems((prev) =>
+        prev.map((menuItem) =>
+          menuItem.id === item.id ? { ...menuItem, ...data.item } : menuItem
+        )
+      );
+      if (!silent) showMsg(data.message);
+    } catch (e) {
+      setError(e.message || "Failed to update stock");
+    } finally {
+      setUpdatingInventoryId(null);
+    }
+  };
+
+  const handleStockStep = (item, delta) => {
+    if (item.stockQuantity == null) return;
+    updateMenuItemInventory(
+      item,
+      { stockQuantity: Math.max(0, item.stockQuantity + delta) },
+      { silent: true }
+    );
+  };
+
+  const handleToggleMenuItemAvailability = (item) => {
+    updateMenuItemInventory(item, { isAvailable: !item.isAvailable });
+  };
+
   const handleDeleteMenuItem = async (itemId) => {
     if (!window.confirm("Delete this item?")) return;
     try {
@@ -894,7 +925,9 @@ useSSE(
             {/* Menu list */}
             {menuItems.length > 0 && (
               <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
-                {menuItems.map((item, idx) => (
+                {menuItems.map((item, idx) => {
+                  const busy = updatingInventoryId === item.id;
+                  return (
                   <div key={item.id} className={`px-5 py-4 flex items-center justify-between ${idx < menuItems.length - 1 ? "border-b border-slate-50" : ""}`}>
                     <div className="flex items-center gap-3 min-w-0">
                       <div className="w-10 h-10 rounded-lg bg-slate-100 flex items-center justify-center shrink-0">
@@ -917,6 +950,82 @@ useSSE(
                                 : `${item.stockQuantity} in stock`}
                           </span>
                         </div>
+                        <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
+                          {item.stockQuantity !== null && item.stockQuantity !== undefined ? (
+                            <>
+                              <button
+                                type="button"
+                                onClick={() => handleStockStep(item, -1)}
+                                disabled={busy || item.stockQuantity === 0}
+                                aria-label="Decrease stock"
+                                className="w-6 h-6 rounded-md bg-slate-100 text-slate-700 hover:bg-slate-200 disabled:opacity-40 text-sm font-bold leading-none"
+                              >
+                                −
+                              </button>
+                              <span className="w-6 text-center text-[11px] font-bold text-slate-700">{item.stockQuantity}</span>
+                              <button
+                                type="button"
+                                onClick={() => handleStockStep(item, 1)}
+                                disabled={busy}
+                                aria-label="Increase stock"
+                                className="w-6 h-6 rounded-md bg-slate-100 text-slate-700 hover:bg-slate-200 disabled:opacity-40 text-sm font-bold leading-none"
+                              >
+                                +
+                              </button>
+                              {item.stockQuantity === 0 ? (
+                                <button
+                                  type="button"
+                                  onClick={() => updateMenuItemInventory(item, { stockQuantity: 10 })}
+                                  disabled={busy}
+                                  className="px-2 py-0.5 rounded-md bg-green-50 text-green-700 text-[10px] font-bold hover:bg-green-100 disabled:opacity-40"
+                                >
+                                  Restock 10
+                                </button>
+                              ) : (
+                                <button
+                                  type="button"
+                                  onClick={() => updateMenuItemInventory(item, { stockQuantity: 0 })}
+                                  disabled={busy}
+                                  className="px-2 py-0.5 rounded-md bg-red-50 text-red-600 text-[10px] font-bold hover:bg-red-100 disabled:opacity-40"
+                                >
+                                  Sold out
+                                </button>
+                              )}
+                              <button
+                                type="button"
+                                onClick={() => updateMenuItemInventory(item, { stockQuantity: null })}
+                                disabled={busy}
+                                className="px-2 py-0.5 rounded-md bg-slate-100 text-slate-500 text-[10px] font-bold hover:bg-slate-200 disabled:opacity-40"
+                              >
+                                Stop tracking
+                              </button>
+                            </>
+                          ) : (
+                            <>
+                              <span className="text-[10px] text-slate-400">Unlimited</span>
+                              <button
+                                type="button"
+                                onClick={() => updateMenuItemInventory(item, { stockQuantity: 10 })}
+                                disabled={busy}
+                                className="px-2 py-0.5 rounded-md bg-amber-50 text-amber-700 text-[10px] font-bold hover:bg-amber-100 disabled:opacity-40"
+                              >
+                                Track stock
+                              </button>
+                            </>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => handleToggleMenuItemAvailability(item)}
+                            disabled={busy}
+                            className={`px-2 py-0.5 rounded-md text-[10px] font-bold disabled:opacity-40 ${
+                              item.isAvailable
+                                ? "bg-slate-100 text-slate-500 hover:bg-slate-200"
+                                : "bg-green-50 text-green-700 hover:bg-green-100"
+                            }`}
+                          >
+                            {item.isAvailable ? "Mark unavailable" : "Make available"}
+                          </button>
+                        </div>
                       </div>
                     </div>
                     <div className="flex items-center gap-1 shrink-0">
@@ -932,7 +1041,8 @@ useSSE(
                       </button>
                     </div>
                   </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </section>

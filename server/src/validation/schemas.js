@@ -123,6 +123,17 @@ export const menuItemSchema = z.object({
   stockQuantity: stockQuantityField,
 });
 
+// Quick owner controls on a menu row: change stock, track/untrack it, or toggle
+// manual availability without submitting the whole item form.
+export const inventoryUpdateSchema = z
+  .object({
+    stockQuantity: stockQuantityField,
+    isAvailable: z.boolean().optional(),
+  })
+  .refine((data) => data.stockQuantity !== undefined || data.isAvailable !== undefined, {
+    message: "Provide stockQuantity or isAvailable",
+  });
+
 // ── Rider ──
 
 const emptyToUndefined = (v) => (v === "" ? undefined : v);
