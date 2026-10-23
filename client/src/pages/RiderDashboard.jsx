@@ -7,6 +7,7 @@ import { formatCurrency } from "../lib/format";
 import { useSSE } from "../hooks/useSSE";
 import { useNotificationPermission, notify } from "../hooks/useNotifications";
 import DeliveryMap from "../components/DeliveryMap";
+import { getCurrentPosition } from "../lib/geo";
 
 const ORDER_STATUS = {
   PENDING_PAYMENT: {
@@ -227,6 +228,13 @@ const RiderDashboard = () => {
   const [processingPhoto, setProcessingPhoto] = useState(false);
   const [campuses, setCampuses] = useState([]);
 
+  // Profile management after registration
+  const [profileForm, setProfileForm] = useState(null);
+  const [profilePhoto, setProfilePhoto] = useState("");
+  const [profileIdType, setProfileIdType] = useState("license");
+  const [savingProfile, setSavingProfile] = useState(false);
+  const [processingProfilePhoto, setProcessingProfilePhoto] = useState(false);
+
   // Orders & deliveries
   const [availableOrders, setAvailableOrders] = useState([]);
   const [myDeliveries, setMyDeliveries] = useState([]);
@@ -244,6 +252,11 @@ const RiderDashboard = () => {
   const [failTarget, setFailTarget] = useState(null);
   const [failReason, setFailReason] = useState("");
   const [deliveryCode, setDeliveryCode] = useState("");
+
+  // Handoff location verification
+  const [locating, setLocating] = useState(false);
+  const [locationTarget, setLocationTarget] = useState(null); // { deliveryId, newStatus, extra }
+  const [locationReason, setLocationReason] = useState("");
 
   // Bank / payouts
   const [bankForm, setBankForm] = useState({
@@ -311,6 +324,16 @@ const RiderDashboard = () => {
     try {
       const data = await api.get("/riders/me");
       setRider(data.rider);
+      setProfileForm({
+        vehicleType: data.rider.vehicleType || "",
+        phone: data.rider.user?.phone || "",
+        campusId: data.rider.campusId ? String(data.rider.campusId) : "",
+        licensePlate: data.rider.licensePlate || "",
+        licenseNumber: data.rider.licenseNumber || "",
+        matricNumber: data.rider.matricNumber || "",
+      });
+      setProfilePhoto(data.rider.photoUrl || "");
+      setProfileIdType(data.rider.matricNumber ? "matric" : "license");
       setBankForm({
         accountNumber: data.rider.accountNumber || "",
         bankCode: data.rider.bankCode || "",
@@ -379,6 +402,77 @@ const RiderDashboard = () => {
       showMsg("Could not process that photo. Try a different image.");
     } finally {
       setProcessingPhoto(false);
+    }
+  };
+
+  // ── Profile photo after registration ──
+  const handleProfilePhotoChange = async (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      showMsg("Please choose an image file.");
+      return;
+    }
+    try {
+      setProcessingProfilePhoto(true);
+      setProfilePhoto(await readAndResizePhoto(file));
+    } catch {
+      showMsg("Could not process that photo. Try a different image.");
+    } finally {
+      setProcessingProfilePhoto(false);
+    }
+  };
+
+  // ── Save profile changes ──
+  const handleSaveProfile = async (e) => {
+    e.preventDefault();
+    if (!profileForm || !rider) return;
+
+    if (!profileForm.vehicleType) { showMsg("Select a vehicle type."); return; }
+    if (!profileForm.phone) { showMsg("Enter your phone number."); return; }
+    if (!profileForm.campusId) { showMsg("Select your campus."); return; }
+    if (profileIdType === "license" && (!profileForm.licensePlate || !profileForm.licenseNumber)) {
+      showMsg("Enter both the license plate and license number.");
+      return;
+    }
+    if (profileIdType === "matric" && !profileForm.matricNumber) {
+      showMsg("Enter your matric number.");
+      return;
+    }
+
+    try {
+      setSavingProfile(true);
+      const body = {
+        vehicleType: profileForm.vehicleType,
+        phone: profileForm.phone,
+        campusId: Number(profileForm.campusId),
+        // Clear the unused identification method so switching works; the
+        // server validates the final combination.
+        licensePlate: null,
+        licenseNumber: null,
+        matricNumber: null,
+      };
+      if (profileIdType === "license") {
+        body.licensePlate = profileForm.licensePlate;
+        body.licenseNumber = profileForm.licenseNumber;
+      } else {
+        body.matricNumber = profileForm.matricNumber;
+      }
+      if (profilePhoto && profilePhoto !== rider.photoUrl) {
+        body.photo = profilePhoto;
+      }
+
+      const data = await api.put("/riders/me", body);
+      setRider((prev) => ({ ...prev, ...data.rider }));
+      setProfilePhoto(data.rider.photoUrl || profilePhoto);
+      showMsg("Profile updated.");
+      // Campus/availability changes affect which orders this rider sees.
+      fetchData();
+    } catch (e) {
+      showMsg(e.message || "Failed to update profile.");
+    } finally {
+      setSavingProfile(false);
     }
   };
 
@@ -479,10 +573,68 @@ const RiderDashboard = () => {
         setDispatchView("available");
       }
     } catch (e) {
+      // A soft proximity failure needs a reason; the retry will carry it.
+      if (
+        e?.status === 422 &&
+        e.data?.requiresReason &&
+        !extra.locationUnverifiedReason
+      ) {
+        setLocationTarget({ deliveryId, newStatus, extra });
+        setLocationReason("");
+        showMsg(e.message || "Add a reason to continue.");
+        return;
+      }
+
       showMsg(e.message || "Something went wrong. Please try again.");
+      // A wrong-code release (429) or an undeliverable order (409) changes
+      // server state underneath us — resync so the active card disappears.
+      if (e?.status === 429 || e?.status === 409) {
+        await fetchData({ silent: true });
+        setDispatchView("available");
+      }
     } finally {
       setUpdatingDeliveryId(null);
     }
+  };
+
+  // CLOSE_BY and DELIVERED need a fresh location reading. If the device can't
+  // provide one, the rider must give a reason and the server flags the delivery.
+  const handleHandoffStatus = async (deliveryId, newStatus, extra = {}) => {
+    if (locating) return;
+    setLocating(true);
+    try {
+      const position = await getCurrentPosition();
+      await handleUpdateDeliveryStatus(deliveryId, newStatus, {
+        ...extra,
+        lat: position.lat,
+        lng: position.lng,
+        accuracy: position.accuracy,
+        capturedAt: position.capturedAt,
+      });
+    } catch (e) {
+      if (e?.name === "GeoError") {
+        setLocationTarget({ deliveryId, newStatus, extra });
+        setLocationReason("");
+        showMsg(e.message);
+      } else {
+        showMsg(e?.message || "Something went wrong. Please try again.");
+      }
+    } finally {
+      setLocating(false);
+    }
+  };
+
+  const confirmLocationFallback = async () => {
+    const target = locationTarget;
+    const reason = locationReason.trim();
+    if (!target || reason.length < 5) return;
+
+    setLocationTarget(null);
+    setLocationReason("");
+    await handleUpdateDeliveryStatus(target.deliveryId, target.newStatus, {
+      ...target.extra,
+      locationUnverifiedReason: reason,
+    });
   };
 
   // ── Deliver: require the customer's 4-digit code ──
@@ -492,8 +644,8 @@ const RiderDashboard = () => {
       showMsg("Enter the 4-digit code from the customer.");
       return;
     }
-    await handleUpdateDeliveryStatus(deliveryId, "DELIVERED", { code });
-    setDeliveryCode("");
+    await handleHandoffStatus(deliveryId, "DELIVERED", { code });
+    // Keep the code on screen if the handoff was blocked (location/reason).
   };
 
   // ── Confirm and execute FAILED ──
@@ -568,7 +720,11 @@ const RiderDashboard = () => {
       const data = await api.put("/riders/me/bank", bankForm);
       setRider((prev) => ({ ...prev, ...data.rider }));
       setEditingBank(false);
-      showMsg("Bank details saved.");
+      showMsg(
+        data.nameMismatch
+          ? "Bank details saved, but the account name doesn't match your profile name. Double-check it."
+          : "Bank details saved."
+      );
     } catch (e) {
       showMsg(e.message || "Failed to save bank details.");
     } finally {
@@ -1036,7 +1192,9 @@ const RiderDashboard = () => {
                         ? "Earnings & Payouts"
                         : activeTab === "reviews"
                           ? "Customer Reviews"
-                          : "Live Dispatch"}
+                          : activeTab === "profile"
+                            ? "Profile"
+                            : "Live Dispatch"}
                   </h2>
                   <span
                     className={`inline-flex items-center gap-1 text-[11px] font-bold px-2.5 py-0.5 rounded-full ${
@@ -1183,6 +1341,215 @@ const RiderDashboard = () => {
                 Try again
               </button>
             </div>
+          )}
+
+          {/* ═══════════════════════════════════════════════════
+              PROFILE (post-registration management)
+             ═══════════════════════════════════════════════════ */}
+          {activeTab === "profile" && profileForm && (
+            <section className="bg-white rounded-2xl shadow-sm p-5 border border-slate-100">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <h3 className="text-lg font-bold text-slate-900">Your profile</h3>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    {rider.user?.name} · {rider.user?.email}
+                  </p>
+                </div>
+                <span
+                  className={`inline-flex items-center gap-1 text-[11px] font-bold px-2.5 py-0.5 rounded-full ${
+                    rider.isVerified
+                      ? "bg-green-100 text-green-700"
+                      : "bg-amber-100 text-amber-700"
+                  }`}
+                >
+                  <span
+                    className={`w-1.5 h-1.5 rounded-full ${
+                      rider.isVerified ? "bg-green-500" : "bg-amber-500"
+                    }`}
+                  />
+                  {rider.isVerified ? "Verified" : "Verification pending"}
+                </span>
+              </div>
+
+              <form onSubmit={handleSaveProfile} className="mt-5 space-y-4">
+                <div className="flex items-center gap-4">
+                  <div className="w-20 h-20 rounded-full overflow-hidden bg-slate-100 flex items-center justify-center shrink-0">
+                    {profilePhoto ? (
+                      <img
+                        src={profilePhoto}
+                        alt="Rider profile"
+                        className="w-full h-full object-cover"
+                      />
+                    ) : (
+                      <span className="material-symbols-outlined text-3xl text-slate-300">
+                        person
+                      </span>
+                    )}
+                  </div>
+                  <div>
+                    <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-full bg-amber-500 px-4 py-2 text-xs font-bold text-white hover:bg-amber-600 transition">
+                      <span className="material-symbols-outlined text-sm">
+                        {processingProfilePhoto ? "hourglass_top" : "photo_camera"}
+                      </span>
+                      {processingProfilePhoto
+                        ? "Processing..."
+                        : profilePhoto
+                          ? "Change photo"
+                          : "Add photo"}
+                      <input
+                        type="file"
+                        accept="image/*"
+                        onChange={handleProfilePhotoChange}
+                        className="hidden"
+                        disabled={processingProfilePhoto}
+                      />
+                    </label>
+                    <p className="text-[11px] text-slate-400 mt-1.5">
+                      A clear photo helps customers identify you.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="grid sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-sm font-semibold text-slate-700 mb-1.5">
+                      Vehicle type
+                    </label>
+                    <select
+                      value={profileForm.vehicleType}
+                      onChange={(e) =>
+                        setProfileForm({ ...profileForm, vehicleType: e.target.value })
+                      }
+                      className="w-full h-11 px-3 rounded-xl border border-slate-200 bg-white text-sm text-slate-700 focus:border-amber-500 focus:ring-1 focus:ring-amber-500 outline-none"
+                    >
+                      <option value="">Select vehicle...</option>
+                      <option value="Motorcycle">Motorcycle</option>
+                      <option value="Car">Car</option>
+                      <option value="Bicycle">Bicycle</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-semibold text-slate-700 mb-1.5">
+                      Phone number
+                    </label>
+                    <input
+                      type="tel"
+                      value={profileForm.phone}
+                      onChange={(e) =>
+                        setProfileForm({ ...profileForm, phone: e.target.value })
+                      }
+                      className="w-full h-11 px-3 rounded-xl border border-slate-200 bg-white text-sm text-slate-700 focus:border-amber-500 focus:ring-1 focus:ring-amber-500 outline-none"
+                      placeholder="+234..."
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-semibold text-slate-700 mb-1.5">
+                    Campus
+                  </label>
+                  <select
+                    value={profileForm.campusId}
+                    onChange={(e) =>
+                      setProfileForm({ ...profileForm, campusId: e.target.value })
+                    }
+                    className="w-full h-11 px-3 rounded-xl border border-slate-200 bg-white text-sm text-slate-700 focus:border-amber-500 focus:ring-1 focus:ring-amber-500 outline-none"
+                  >
+                    <option value="">
+                      {campuses.length ? "Select your campus..." : "Loading campuses..."}
+                    </option>
+                    {campuses.map((campus) => (
+                      <option key={campus.id} value={campus.id}>
+                        {campus.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <p className="block text-sm font-semibold text-slate-700 mb-2">
+                    Identification
+                  </p>
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setProfileIdType("license")}
+                      className={`flex-1 h-10 rounded-xl border-2 text-xs font-semibold transition ${
+                        profileIdType === "license"
+                          ? "border-amber-500 bg-amber-50 text-amber-700"
+                          : "border-slate-200 text-slate-500 hover:border-slate-300"
+                      }`}
+                    >
+                      🪪 License
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setProfileIdType("matric")}
+                      className={`flex-1 h-10 rounded-xl border-2 text-xs font-semibold transition ${
+                        profileIdType === "matric"
+                          ? "border-amber-500 bg-amber-50 text-amber-700"
+                          : "border-slate-200 text-slate-500 hover:border-slate-300"
+                      }`}
+                    >
+                      🎓 Student ID
+                    </button>
+                  </div>
+                </div>
+
+                {profileIdType === "license" ? (
+                  <div className="grid sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-sm font-semibold text-slate-700 mb-1.5">
+                        License plate
+                      </label>
+                      <input
+                        value={profileForm.licensePlate}
+                        onChange={(e) =>
+                          setProfileForm({ ...profileForm, licensePlate: e.target.value })
+                        }
+                        className="w-full h-11 px-3 rounded-xl border border-slate-200 bg-white text-sm text-slate-700 focus:border-amber-500 focus:ring-1 focus:ring-amber-500 outline-none"
+                        placeholder="e.g. LAG-12345"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-semibold text-slate-700 mb-1.5">
+                        License number
+                      </label>
+                      <input
+                        value={profileForm.licenseNumber}
+                        onChange={(e) =>
+                          setProfileForm({ ...profileForm, licenseNumber: e.target.value })
+                        }
+                        className="w-full h-11 px-3 rounded-xl border border-slate-200 bg-white text-sm text-slate-700 focus:border-amber-500 focus:ring-1 focus:ring-amber-500 outline-none"
+                        placeholder="e.g. LAG-12345"
+                      />
+                    </div>
+                  </div>
+                ) : (
+                  <div>
+                    <label className="block text-sm font-semibold text-slate-700 mb-1.5">
+                      Matric number
+                    </label>
+                    <input
+                      value={profileForm.matricNumber}
+                      onChange={(e) =>
+                        setProfileForm({ ...profileForm, matricNumber: e.target.value })
+                      }
+                      className="w-full h-11 px-3 rounded-xl border border-slate-200 bg-white text-sm text-slate-700 focus:border-amber-500 focus:ring-1 focus:ring-amber-500 outline-none"
+                      placeholder="e.g. RUN/CMP/23/15250"
+                    />
+                  </div>
+                )}
+
+                <button
+                  type="submit"
+                  disabled={savingProfile}
+                  className="w-full h-11 rounded-xl bg-slate-900 hover:bg-slate-800 disabled:bg-slate-400 text-white font-bold text-sm transition active:scale-[0.98]"
+                >
+                  {savingProfile ? "Saving..." : "Save profile"}
+                </button>
+              </form>
+            </section>
           )}
 
           {/* ═══════════════════════════════════════════════════
@@ -1681,19 +2048,22 @@ const RiderDashboard = () => {
                           <>
                             <button
                               onClick={() =>
-                                handleUpdateDeliveryStatus(
+                                handleHandoffStatus(
                                   activeDelivery.id,
                                   "CLOSE_BY"
                                 )
                               }
                               disabled={
-                                updatingDeliveryId === activeDelivery.id
+                                updatingDeliveryId === activeDelivery.id ||
+                                locating
                               }
                               className="bg-amber-500 hover:bg-amber-600 disabled:bg-amber-200 text-slate-950 text-sm font-bold px-5 py-2.5 rounded-full transition active:scale-95 flex-1"
                             >
-                              {updatingDeliveryId === activeDelivery.id
-                                ? "Updating..."
-                                : "Close By Customer"}
+                              {locating
+                                ? "Checking location..."
+                                : updatingDeliveryId === activeDelivery.id
+                                  ? "Updating..."
+                                  : "Close By Customer"}
                             </button>
                             <button
                               onClick={() => {
@@ -1733,13 +2103,16 @@ const RiderDashboard = () => {
                               <button
                                 onClick={() => handleDeliver(activeDelivery.id)}
                                 disabled={
-                                  updatingDeliveryId === activeDelivery.id
+                                  updatingDeliveryId === activeDelivery.id ||
+                                  locating
                                 }
                                 className="bg-green-700 hover:bg-green-800 disabled:bg-green-300 text-white text-sm font-bold px-4 py-2.5 rounded-full transition active:scale-95 flex-1"
                               >
-                                {updatingDeliveryId === activeDelivery.id
-                                  ? "Updating..."
-                                  : "Confirm & Deliver"}
+                                {locating
+                                  ? "Checking location..."
+                                  : updatingDeliveryId === activeDelivery.id
+                                    ? "Updating..."
+                                    : "Confirm & Deliver"}
                               </button>
                               <button
                                 onClick={() => {
@@ -1921,10 +2294,12 @@ const RiderDashboard = () => {
               {/* Always rendered so the cards below don't jump when stats arrive. */}
               <div className="grid grid-cols-2 gap-3">
                 {[
-                  { label: "Total Earnings", value: stats && formatCurrency(stats.totalEarnings) },
-                  { label: "This Week", value: stats && formatCurrency(stats.thisWeekEarnings), accent: true },
-                  { label: "Total Deliveries", value: stats?.totalDeliveries },
-                  { label: "Week Trips", value: stats?.thisWeekDeliveries },
+                  { label: "Total earned", value: stats && formatCurrency(stats.totalEarnings) },
+                  { label: "Paid out", value: stats && formatCurrency(stats.paidEarnings) },
+                  { label: "Pending payout", value: stats && formatCurrency(stats.pendingEarnings), accent: true },
+                  { label: "This week", value: stats && formatCurrency(stats.thisWeekEarnings) },
+                  { label: "Total deliveries", value: stats?.totalDeliveries },
+                  { label: "Week trips", value: stats?.thisWeekDeliveries },
                 ].map((item) => (
                   <div
                     key={item.label}
@@ -2338,6 +2713,78 @@ const RiderDashboard = () => {
                 className="flex-1 h-12 rounded-xl bg-red-600 hover:bg-red-700 text-white font-bold text-sm transition active:scale-95"
               >
                 Confirm
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Location fallback dialog ── */}
+      {locationTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div
+            className="absolute inset-0 bg-black/40 backdrop-blur-sm"
+            onClick={() => {
+              setLocationTarget(null);
+              setLocationReason("");
+            }}
+          />
+          <div className="relative bg-white rounded-2xl shadow-xl max-w-sm w-full p-6 space-y-4">
+            <div className="text-center">
+              <div className="w-12 h-12 rounded-full bg-amber-100 flex items-center justify-center mx-auto mb-3">
+                <span className="material-symbols-outlined text-2xl text-amber-700">
+                  warning
+                </span>
+              </div>
+              <h3 className="text-lg font-bold text-slate-900">
+                Location could not be verified
+              </h3>
+              <p className="text-sm text-slate-500 mt-1">
+                We couldn't get an accurate GPS reading. Add a short reason to
+                continue; this delivery will be flagged for review.
+              </p>
+            </div>
+
+            <div>
+              <label
+                htmlFor="location-reason"
+                className="block text-xs font-semibold text-slate-600 mb-1.5"
+              >
+                Reason (required)
+              </label>
+              <textarea
+                id="location-reason"
+                value={locationReason}
+                onChange={(e) =>
+                  setLocationReason(e.target.value.slice(0, 300))
+                }
+                maxLength={300}
+                rows={3}
+                placeholder="e.g. GPS unavailable inside the hostel"
+                className="w-full px-4 py-2.5 rounded-xl border-2 border-slate-200 focus:border-amber-400 focus:ring-1 focus:ring-amber-400 outline-none transition text-sm resize-none"
+              />
+              <p className="mt-1 text-[10px] text-slate-500">
+                At least 5 characters. Repeated unverified deliveries are
+                reviewed by the campus admin.
+              </p>
+            </div>
+
+            <div className="flex gap-3">
+              <button
+                onClick={() => {
+                  setLocationTarget(null);
+                  setLocationReason("");
+                }}
+                className="flex-1 h-12 rounded-xl border-2 border-slate-200 text-slate-600 font-semibold text-sm hover:bg-slate-50 transition active:scale-95"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmLocationFallback}
+                disabled={locationReason.trim().length < 5}
+                className="flex-1 h-12 rounded-xl bg-amber-500 hover:bg-amber-600 disabled:bg-amber-200 text-slate-950 font-bold text-sm transition active:scale-95"
+              >
+                Continue
               </button>
             </div>
           </div>

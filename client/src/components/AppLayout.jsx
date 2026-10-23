@@ -24,6 +24,7 @@ const RIDER_NAV = [
     path: "/rider?tab=payouts",
   },
   { icon: "star", label: "Reviews", path: "/rider?tab=reviews" },
+  { icon: "manage_accounts", label: "Profile", path: "/rider?tab=profile" },
 ];
 
 /**

@@ -44,15 +44,27 @@ export const checkoutSchema = z
   .object({
     restaurantId: z.coerce.number().int("Restaurant id must be a whole number").positive("Restaurant id must be positive"),
     savedLocationId: z.coerce.number().int().positive().optional(),
-    deliveryAddress: z.string().trim().min(1, "Delivery address is required").optional(),
+    deliveryLandmarkId: z.coerce.number().int().positive().optional(),
+    deliveryDetail: z.string().trim().max(120, "Detail must be 120 characters or less").optional(),
+    deliveryAddress: z.string().trim().min(1, "Delivery address is required").max(200).optional(),
     deliveryLat: coordinateField(-90, 90, { optional: true }),
     deliveryLng: coordinateField(-180, 180, { optional: true }),
     idempotencyKey: z.string().trim().min(1, "Idempotency key is required"),
     items: orderItems,
   })
   .superRefine((data, ctx) => {
-    if (!data.savedLocationId && (!data.deliveryAddress || data.deliveryLat === undefined || data.deliveryLng === undefined)) {
-      ctx.addIssue({ code: "custom", message: "Choose a saved location or provide an address and coordinates" });
+    if (data.savedLocationId && data.deliveryLandmarkId) {
+      ctx.addIssue({ code: "custom", message: "Choose either a saved location or a campus landmark, not both" });
+    }
+    if (data.deliveryDetail && !data.deliveryLandmarkId) {
+      ctx.addIssue({ code: "custom", message: "Landmark detail requires a campus landmark" });
+    }
+    if ((data.deliveryLat === undefined) !== (data.deliveryLng === undefined)) {
+      ctx.addIssue({ code: "custom", message: "Provide both latitude and longitude" });
+    }
+    const hasOwnLocation = Boolean(data.deliveryLandmarkId || data.savedLocationId);
+    if (!hasOwnLocation && (!data.deliveryAddress || data.deliveryLat === undefined || data.deliveryLng === undefined)) {
+      ctx.addIssue({ code: "custom", message: "Choose a campus landmark, a saved location, or provide an address and coordinates" });
     }
   });
 
@@ -174,6 +186,26 @@ const matricNumberField = z.preprocess(
   z.string().regex(/^[A-Za-z0-9/-]{5,20}$/, "Matric number must be 5-20 alphanumeric characters").optional()
 );
 
+// Updates need to be able to CLEAR the unused identification method when a
+// rider switches between a driver's license and a matric number, so "" → null
+// instead of "leave unchanged".
+const emptyToNull = (v) => (v === "" ? null : v);
+
+const updateLicensePlate = z.preprocess(
+  emptyToNull,
+  z.string().regex(/^[A-Za-z0-9\s]{2,15}$/, "License plate must be 2-15 alphanumeric characters").nullable().optional()
+);
+
+const updateLicenseNumber = z.preprocess(
+  emptyToNull,
+  z.string().regex(/^[A-Za-z0-9][-A-Za-z0-9]{4,20}$/, "License number must be 5-20 characters (letters, numbers, hyphens)").nullable().optional()
+);
+
+const updateMatricNumber = z.preprocess(
+  emptyToNull,
+  z.string().regex(/^[A-Za-z0-9/-]{5,20}$/, "Matric number must be 5-20 alphanumeric characters").nullable().optional()
+);
+
 // Rider profile photo — the client shrinks it and sends a base64 `data:image/…`
 // URL. Require it so every rider has a face customers can identify.
 const riderPhotoField = z
@@ -208,11 +240,13 @@ export const riderRegisterSchema = z
 
 export const riderUpdateSchema = z.object({
   vehicleType: z.string().trim().min(1, "vehicleType is required").optional(),
-  licensePlate: licensePlateField,
-  licenseNumber: licenseNumberField,
-  matricNumber: matricNumberField,
+  licensePlate: updateLicensePlate,
+  licenseNumber: updateLicenseNumber,
+  matricNumber: updateMatricNumber,
   phone: phoneDigits.optional(),
   isAvailable: z.boolean().optional(),
+  photo: riderPhotoField.optional(),
+  campusId: z.coerce.number().int().positive().optional(),
 });
 
 // ── Bank details (payout account) ──
@@ -225,11 +259,38 @@ export const bankDetailsSchema = z.object({
 
 // ── Delivery ──
 
-export const deliveryStatusSchema = z.object({
-  status: z.enum(["ZILLA_ON_IT", "AT_KITCHEN", "BAGGED", "MOVING", "CLOSE_BY", "DELIVERED", "FAILED"]),
-  reason: z.string().trim().max(500, "Reason must be 500 characters or less").optional(),
-  code: z.string().trim().max(10, "Code must be 10 characters or less").optional(),
-});
+export const deliveryStatusSchema = z
+  .object({
+    status: z.enum(["ZILLA_ON_IT", "AT_KITCHEN", "BAGGED", "MOVING", "CLOSE_BY", "DELIVERED", "FAILED"]),
+    reason: z.string().trim().max(500, "Reason must be 500 characters or less").optional(),
+    code: z.string().trim().max(10, "Code must be 10 characters or less").optional(),
+    // Rider position evidence for CLOSE_BY / DELIVERED.
+    lat: coordinateField(-90, 90, { optional: true }),
+    lng: coordinateField(-180, 180, { optional: true }),
+    accuracy: z.coerce.number().min(0).max(10000).optional(),
+    capturedAt: z.coerce.date().optional(),
+    // Required when GPS is missing/unreliable; the server flags the delivery.
+    locationUnverifiedReason: z
+      .string()
+      .trim()
+      .min(5, "Add a short reason (at least 5 characters)")
+      .max(300)
+      .optional(),
+  })
+  .superRefine((data, ctx) => {
+    if ((data.lat === undefined) !== (data.lng === undefined)) {
+      ctx.addIssue({
+        code: "custom",
+        message: "Provide both latitude and longitude",
+      });
+    }
+    if (data.lat !== undefined && !data.capturedAt) {
+      ctx.addIssue({
+        code: "custom",
+        message: "Location timestamp is required with coordinates",
+      });
+    }
+  });
 
 // ── Password reset ──
 

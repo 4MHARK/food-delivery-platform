@@ -34,6 +34,7 @@ async function resolveOrderItems(restaurantId, items) {
     where: { id: numericRestaurantId },
     select: {
       id: true,
+      campusId: true,
       approvalStatus: true,
       isOpen: true,
       hours: {
@@ -98,7 +99,7 @@ async function resolveOrderItems(restaurantId, items) {
     });
   }
 
-  return { validatedItems };
+  return { validatedItems, restaurant };
 }
 
 // ── Checkout: create order + payment ──
@@ -107,31 +108,87 @@ async function resolveOrderItems(restaurantId, items) {
 // sharing one 5/min budget across everyone on the same network.
 router.post("/orders/checkout", authMiddleware, checkoutLimiter, validate(checkoutSchema), async (req, res, next) => {
   try {
-    const { restaurantId, savedLocationId, items, idempotencyKey } = req.body;
+    const {
+      restaurantId,
+      savedLocationId,
+      deliveryLandmarkId,
+      deliveryDetail,
+      items,
+      idempotencyKey,
+    } = req.body;
 
+    // 1. Input validated by validate(checkoutSchema) middleware (zod)
+
+    // 2. Check restaurant exists + validate menu items. The restaurant's
+    //    campusId is needed before a campus landmark can be validated.
+    const { validatedItems, restaurant, error } = await resolveOrderItems(restaurantId, items);
+    if (error) return res.status(error.status).json({ message: error.message });
+
+    // 3. Resolve the drop-off. A campus landmark is owned by the server: its
+    //    name and coordinates override anything the client sent.
     let deliveryLocation;
-    if (savedLocationId) {
-      deliveryLocation = await prisma.customerDeliveryLocation.findFirst({
-        where: { id: savedLocationId, userId: req.user.id },
-        select: { address: true, lat: true, lng: true },
+    if (deliveryLandmarkId) {
+      const landmark = await prisma.campusLandmark.findFirst({
+        where: {
+          id: Number(deliveryLandmarkId),
+          isActive: true,
+          campusId: restaurant.campusId,
+        },
+        select: { id: true, name: true, lat: true, lng: true },
       });
 
-      if (!deliveryLocation) return res.status(404).json({ message: "Saved delivery location not found" });
+      if (!landmark) {
+        return res.status(400).json({
+          message: "That drop-off point is not available for this restaurant's campus.",
+        });
+      }
+
+      const detail = deliveryDetail?.trim() || null;
+      const lat = landmark.lat ?? req.body.deliveryLat ?? null;
+      const lng = landmark.lng ?? req.body.deliveryLng ?? null;
+
+      if (lat == null || lng == null) {
+        return res.status(400).json({
+          message:
+            "This drop-off point has no map pin yet. Use your current location or choose another landmark.",
+        });
+      }
+
+      deliveryLocation = {
+        landmarkId: landmark.id,
+        detail,
+        address: [landmark.name, detail].filter(Boolean).join(" — ").slice(0, 200),
+        lat,
+        lng,
+      };
+    } else if (savedLocationId) {
+      const saved = await prisma.customerDeliveryLocation.findFirst({
+        where: { id: savedLocationId, userId: req.user.id },
+        select: { address: true, lat: true, lng: true, landmarkId: true },
+      });
+
+      if (!saved) {
+        return res.status(404).json({ message: "Saved delivery location not found" });
+      }
+
+      deliveryLocation = {
+        landmarkId: saved.landmarkId ?? null,
+        detail: null,
+        address: saved.address,
+        lat: saved.lat,
+        lng: saved.lng,
+      };
     } else {
       deliveryLocation = {
+        landmarkId: null,
+        detail: null,
         address: req.body.deliveryAddress,
         lat: req.body.deliveryLat,
         lng: req.body.deliveryLng,
       };
     }
 
-    // 1. Input validated by validate(checkoutSchema) middleware (zod)
-
-    // 2. Check restaurant exists + validate menu items (exist + all belong to this restaurant)
-    const { validatedItems, error } = await resolveOrderItems(restaurantId, items);
-    if (error) return res.status(error.status).json({ message: error.message });
-
-    // 3. Calculate fees on the backend (never trust frontend totals)
+    // 4. Calculate fees on the backend (never trust frontend totals)
     const fees = calculateFees(validatedItems);
 
     // 4. Create the order, its items, and its payment in one transaction — a
@@ -173,6 +230,8 @@ router.post("/orders/checkout", authMiddleware, checkoutLimiter, validate(checko
             customerId: req.user.id,
             restaurantId: Number(restaurantId),
             deliveryAddress: deliveryLocation.address,
+            deliveryLandmarkId: deliveryLocation.landmarkId,
+            deliveryDetail: deliveryLocation.detail,
             deliveryLat: deliveryLocation.lat,
             deliveryLng: deliveryLocation.lng,
             idempotencyKey,
@@ -201,6 +260,7 @@ router.post("/orders/checkout", authMiddleware, checkoutLimiter, validate(checko
           include: {
             orderItems: { include: { menuItem: true } },
             restaurant: PUBLIC_RESTAURANT,
+            deliveryLandmark: { select: { id: true, name: true, category: true } },
             payment: true,
           },
         });
@@ -221,6 +281,7 @@ router.post("/orders/checkout", authMiddleware, checkoutLimiter, validate(checko
           include: {
             orderItems: { include: { menuItem: true } },
             restaurant: PUBLIC_RESTAURANT,
+            deliveryLandmark: { select: { id: true, name: true, category: true } },
             payment: true,
           },
         });
@@ -280,7 +341,8 @@ router.get("/orders", authMiddleware, async (req, res, next) => {
             menuItem:{select: {name: true}}
           }
         },
-        restaurant: PUBLIC_RESTAURANT
+        restaurant: PUBLIC_RESTAURANT,
+        deliveryLandmark: { select: { id: true, name: true, category: true } },
       },
       orderBy: {
         createdAt: "desc",
@@ -349,6 +411,7 @@ router.get("/orders/:id", authMiddleware, async (req, res, next) => {
           },
         },
        restaurant: { select: { ...PUBLIC_RESTAURANT.select, owner: { select: { id: true, name: true } } } },
+        deliveryLandmark: { select: { id: true, name: true, category: true } },
         payment: {
           select: { status: true, paidAt: true, reference: true, amount: true },
         },
