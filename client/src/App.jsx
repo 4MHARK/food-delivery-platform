@@ -21,6 +21,8 @@ const Dashboard = lazy(() => import("./pages/ManageRestaurant"));
 const RiderDashboard = lazy(() => import("./pages/RiderDashboard"));
 const AdminDashboard = lazy(() => import("./pages/AdminDashboard"));
 const AdminSignup = lazy(() => import("./pages/AdminSignup"));
+const MarketingHome = lazy(() => import("./pages/MarketingHome"));
+const PartnerLanding = lazy(() => import("./pages/PartnerLanding"));
 import ProtectedRoute from "./components/ProtectedRoute";
 import OwnerRoute from "./components/OwnerRoute";
 import RiderRoute from "./components/RiderRoute";
@@ -38,9 +40,10 @@ const SERVICE_WORKER_ALLOWED = isServiceWorkerAllowed();
 function HomeRedirect() {
   const { user, isAuthenticated } = useAuth();
 
-  // Not logged in — show login page
+  // Logged-out visitors get the marketing landing page. Authenticated users
+  // keep the existing role-based app entry points.
   if (!isAuthenticated) {
-    return <Navigate to="/login" replace />;
+    return <MarketingHome />;
   }
 
   // Logged in — route by role
@@ -77,6 +80,8 @@ function App() {
           >
           <Routes>
             <Route path="/" element={<HomeRedirect />} />
+            <Route path="/vendors" element={<PartnerLanding type="vendor" />} />
+            <Route path="/riders" element={<PartnerLanding type="rider" />} />
             <Route path="/signup" element={<Signup />} />
             <Route path="/login" element={<Login />} />
             <Route path="/forgot-password" element={<ForgotPassword />} />
