@@ -115,6 +115,20 @@ async function handleChargeSuccess(reference, data) {
 
 const router = express.Router();
 
+// Public: the frontend calls this before opening the Paystack popup to confirm
+// the browser and the server use keys from the same Paystack mode. A live
+// public key with a test secret (or the reverse) takes money the server can
+// never verify.
+router.get("/payments/mode", (req, res) => {
+  const secret = process.env.PAYSTACK_SECRET_KEY || "";
+  const mode = secret.startsWith("sk_live_")
+    ? "live"
+    : secret.startsWith("sk_test_")
+      ? "test"
+      : null;
+  res.status(200).json({ mode });
+});
+
 // ── Paystack webhook: called by Paystack, not by users. There is no JWT here —
 // the one-way authentication is the HMAC signature over the raw request body. ──
 router.post("/payments/webhook", async (req, res) => {
@@ -249,7 +263,24 @@ router.post("/payments/verify", authMiddleware, async (req, res, next) => {
     const { verified, data: paystackData } = await verifyPayment(reference);
 
     if (!verified) {
-      // Payment failed or was declined
+      // "Transaction not found" is not a decline. It is what a public key from
+      // one Paystack mode/account looks like when the server verifies with a
+      // secret from another (e.g. live checkout, test secret). The customer may
+      // have been charged, so never mark the payment FAILED here — leave it
+      // PENDING so a corrected verification can still settle the order.
+      const integrationError =
+        paystackData?.code === "transaction_not_found" ||
+        paystackData?.type === "validation_error";
+
+      if (integrationError) {
+        return res.status(502).json({
+          message:
+            "We couldn't find this transaction on our Paystack integration. If you were charged, contact support with your order number — your order stays open.",
+          paystackStatus: paystackData?.message || "transaction not found",
+        });
+      }
+
+      // A real decline or abandoned payment.
       await prisma.payment.update({
         where: { reference },
         data: {

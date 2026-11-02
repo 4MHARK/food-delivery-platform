@@ -33,6 +33,18 @@
       type="font/woff2"
       crossorigin
     />
+    <!-- Marketing landing fonts and hero. The landing is the logged-out entry
+         point; these keep its first paint from waiting on the lazy route chunk. -->
+    <link rel="preload" href="/fonts/bricolage-grotesque-latin.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="preload" href="/fonts/dm-sans-latin.woff2" as="font" type="font/woff2" crossorigin />
+    <link
+      rel="preload"
+      as="image"
+      href="/images/hero-bowl-1000.jpg"
+      imagesrcset="/images/hero-bowl-600.jpg 600w, /images/hero-bowl-1000.jpg 1000w"
+      imagesizes="(max-width: 640px) 70vw, 390px"
+      fetchpriority="high"
+    />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta
       name="description"
